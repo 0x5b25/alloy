@@ -1,0 +1,15 @@
+[submodule "3rd-party/glslang"]
+	path = 3rd-party/glslang
+	url = git@github.com:KhronosGroup/glslang.git
+[submodule "3rd-party/spirv-cross"]
+	path = 3rd-party/spirv-cross
+	url = git@github.com:KhronosGroup/SPIRV-Cross.git
+[submodule "src/backend/vk/3rd-party/vma"]
+	path = src/backend/vk/3rd-party/vma
+	url = git@github.com:GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "src/backend/vk/3rd-party/volk"]
+	path = src/backend/vk/3rd-party/volk
+	url = git@github.com:zeux/volk.git
+[submodule "src/backend/vk/3rd-party/Vulkan-Headers"]
+	path = src/backend/vk/3rd-party/Vulkan-Headers
+	url = git@github.com:KhronosGroup/Vulkan-Headers.git
