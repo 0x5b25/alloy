@@ -1,0 +1,832 @@
+#define VMA_IMPLEMENTATION
+
+#include "VulkanDevice.hpp"
+
+#include "veldrid/backend/Backends.hpp"
+
+#include <atomic>
+#include <mutex>
+#include <cassert>
+#include <optional>
+#include <vector>
+#include <set>
+
+#include "VkSurfaceUtil.hpp"
+#include "VkCommon.hpp"
+
+template<typename T, typename U>
+std::set<T> ToSet(U&& obj) {
+    return std::set<T>(obj.begin(), obj.end());
+}
+
+template<typename T, typename U>
+bool Contains(T&& container, U&& element) {
+
+    return container.find(element) != container.end();
+}
+
+class _VkCtx : public Veldrid::NVRefCnt< _VkCtx>{
+
+public:
+    union Features
+    {
+        struct {
+            bool hasSurfaceExt : 1;
+            bool hasWin32SurfaceCreateExt : 1;
+            bool hasAndroidSurfaceCreateExt : 1;
+            bool hasXLibSurfaceCreateExt : 1;
+            bool hasWaylandSurfaceCreateExt : 1;
+
+            bool hasDrvProp2Ext : 1;
+
+            bool hasDebugReportExt : 1;
+            bool hasStandardValidationLayers : 1;
+            bool hasKhronosValidationLayers : 1;
+
+        };
+        std::uint32_t value;
+    };
+
+private:
+
+    bool _isVkLoaded;
+    VkInstance _instance;
+    Features _features;
+
+    VkDebugReportCallbackEXT _debugCallbackHandle;
+
+    Veldrid::GraphicsApiVersion _ver;
+    
+    //Mechanism for thread-safe singleton
+    static std::atomic<_VkCtx*> _pinstance;
+    static std::mutex _m;
+
+    _VkCtx():
+        _isVkLoaded(false),
+        _instance(VK_NULL_HANDLE),
+        _features({ 0 }),
+        _debugCallbackHandle(VK_NULL_HANDLE),
+        _ver({0})
+    {
+        if (volkInitialize() != VK_SUCCESS) {
+            return;
+        }
+
+        _isVkLoaded = true;
+
+        std::set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
+        std::set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
+
+
+        VkApplicationInfo appInfo{};
+        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pApplicationName = "Hello Triangle";
+        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.pEngineName = "No Engine";
+        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.apiVersion = VK_API_VERSION_1_0;
+
+        VkInstanceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        createInfo.pApplicationInfo = &appInfo;
+
+        std::vector<const char*> instanceExtensions{};
+        std::vector<const char*> instanceLayers{};
+
+        auto _AddExtIfPresent = [&](const char* extName){
+            if (Contains(availableInstanceExtensions, extName))
+            {
+                instanceExtensions.push_back(extName);
+                return true;
+            }
+            return false;
+        };
+
+        auto _AddLayerIfPresent = [&](const char* layerName) {
+            if (Contains(availableInstanceLayers, layerName))
+            {
+                instanceLayers.push_back(layerName);
+                return true;
+            }
+            return false;
+        };
+
+        _features.hasSurfaceExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_SURFACE);
+        //Surface extensions
+    #ifdef VLD_PLATFORM_WIN32
+        _features.hasWin32SurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_WIN32_SURFACE);
+    #elif defined VLD_PLATFORM_ANDROID
+        _features.hasAndroidSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_ANDROID_SURFACE);
+    #elif defined VLD_PLATFORM_LINUX
+        _features.hasXLibSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_XLIB_SURFACE);
+        _features.hasWaylandSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_WAYLAND_SURFACE);
+    #endif
+
+        _features.hasDrvProp2Ext = _AddExtIfPresent(VkInstExtNames::VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES2);
+
+        //Debugging
+    #ifdef VLD_DEBUG
+        _features.hasDebugReportExt 
+            = _AddExtIfPresent(VkInstExtNames::VK_EXT_DEBUG_REPORT);
+        _features.hasStandardValidationLayers 
+            = _AddLayerIfPresent(VkCommonStrings::StandardValidationLayerName);
+        _features.hasStandardValidationLayers 
+            = _AddLayerIfPresent(VkCommonStrings::KhronosValidationLayerName);
+    #endif  
+        
+        createInfo.enabledExtensionCount = instanceExtensions.size();
+        createInfo.ppEnabledExtensionNames = instanceExtensions.data();
+
+        createInfo.enabledLayerCount = instanceLayers.size();
+        createInfo.ppEnabledLayerNames = instanceLayers.data();
+
+        assert(vkCreateInstance(&createInfo, nullptr, &_instance) == VK_SUCCESS);
+        volkLoadInstance(_instance);
+
+        auto version = volkGetInstanceVersion();
+        _ver.major = VK_VERSION_MAJOR(version);
+        _ver.minor = VK_VERSION_MINOR(version);
+        _ver.patch = VK_VERSION_PATCH(version);
+
+
+        if (_features.hasDebugReportExt) {
+            _EnableDebugCallback();
+        }
+    }
+
+
+    static VkBool32 _DbgCb(
+        VkDebugReportFlagsEXT                       msgFlags,
+        VkDebugReportObjectTypeEXT                  objectType,
+        uint64_t                                    object,
+        size_t                                      location,
+        int32_t                                     msgCode,
+        const char* pLayerPrefix,
+        const char* pMsg,
+        void* pUserData)
+    {
+#define LOG(...) printf(__VA_ARGS__)
+
+        if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
+            LOG("ERR " "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+        else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
+            LOG("WARN" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+        else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
+            LOG("DBG " "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+        else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
+            LOG("PERF" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+        else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
+            LOG("INFO" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+        return 0;
+#undef LOG
+    }
+
+
+    void _EnableDebugCallback(
+        VkDebugReportFlagsEXT flags =
+        VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_ERROR_BIT_EXT
+    ) {
+        //Debug.WriteLine("Enabling Vulkan Debug callbacks.");
+        VkDebugReportCallbackCreateInfoEXT debugCallbackCI{};
+        debugCallbackCI.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+        debugCallbackCI.pNext = nullptr;
+        debugCallbackCI.flags = flags;
+        debugCallbackCI.pfnCallback = &_DbgCb;
+        
+        VK_CHECK(vkCreateDebugReportCallbackEXT(
+            _instance, &debugCallbackCI, nullptr, &_debugCallbackHandle));            
+    }
+
+public:
+
+    ~_VkCtx() {
+        //Presumably non-multithreaded
+        _pinstance = nullptr;
+        if (!_isVkLoaded) return;
+
+        if (_debugCallbackHandle != VK_NULL_HANDLE) {
+            vkDestroyDebugReportCallbackEXT(_instance, _debugCallbackHandle, nullptr);
+        }
+
+        vkDestroyInstance(_instance, nullptr);
+    }
+
+    static Veldrid::sp<_VkCtx> Get() {
+        if (_pinstance == nullptr) {
+            std::lock_guard<std::mutex> lock{ _m };
+            if (_pinstance == nullptr) {
+                _pinstance = new _VkCtx();
+            }
+        } else {
+            _pinstance->ref();
+        }
+        return Veldrid::sp{ _pinstance.load()};
+    }
+
+    VkInstance GetHandle() const { return _instance; }
+
+    bool IsVulkanSupported() {
+        return _instance != VK_NULL_HANDLE;
+    }
+
+    const Features& GetFeatures() const { return _features; }
+    const Veldrid::GraphicsApiVersion& GetApiVer() const { return _ver; }
+};
+
+std::atomic<_VkCtx*> _VkCtx::_pinstance{ nullptr };
+std::mutex _VkCtx::_m{};
+
+
+struct PhyDevInfo {
+    std::string name;
+    VkPhysicalDevice handle;
+    uint32_t graphicsQueueFamily; bool graphicsQueueSupportsCompute;
+    std::optional<uint32_t> computeQueueFamily;
+    std::optional<uint32_t> transferQueueFamily;
+};
+
+std::optional<PhyDevInfo> _PickPhysicalDevice(
+    VkInstance inst,
+    VkSurfaceKHR surface,
+    const std::vector<std::string>& extensions
+) {
+    std::uint32_t devCnt;
+    VK_CHECK(vkEnumeratePhysicalDevices(inst, &devCnt, nullptr));
+    std::vector<VkPhysicalDevice> gpus(devCnt);
+    VK_CHECK(vkEnumeratePhysicalDevices(inst, &devCnt, gpus.data()));
+
+    //std::vector<VkPhysicalDevice> gpus =  context.instance.enumeratePhysicalDevices();
+    std::vector<std::tuple<std::uint32_t, PhyDevInfo>> devList;
+
+    auto _RatePhyDev = [&](VkPhysicalDevice phyDev, std::uint32_t& score, PhyDevInfo& info) {
+        //Can device do geomerty shaders?
+        VkPhysicalDeviceFeatures devFeat{};
+        vkGetPhysicalDeviceFeatures(phyDev, &devFeat);
+        if (!devFeat.geometryShader) return false;
+
+        //Does device supports required extensions
+        uint32_t extensionCount;
+        vkEnumerateDeviceExtensionProperties(phyDev, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        vkEnumerateDeviceExtensionProperties(phyDev, nullptr, &extensionCount, availableExtensions.data());
+
+        std::set<std::string> requiredExtensions(extensions.begin(), extensions.end());
+
+        for (const auto& extension : availableExtensions) {
+            requiredExtensions.erase(extension.extensionName);
+        }
+
+        if (!requiredExtensions.empty()) return false;
+
+        //Find graphics queue
+        std::uint32_t queueFamCnt;
+        vkGetPhysicalDeviceQueueFamilyProperties(phyDev, &queueFamCnt, nullptr);
+        std::vector<VkQueueFamilyProperties> queue_family_properties(queueFamCnt);
+        vkGetPhysicalDeviceQueueFamilyProperties(phyDev, &queueFamCnt, queue_family_properties.data());
+
+        if (queue_family_properties.empty())
+        {
+            return false;
+        }
+
+        auto _FindUniqueFamilyWithFlags = [&](uint32_t flags, const std::vector<uint32_t>& excludes) {
+            for (uint32_t j = 0; j < queue_family_properties.size(); j++)
+            {
+                bool shouldExclude = false;
+                for (auto& f : excludes) if (f == j) { shouldExclude = true; break; }
+
+                if (shouldExclude) continue;
+
+                if (queue_family_properties[j].queueFlags & flags)return std::optional<uint32_t>(j);
+            }
+            return std::optional<uint32_t>();
+        };
+
+        std::vector<uint32_t> excludes;
+
+        //Lets find a graphics queue first
+        {
+            while (true)
+            {
+                //uint32_t gQueue;
+                auto res = _FindUniqueFamilyWithFlags(
+                    VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT,
+                    excludes);
+                if (!res.has_value()) {
+                    //No Graphics queue means no suitable device
+                    return false;
+                }
+                //Add to exclude list
+                excludes.push_back(res.value());
+
+                //Check for presentation support
+                if (surface != VK_NULL_HANDLE) {
+                    VkBool32 supports_present;
+                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
+                        phyDev, res.value(), surface, &supports_present)
+                    );
+                    if (!supports_present) {
+                        break;
+                    }
+                }
+                // Find a queue family which supports graphics and presentation.
+                //if (supports_present)
+                {
+                    info.graphicsQueueFamily = res.value();
+                    break;
+                }
+            }
+        }
+
+
+        VkPhysicalDeviceProperties devProp{};
+        vkGetPhysicalDeviceProperties(phyDev, &devProp);
+        info.name = devProp.deviceName;
+        info.handle = phyDev;
+
+        //Score the device
+        score = 0;
+        {
+            auto& gQueueProp = queue_family_properties[info.graphicsQueueFamily];
+            if (gQueueProp.queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT) {
+                info.graphicsQueueSupportsCompute = true;
+                score += 100;
+            }
+        }
+        if (devProp.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 1000;
+
+        {
+            //Try find dedicated compute queue
+            auto res = _FindUniqueFamilyWithFlags(VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT, excludes);
+            if (res.has_value()) {
+                excludes.push_back(res.value());
+                info.computeQueueFamily = res.value();
+                score += 200;
+            }
+        }
+
+        {
+            //Try find dedicated transfer queue
+            auto res = _FindUniqueFamilyWithFlags(VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT, excludes);
+            if (res.has_value()) {
+                excludes.push_back(res.value());
+                info.transferQueueFamily = res.value();
+                score += 100;
+            }
+        }
+        //Evaluate vram size
+        VkPhysicalDeviceMemoryProperties vramProp{};
+        vkGetPhysicalDeviceMemoryProperties(phyDev, &vramProp);
+
+        for (uint32_t i = 0; i < vramProp.memoryHeapCount; i++) {
+            //Locate the first device local heap
+            if (vramProp.memoryHeaps[i].flags & VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                score += vramProp.memoryHeaps[i].size / (8ULL * 1024 * 1024);
+                break;
+            }
+        }
+
+        return true;
+    };
+
+    for (auto& gpu : gpus) {
+        std::uint32_t score; PhyDevInfo info{};
+        if (!_RatePhyDev(gpu, score, info)) {
+            continue;
+        }
+        devList.push_back({ score, info });
+    }
+
+    if (devList.empty()) return {};
+    auto max = 0, maxScore = 0;
+    for (auto i = 0; i < devList.size(); i++) {
+        auto score = std::get<uint32_t>(devList[i]);
+        if (score >= maxScore) max = i, maxScore = score;
+    }
+    return std::get<PhyDevInfo>(devList[max]);
+}
+
+namespace Veldrid {
+
+
+	sp<GraphicsDevice> CreateVulkanGraphicsDevice(
+        const GraphicsDevice::Options& options,
+        SwapChainSource* swapChainSource
+    ) {
+		return VulkanDevice::Make(options, swapChainSource);
+	}
+
+
+    VulkanDevice::~VulkanDevice()
+    {
+        vkDeviceWaitIdle(_dev);
+
+        vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
+        vmaDestroyAllocator(_allocator);
+        vkDestroyDevice(_dev, nullptr);
+
+        DEBUGCODE(_ctx = nullptr);
+        DEBUGCODE(_phyDev = VK_NULL_HANDLE);
+        DEBUGCODE(_dev = VK_NULL_HANDLE);
+        DEBUGCODE(_allocator = VK_NULL_HANDLE);
+
+        DEBUGCODE(_queueGraphics = VK_NULL_HANDLE);
+        DEBUGCODE(_queueCopy = VK_NULL_HANDLE);
+        DEBUGCODE(_queueCompute = VK_NULL_HANDLE);
+
+        DEBUGCODE(_surface = VK_NULL_HANDLE);
+    }
+
+    sp<GraphicsDevice> VulkanDevice::Make(
+		const GraphicsDevice::Options& options,
+		SwapChainSource* swapChainSource
+	){
+        auto ctx = _VkCtx::Get();
+        if (!ctx->IsVulkanSupported()) {
+            return {};
+        }
+
+        //Make the surface if possible
+        VkSurfaceKHR _surf = VK_NULL_HANDLE;
+        if (swapChainSource != nullptr) {
+            _surf = CreateSurface(ctx->GetHandle(), swapChainSource);
+        }
+
+        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf, {});
+        if (!phyDev.has_value()) {
+            return {};
+        }
+
+        auto& devInfo = phyDev.value();
+
+        auto dev = sp<VulkanDevice>(new VulkanDevice());
+        dev->_ctx = ctx;
+        dev->_surface = _surf;
+        dev->_phyDev = devInfo.handle;
+        dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
+
+        dev->_devName = devInfo.name;
+
+
+        //Create logical device
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
+        std::vector<float> queuePriorities{};
+        {
+            queueCreateInfos.emplace_back();
+            VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = devInfo.graphicsQueueFamily;
+            queueCreateInfo.queueCount = 1;
+
+            queuePriorities.push_back(1.0f);
+        }
+
+        if (devInfo.transferQueueFamily.has_value()) {
+            queueCreateInfos.emplace_back();
+            VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = devInfo.transferQueueFamily.value();
+            queueCreateInfo.queueCount = 1;
+
+            queuePriorities.push_back(0.8f);
+
+            dev->_features.hasUniqueCpyQueue = true;
+        }
+
+        if (devInfo.computeQueueFamily.has_value()) {
+            queueCreateInfos.emplace_back();
+            VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
+            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queueCreateInfo.queueFamilyIndex = devInfo.computeQueueFamily.value();
+            queueCreateInfo.queueCount = 1;
+
+            queuePriorities.push_back(0.6f);
+
+            dev->_features.hasUniqueComputeQueue = true;
+        }
+
+        for (auto i = 0; i < queueCreateInfos.size(); i++) {
+            queueCreateInfos[i].pQueuePriorities = &queuePriorities[i];
+        }
+
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+        vkGetPhysicalDeviceFeatures(dev->_phyDev, &deviceFeatures);
+
+        //First add pointers to the queue creation info and device features structs:
+
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.queueCreateInfoCount = queueCreateInfos.size();
+
+        //Requested device extensions
+        //First, get all available extensions
+        std::set<std::string> availableDevExts{};
+        {
+
+            std::uint32_t propCount = 0;
+            VK_CHECK(vkEnumerateDeviceExtensionProperties(dev->_phyDev, nullptr, &propCount, nullptr));
+
+            if (propCount != 0) {
+                std::vector<VkExtensionProperties> props(propCount);
+                VK_CHECK(vkEnumerateDeviceExtensionProperties(
+                    dev->_phyDev, nullptr, &propCount, props.data()));
+
+                
+                for (int i = 0; i < propCount; i++)
+                {
+                    auto& prop = props[i];
+                    availableDevExts.emplace(prop.extensionName);
+                }
+            }
+        }
+
+        std::vector<const char*> devExtensions{};
+        auto _AddExtIfPresent = [&](const char* extName) {
+            if (Contains(availableDevExts, extName))
+            {
+                devExtensions.push_back(extName);
+                return true;
+            }
+            return false;
+        };
+
+#if defined VLD_DEBUG
+        dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
+#endif
+        dev->_features.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
+        if (options.preferStandardClipSpaceYDirection) {
+            dev->_features.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
+        }
+        dev->_features.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
+        dev->_features.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
+
+        if (dev->_ctx->GetFeatures().hasDrvProp2Ext) {
+            dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
+        }
+
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(devExtensions.size());
+        createInfo.ppEnabledExtensionNames = devExtensions.data();
+
+        createInfo.pEnabledFeatures = &deviceFeatures;
+        VK_CHECK(vkCreateDevice(dev->_phyDev, &createInfo, nullptr, &dev->_dev));
+
+        //Create command pool
+        //VkCommandPoolCreateInfo poolInfo{};
+        //poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        //poolInfo.queueFamilyIndex = devInfo.graphicsQueueFamily;
+        //poolInfo.flags = 0; // Optional
+        //VK_CHECK(vkCreateCommandPool(dev->_dev, &poolInfo, nullptr, &dev->_cmdPool));
+        dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
+        dev->_descPoolMgr.Init(dev->_dev, 1000);
+
+        //Get queues
+        vkGetDeviceQueue(dev->_dev, devInfo.graphicsQueueFamily, 0, &dev->_queueGraphics);
+        if (devInfo.transferQueueFamily.has_value())
+            vkGetDeviceQueue(dev->_dev, devInfo.transferQueueFamily.value(), 0, &dev->_queueCopy);
+        if (devInfo.computeQueueFamily.has_value())
+            vkGetDeviceQueue(dev->_dev, devInfo.computeQueueFamily.value(), 0, &dev->_queueCompute);
+
+        //Init allocator
+        VmaAllocatorCreateInfo allocatorInfo = {};
+        allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
+        allocatorInfo.physicalDevice = dev->_phyDev;
+        allocatorInfo.device = dev->_dev;
+        allocatorInfo.instance = dev->_ctx->GetHandle();
+
+        VmaVulkanFunctions fn{};
+        fn.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+        fn.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+        fn.vkAllocateMemory = (PFN_vkAllocateMemory)vkAllocateMemory;
+        fn.vkBindBufferMemory = (PFN_vkBindBufferMemory)vkBindBufferMemory;
+        fn.vkBindImageMemory = (PFN_vkBindImageMemory)vkBindImageMemory;
+        fn.vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)vkCmdCopyBuffer;
+        fn.vkCreateBuffer = (PFN_vkCreateBuffer)vkCreateBuffer;
+        fn.vkCreateImage = (PFN_vkCreateImage)vkCreateImage;
+        fn.vkDestroyBuffer = (PFN_vkDestroyBuffer)vkDestroyBuffer;
+        fn.vkDestroyImage = (PFN_vkDestroyImage)vkDestroyImage;
+        fn.vkFlushMappedMemoryRanges = (PFN_vkFlushMappedMemoryRanges)vkFlushMappedMemoryRanges;
+        fn.vkFreeMemory = (PFN_vkFreeMemory)vkFreeMemory;
+        fn.vkGetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)vkGetBufferMemoryRequirements;
+        fn.vkGetImageMemoryRequirements = (PFN_vkGetImageMemoryRequirements)vkGetImageMemoryRequirements;
+        fn.vkGetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)vkGetPhysicalDeviceMemoryProperties;
+        fn.vkGetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)vkGetPhysicalDeviceProperties;
+        fn.vkInvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)vkInvalidateMappedMemoryRanges;
+        fn.vkMapMemory = (PFN_vkMapMemory)vkMapMemory;
+        fn.vkUnmapMemory = (PFN_vkUnmapMemory)vkUnmapMemory;
+        if (dev->_features.supportsGetMemReq2 && dev->_features.supportsDedicatedAlloc) {
+            fn.vkGetBufferMemoryRequirements2KHR 
+                = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetBufferMemoryRequirements2KHR;
+            fn.vkGetImageMemoryRequirements2KHR 
+                = (PFN_vkGetImageMemoryRequirements2KHR)vkGetImageMemoryRequirements2KHR;
+        }
+        allocatorInfo.pVulkanFunctions = &fn;
+
+        vmaCreateAllocator(&allocatorInfo, &dev->_allocator);
+
+        //dev->_isValid = true;
+
+        //Fill driver and api info
+        if (dev->_features.supportsDrvPropQuery)
+        {
+            VkPhysicalDeviceDriverProperties driverProps{};
+            driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+            driverProps.pNext = nullptr;
+
+            VkPhysicalDeviceProperties2KHR deviceProps{};
+            deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            deviceProps.pNext = &driverProps;
+
+            vkGetPhysicalDeviceProperties2(dev->_phyDev, &deviceProps);
+
+            VkConformanceVersion conforming = driverProps.conformanceVersion;
+            dev->_apiVer.major = conforming.major;
+            dev->_apiVer.minor = conforming.minor;
+            dev->_apiVer.subminor = conforming.subminor;
+            dev->_apiVer.patch = conforming.major;
+            dev->_drvName = driverProps.driverName;
+            dev->_drvInfo = driverProps.driverInfo;
+        }
+
+        dev->_devName = phyDev->name;
+
+        dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
+        dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
+        dev->_commonFeat.tessellationShaders = deviceFeatures.tessellationShader;
+        dev->_commonFeat.multipleViewports = deviceFeatures.multiViewport;
+        dev->_commonFeat.samplerLodBias = true;
+        dev->_commonFeat.drawBaseVertex = true;
+        dev->_commonFeat.drawBaseInstance = true;
+        dev->_commonFeat.drawIndirect = true;
+        dev->_commonFeat.drawIndirectBaseInstance = deviceFeatures.drawIndirectFirstInstance;
+        dev->_commonFeat.fillModeWireframe = deviceFeatures.fillModeNonSolid;
+        dev->_commonFeat.samplerAnisotropy = deviceFeatures.samplerAnisotropy;
+        dev->_commonFeat.depthClipDisable = deviceFeatures.depthClamp;
+        dev->_commonFeat.texture1D = true;
+        dev->_commonFeat.independentBlend = deviceFeatures.independentBlend;
+        dev->_commonFeat.structuredBuffer = true;
+        dev->_commonFeat.subsetTextureView = true;
+        dev->_commonFeat.commandListDebugMarkers = dev->_features.supportsDebug;
+        dev->_commonFeat.bufferRangeBinding = true;
+        dev->_commonFeat.shaderFloat64 = deviceFeatures.shaderFloat64;
+
+        return dev;
+	}
+
+
+    sp<Buffer> VulkanBuffer::Make(
+            const sp<VulkanDevice>& dev,
+            const Buffer::Description& desc
+    ){
+        
+        auto& usage = desc.usage;
+
+        VkBufferUsageFlags usages = VK_BUFFER_USAGE_TRANSFER_SRC_BIT 
+            | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        if ((desc.usage.vertexBuffer))
+        {
+            usages |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
+        if ((desc.usage.indexBuffer))
+        {
+            usages |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+        if ((desc.usage.uniformBuffer))
+        {
+            usages |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        }
+        if ((desc.usage.structuredBufferReadWrite)
+            || (desc.usage.structuredBufferReadOnly))
+        {
+            usages |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+        if ((desc.usage.indirectBuffer))
+        {
+            usages |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
+
+        bool isStaging = desc.usage.staging;
+        bool hostVisible = isStaging || desc.usage.dynamic;
+
+        VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size = desc.sizeInBytes;
+        bufferInfo.usage = usages;
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        if(hostVisible){
+            allocInfo.requiredFlags |= 
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
+                | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        }else{
+            allocInfo.requiredFlags |= 
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        }
+
+        if(isStaging){
+            // Use "host cached" memory for staging when available, 
+            // for better performance of GPU -> CPU transfers
+            allocInfo.preferredFlags |= 
+                VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        }
+
+        VkBuffer buffer;
+        VmaAllocation allocation;
+        auto res = vmaCreateBuffer(dev->Allocator(), &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
+
+        if(res != VK_SUCCESS) return nullptr;
+
+        auto buf = new VulkanBuffer{ dev, desc };
+        buf->_buffer = buffer;
+        //buf->_size = size;
+        buf->_allocation = allocation;
+
+        //buf->_usages = usages;
+        //buf->_allocationType = allocationType;
+
+
+        return sp(buf);
+    }
+
+    VulkanBuffer::~VulkanBuffer(){
+        vmaDestroyBuffer(_Dev()->Allocator(), _buffer, _allocation);
+
+        DEBUGCODE(dev = nullptr);
+        DEBUGCODE(_buffer = VK_NULL_HANDLE);
+        DEBUGCODE(_allocation = VK_NULL_HANDLE);
+    }
+
+    VulkanFence::~VulkanFence()
+    {
+        vkDestroyFence(_Dev()->LogicalDev(), _fence, nullptr);
+    }
+
+    inline bool VulkanFence::IsSignaled() const
+    {
+        auto res = vkGetFenceStatus(_Dev()->LogicalDev(), _fence);
+        VK_ASSERT(res != VK_ERROR_DEVICE_LOST);
+        return res == VK_SUCCESS;
+    }
+
+    inline void VulkanFence::Reset() {
+        VK_CHECK(vkResetFences(_Dev()->LogicalDev(), 1, &_fence));
+    }
+
+    sp<Fence> VulkanFence::Make(const sp<VulkanDevice>& dev, bool signaled)
+    {
+        VkFenceCreateInfo fenceCreateInfo{};
+        fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        if (signaled)
+        {
+            fenceCreateInfo.flags |= VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
+        }
+        VkFence raw_fence;
+        VK_CHECK(vkCreateFence(dev->LogicalDev(), &fenceCreateInfo, nullptr, &raw_fence));
+
+        auto fen = new VulkanFence(dev);
+        fen->_fence = raw_fence;
+
+        return sp<Fence>(fen);
+    }
+    
+    void _CmdPoolMgr::_ReleaseCmdPoolHolder(Container* holder) {
+        std::scoped_lock _lock{ _m_cmdPool };
+        _threadBoundCmdPools.erase(holder->boundID);
+        _freeCmdPools.push_back(holder->pool);
+    }
+
+    sp<_CmdPoolMgr::Container> _CmdPoolMgr::_AcquireCmdPoolHolder() {
+        Container* holder = nullptr;
+        std::scoped_lock _lock{ _m_cmdPool };
+        auto id = std::this_thread::get_id();
+        auto res = _threadBoundCmdPools.find(id);
+        if (res != _threadBoundCmdPools.end()) {
+            holder = (*res).second;
+        }
+        else {
+            VkCommandPool raw_pool;
+            //try to acquire a free command pool
+            if (!_freeCmdPools.empty()) { raw_pool = _freeCmdPools.front(); _freeCmdPools.pop_front(); }
+            else {
+                //Create a new command pool
+                VkCommandPoolCreateInfo cmdPoolCI{};
+                cmdPoolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+                cmdPoolCI.flags = VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+                cmdPoolCI.queueFamilyIndex = _queueFamily;
+
+                VK_CHECK(vkCreateCommandPool(_dev, &cmdPoolCI, nullptr, &raw_pool));
+            }
+
+            holder = new Container{};
+            holder->mgr = this;
+            holder->pool = raw_pool;
+            holder->boundID = id;
+
+            //Add holder to the record
+            _threadBoundCmdPools.emplace(id, holder);
+        }
+
+        return sp(holder);
+    }
+}
