@@ -25,7 +25,7 @@ namespace Veldrid
         V(Texture)\
         V(Buffer)\
         V(Sampler)\
-        V(Shader)\
+        /*V(Shader)*/\
         V(ResourceSet)\
         V(ResourceLayout)\
         V(SwapChain)
@@ -37,6 +37,10 @@ namespace Veldrid
 
         VLD_RF_FOR_EACH_RES(VLD_RF_CREATE_WITH_DESC)
 
+        virtual sp<Shader> CreateShader(
+            const Shader::Description& description,
+            const std::vector<std::uint32_t>& spvBinary) = 0;
+
         virtual sp<Pipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) = 0;
         
@@ -47,7 +51,19 @@ namespace Veldrid
             void* nativeHandle,
             const Texture::Description& description) = 0;
 
-        virtual sp<TextureView> CreateTextureView(sp<Texture>& texture) = 0;
+        sp<TextureView> CreateTextureView(sp<Texture>& texture) {
+            TextureView::Description desc{};
+            auto& texDesc = texture->GetDesc();
+            
+            //desc.target = target;
+            desc.baseMipLevel = 0;
+            desc.mipLevels = texDesc.mipLevels;
+            desc.baseArrayLayer = 0;
+            desc.arrayLayers = texDesc.arrayLayers;
+            desc.format = texDesc.format;
+
+            return CreateTextureView(texture, desc);
+        }
         virtual sp<TextureView> CreateTextureView(
             sp<Texture>& texture,
             const TextureView::Description& description) = 0;
@@ -59,8 +75,8 @@ namespace Veldrid
 
     };
 
-    #undef VLD_RF_FOR_EACH_RES
-    #undef VLD_RF_CREATE_WITH_DESC
+    //#undef VLD_RF_FOR_EACH_RES
+    //#undef VLD_RF_CREATE_WITH_DESC
 } // namespace Veldrid
 
 

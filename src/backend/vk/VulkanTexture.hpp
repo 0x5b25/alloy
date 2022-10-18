@@ -28,10 +28,17 @@ namespace Veldrid
         ~VulkanTexture();
 
         VkImage GetHandle() const { return _img; }
+        bool IsOwnTexture() const {return _allocation != VK_NULL_HANDLE; }
 
         static sp<Texture> Make(
             const sp<VulkanDevice>& dev,
             const Texture::Description& desc
+        );
+
+        static sp<Texture> WrapNative(
+            const sp<VulkanDevice>& dev,
+            const Texture::Description& desc,
+            void* nativeHandle
         );
 
     };

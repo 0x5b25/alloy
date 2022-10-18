@@ -32,7 +32,7 @@ namespace Veldrid
         static sp<Framebuffer> Make(
             const sp<VulkanDevice>& dev,
             const Description& desc,
-            bool isPresented
+            bool isPresented = false
         );
 
     };

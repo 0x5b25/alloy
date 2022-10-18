@@ -7,8 +7,10 @@
 namespace Veldrid {
 
     Veldrid::VulkanTexture::~VulkanTexture() {
-        auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
-        vmaDestroyImage(_dev->Allocator(), _img, _allocation);
+        if(IsOwnTexture()){
+            auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
+            vmaDestroyImage(_dev->Allocator(), _img, _allocation);
+        }
     }
 
 	sp<Texture> VulkanTexture::Make(const sp<VulkanDevice>& dev, const Texture::Description& desc)
@@ -200,6 +202,36 @@ namespace Veldrid {
 
 		return sp<Texture>(tex);
 	}
+
+
+    sp<Texture> VulkanTexture::WrapNative(
+        const sp<VulkanDevice>& dev, 
+        const Texture::Description& desc,
+        void* nativeHandle
+    ){
+        auto tex = new VulkanTexture{dev, desc};
+        tex->_img = (VkImage)nativeHandle;
+        tex->_allocation = VK_NULL_HANDLE;
+        //Debug.Assert(width > 0 && height > 0);
+        //    _gd = gd;
+        //    MipLevels = mipLevels;
+        //    _width = width;
+        //    _height = height;
+        //    _depth = 1;
+        //    VkFormat = vkFormat;
+        //    _format = VkFormats.VkToVdPixelFormat(VkFormat);
+        //    ArrayLayers = arrayLayers;
+        //    Usage = usage;
+        //    Type = TextureType.Texture2D;
+        //    SampleCount = sampleCount;
+        //    VkSampleCount = VkFormats.VdToVkSampleCount(sampleCount);
+        //    _optimalImage = existingImage;
+        //    _imageLayouts = new[] { VkImageLayout.Undefined };
+        //    _isSwapchainTexture = true;
+//
+        //    ClearIfRenderTarget();
+        //    RefCount = new ResourceRefCount(DisposeCore);
+    }
 
     VulkanTextureView::~VulkanTextureView() {
         auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());

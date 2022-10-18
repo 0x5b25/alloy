@@ -34,6 +34,9 @@ namespace Veldrid
             bool colorSrgb;
         };
         
+    protected:
+
+        SwapChain(sp<GraphicsDevice>&& dev) : DeviceResource(std::move(dev)) {}
 
     public:
 

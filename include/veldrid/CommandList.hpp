@@ -17,6 +17,9 @@ namespace Veldrid
     
     class CommandList : public DeviceResource{
 
+    protected:
+        CommandList(sp<GraphicsDevice>&& dev) : DeviceResource(std::move(dev)){}
+
     public:
 
         virtual void Begin() = 0;
