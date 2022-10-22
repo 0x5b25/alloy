@@ -90,5 +90,7 @@ namespace Veldrid
 
         virtual ResourceFactory* GetResourceFactory() = 0;
 
+        virtual void WaitForIdle() = 0;
+
     };
 } // namespace Veldrid

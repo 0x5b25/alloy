@@ -10,21 +10,63 @@ namespace Veldrid
 {
     class VulkanDevice;
 
-    class VulkanFramebuffer : public Framebuffer{
+    class VulkanFramebufferBase : public Framebuffer{
+
+    protected:
+        
+
+        VulkanFramebufferBase(
+            const sp<VulkanDevice>& dev
+        ) : Framebuffer(dev)
+        { 
+            //CreateCompatibleRenderPasses(
+            //    renderPassNoClear, renderPassNoClearLoad, renderPassClear,
+            //    isPresented
+            //);
+        }
+
+    public:
+        static void CreateCompatibleRenderPasses(
+            VulkanDevice* vkDev,
+            const Description& desc,
+            bool isPresented,
+            VkRenderPass& noClearInit,
+            VkRenderPass& noClearLoad,
+            VkRenderPass& clear
+        );
+
+        virtual ~VulkanFramebufferBase();
+
+        virtual VkRenderPass GetRenderPassNoClear_Init() const = 0;
+        virtual VkRenderPass GetRenderPassNoClear_Load() const = 0;
+        virtual VkRenderPass GetRenderPassClear() const = 0;
+
+    };
+
+    class VulkanFramebuffer : public VulkanFramebufferBase{
 
         VkFramebuffer _fb;
-
-        VkRenderPass _renderPassNoClear;
-        VkRenderPass _renderPassNoClearLoad;
-        VkRenderPass _renderPassClear;
+        VkRenderPass renderPassNoClear;
+        VkRenderPass renderPassNoClearLoad;
+        VkRenderPass renderPassClear;
 
         std::vector<VkImageView> _attachmentViews;
 
+        Description description;
+
         VulkanFramebuffer(
             const sp<VulkanDevice>& dev,
-            const Description& desc
-        ) : Framebuffer(dev, desc)
-        { }
+            const Description& desc,
+            bool isPresented = false
+        ) 
+            : VulkanFramebufferBase(dev)
+            , description(desc)
+        { 
+            CreateCompatibleRenderPasses(
+                dev.get(), description, isPresented,
+                renderPassNoClear, renderPassNoClearLoad, renderPassClear
+            );
+        }
 
     public:
         ~VulkanFramebuffer();
@@ -34,6 +76,12 @@ namespace Veldrid
             const Description& desc,
             bool isPresented = false
         );
+
+        virtual VkRenderPass GetRenderPassNoClear_Init() const {return renderPassNoClear;}
+        virtual VkRenderPass GetRenderPassNoClear_Load() const {return renderPassNoClearLoad;}
+        virtual VkRenderPass GetRenderPassClear() const {return renderPassClear;}
+
+        virtual const Description& GetDesc() const {return description;}
 
     };
 } // namespace Veldrid

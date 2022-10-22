@@ -24,6 +24,15 @@ namespace Veldrid
     class VulkanBuffer;
     class VulkanDevice;
 
+    
+    struct PhyDevInfo {
+        std::string name;
+        VkPhysicalDevice handle;
+        uint32_t graphicsQueueFamily; bool graphicsQueueSupportsCompute;
+        std::optional<uint32_t> computeQueueFamily;
+        std::optional<uint32_t> transferQueueFamily;
+    };
+
     //Manage command pools, to achieve one command pool per thread
     class _CmdPoolMgr {
         friend class VulkanDevice;
@@ -98,7 +107,7 @@ namespace Veldrid
 
         sp<_VkCtx> _ctx;
 
-        VkPhysicalDevice _phyDev;
+        PhyDevInfo _phyDev;
         VkDevice _dev;
         VmaAllocator _allocator;
         _CmdPoolMgr _cmdPoolMgr;
@@ -124,7 +133,7 @@ namespace Veldrid
         static sp<GraphicsDevice> Make(
             const GraphicsDevice::Options& options,
             SwapChainSource* swapChainSource = nullptr
-            );
+        );
 
 
     public:
@@ -135,9 +144,9 @@ namespace Veldrid
 
         virtual ResourceFactory* GetResourceFactory() override { return nullptr; };
 
-
+        const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
         const VkDevice& LogicalDev() const {return _dev;}
-        const VkPhysicalDevice& PhysicalDev() const {return _phyDev;}
+        const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
 
         const VkSurfaceKHR& Surface() const {return _surface;}
 
@@ -155,6 +164,9 @@ namespace Veldrid
             return _descPoolMgr.Allocate(layout);
         }
 
+    //Interface
+    public:
+        void WaitForIdle() override;
     };
 
     class VulkanBuffer : public Buffer{

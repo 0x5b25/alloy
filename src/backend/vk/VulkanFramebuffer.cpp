@@ -11,27 +11,18 @@
 
 namespace Veldrid
 {
-    VulkanFramebuffer::~VulkanFramebuffer(){
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
-        vkDestroyFramebuffer(vkDev->LogicalDev(), _fb, nullptr);
 
-        vkDestroyRenderPass(vkDev->LogicalDev(), _renderPassNoClear, nullptr);
-        vkDestroyRenderPass(vkDev->LogicalDev(), _renderPassNoClearLoad, nullptr);
-        vkDestroyRenderPass(vkDev->LogicalDev(), _renderPassClear, nullptr);
 
-        for (VkImageView view : _attachmentViews)
-        {
-            vkDestroyImageView(vkDev->LogicalDev(), view, nullptr);
-        }
 
-    }
-
-    sp<Framebuffer> VulkanFramebuffer::Make(
-        const sp<VulkanDevice>& dev,
+    void VulkanFramebufferBase::CreateCompatibleRenderPasses(
+        VulkanDevice* vkDev,
         const Description& desc,
-        bool isPresented
+        bool isPresented,
+        VkRenderPass& noClearInit,
+        VkRenderPass& noClearLoad,
+        VkRenderPass& clear
     ){
-        
+
         VkRenderPassCreateInfo renderPassCI{};
 
         std::vector<VkAttachmentDescription> attachments{};
@@ -117,8 +108,7 @@ namespace Veldrid
         renderPassCI.dependencyCount = 1;
         renderPassCI.pDependencies = &subpassDependency;
 
-        VkRenderPass _renderPassNoClear;
-        VK_CHECK(vkCreateRenderPass(dev->LogicalDev(), &renderPassCI, nullptr, & _renderPassNoClear));
+        VK_CHECK(vkCreateRenderPass(vkDev->LogicalDev(), &renderPassCI, nullptr, &noClearInit));
 
         for (int i = 0; i < colorAttachmentCount; i++)
         {
@@ -138,8 +128,7 @@ namespace Veldrid
 
         }
 
-        VkRenderPass _renderPassNoClearLoad;
-        VK_CHECK(vkCreateRenderPass(dev->LogicalDev(), &renderPassCI, nullptr, &_renderPassNoClearLoad));
+        VK_CHECK(vkCreateRenderPass(vkDev->LogicalDev(), &renderPassCI, nullptr, &noClearLoad));
 
 
         // Load version
@@ -161,14 +150,45 @@ namespace Veldrid
             }
         }
        
-        VkRenderPass _renderPassClear;
-        VK_CHECK(vkCreateRenderPass(dev->LogicalDev(), &renderPassCI, nullptr, &_renderPassClear));
+        VK_CHECK(vkCreateRenderPass(vkDev->LogicalDev(), &renderPassCI, nullptr, &clear));
 
+    }
+
+    VulkanFramebufferBase::~VulkanFramebufferBase(){
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+
+        
+    }
+
+    VulkanFramebuffer::~VulkanFramebuffer(){
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        vkDestroyFramebuffer(vkDev->LogicalDev(), _fb, nullptr);
+
+        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClear, nullptr);
+        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClearLoad, nullptr);
+        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassClear, nullptr);
+
+        for (VkImageView view : _attachmentViews)
+        {
+            vkDestroyImageView(vkDev->LogicalDev(), view, nullptr);
+        }
+
+    }
+
+    sp<Framebuffer> VulkanFramebuffer::Make(
+        const sp<VulkanDevice>& dev,
+        const Description& desc,
+        bool isPresented
+    ){
+        
+
+        unsigned colorAttachmentCount = desc.colorTarget.size();
 
         //Actually create the framebuffer
         VkFramebufferCreateInfo fbCI {};
         fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        unsigned fbAttachmentsCount = attachments.size();
+        unsigned fbAttachmentsCount = colorAttachmentCount;
+        if(desc.HasDepthTarget()) fbAttachmentsCount += 1;
 
         std::vector<VkImageView> fbAttachments{fbAttachmentsCount};
         for (int i = 0; i < colorAttachmentCount; i++)
@@ -232,6 +252,9 @@ namespace Veldrid
             mipLevel = desc.colorTarget[0].mipLevel;
         }
 
+        auto framebuffer = new VulkanFramebuffer(dev, desc);
+
+
         std::uint32_t mipWidth, mipHeight, mipDepth;
         Helpers::GetMipDimensions(dimTex, mipLevel, mipWidth, mipHeight, mipDepth);
 
@@ -241,18 +264,16 @@ namespace Veldrid
         fbCI.attachmentCount = fbAttachmentsCount;
         fbCI.pAttachments = fbAttachments.data();
         fbCI.layers = 1;
-        fbCI.renderPass = _renderPassNoClear;
+        fbCI.renderPass = framebuffer->renderPassNoClear;
 
         VkFramebuffer fb;
         VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
 
-        auto framebuffer = new VulkanFramebuffer(dev, desc);
         framebuffer->_fb = fb;
-        framebuffer->_renderPassNoClear = _renderPassNoClear;
-        framebuffer->_renderPassNoClearLoad = _renderPassNoClearLoad;
-        framebuffer->_renderPassClear = _renderPassClear;
         framebuffer->_attachmentViews = std::move(fbAttachments);
 
         return sp<Framebuffer>(framebuffer);
     }
+
+
 } // namespace Veldrid

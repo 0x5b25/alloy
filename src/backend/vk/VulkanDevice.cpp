@@ -218,7 +218,7 @@ public:
                 _pinstance = new _VkCtx();
             }
         } else {
-            _pinstance->ref();
+            _pinstance.load()->ref();
         }
         return Veldrid::sp{ _pinstance.load()};
     }
@@ -236,14 +236,7 @@ public:
 std::atomic<_VkCtx*> _VkCtx::_pinstance{ nullptr };
 std::mutex _VkCtx::_m{};
 
-
-struct PhyDevInfo {
-    std::string name;
-    VkPhysicalDevice handle;
-    uint32_t graphicsQueueFamily; bool graphicsQueueSupportsCompute;
-    std::optional<uint32_t> computeQueueFamily;
-    std::optional<uint32_t> transferQueueFamily;
-};
+using namespace Veldrid;
 
 std::optional<PhyDevInfo> _PickPhysicalDevice(
     VkInstance inst,
@@ -426,7 +419,7 @@ namespace Veldrid {
         vkDestroyDevice(_dev, nullptr);
 
         DEBUGCODE(_ctx = nullptr);
-        DEBUGCODE(_phyDev = VK_NULL_HANDLE);
+        DEBUGCODE(_phyDev = {});
         DEBUGCODE(_dev = VK_NULL_HANDLE);
         DEBUGCODE(_allocator = VK_NULL_HANDLE);
 
@@ -462,7 +455,7 @@ namespace Veldrid {
         auto dev = sp<VulkanDevice>(new VulkanDevice());
         dev->_ctx = ctx;
         dev->_surface = _surf;
-        dev->_phyDev = devInfo.handle;
+        dev->_phyDev = devInfo;
         dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
 
         dev->_devName = devInfo.name;
@@ -513,7 +506,7 @@ namespace Veldrid {
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        vkGetPhysicalDeviceFeatures(dev->_phyDev, &deviceFeatures);
+        vkGetPhysicalDeviceFeatures(dev->_phyDev.handle, &deviceFeatures);
 
         //First add pointers to the queue creation info and device features structs:
 
@@ -526,12 +519,12 @@ namespace Veldrid {
         {
 
             std::uint32_t propCount = 0;
-            VK_CHECK(vkEnumerateDeviceExtensionProperties(dev->_phyDev, nullptr, &propCount, nullptr));
+            VK_CHECK(vkEnumerateDeviceExtensionProperties(dev->_phyDev.handle, nullptr, &propCount, nullptr));
 
             if (propCount != 0) {
                 std::vector<VkExtensionProperties> props(propCount);
                 VK_CHECK(vkEnumerateDeviceExtensionProperties(
-                    dev->_phyDev, nullptr, &propCount, props.data()));
+                    dev->_phyDev.handle, nullptr, &propCount, props.data()));
 
                 
                 for (int i = 0; i < propCount; i++)
@@ -570,7 +563,7 @@ namespace Veldrid {
         createInfo.ppEnabledExtensionNames = devExtensions.data();
 
         createInfo.pEnabledFeatures = &deviceFeatures;
-        VK_CHECK(vkCreateDevice(dev->_phyDev, &createInfo, nullptr, &dev->_dev));
+        VK_CHECK(vkCreateDevice(dev->_phyDev.handle, &createInfo, nullptr, &dev->_dev));
 
         //Create command pool
         //VkCommandPoolCreateInfo poolInfo{};
@@ -591,7 +584,7 @@ namespace Veldrid {
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
-        allocatorInfo.physicalDevice = dev->_phyDev;
+        allocatorInfo.physicalDevice = dev->_phyDev.handle;
         allocatorInfo.device = dev->_dev;
         allocatorInfo.instance = dev->_ctx->GetHandle();
 
@@ -638,7 +631,7 @@ namespace Veldrid {
             deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
             deviceProps.pNext = &driverProps;
 
-            vkGetPhysicalDeviceProperties2(dev->_phyDev, &deviceProps);
+            vkGetPhysicalDeviceProperties2(dev->_phyDev.handle, &deviceProps);
 
             VkConformanceVersion conforming = driverProps.conformanceVersion;
             dev->_apiVer.major = conforming.major;

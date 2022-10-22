@@ -247,6 +247,7 @@ namespace Veldrid {
         auto& targetDesc = target->GetDesc();
 
         VkImageViewCreateInfo imageViewCI{};
+        imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         //VkTexture tex = Util.AssertSubtype<Texture, VkTexture>(description.Target);
         imageViewCI.image = target->GetHandle();
         imageViewCI.format = VdToVkPixelFormat(format, targetDesc.usage.depthStencil);

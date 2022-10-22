@@ -33,32 +33,36 @@ namespace Veldrid
 
             bool HasColorTarget() const {return !colorTarget.empty();}
             bool HasDepthTarget() const {return depthTarget.target != nullptr;}
+            std::uint32_t GetWidth() const {
+                if(colorTarget.size() > 0){
+                    auto& texDesc = colorTarget.front().target->GetDesc();
+                    return texDesc.width;
+                } else if(depthTarget.target != nullptr){
+                    auto& texDesc = depthTarget.target->GetDesc();
+                    return texDesc.width;
+                }
+                return 0;
+            }
+            std::uint32_t GetHeight() const {
+                if(colorTarget.size() > 0){
+                    auto& texDesc = colorTarget.front().target->GetDesc();
+                    return texDesc.height;
+                } else if(depthTarget.target != nullptr){
+                    auto& texDesc = depthTarget.target->GetDesc();
+                    return texDesc.height;
+                }
+                return 0;
+            }
         };
 
     protected:
         Description description;
 
-        std::uint32_t width, height;
-
         Framebuffer(
-            sp<GraphicsDevice>&& dev,
-            const Description desc
+            sp<GraphicsDevice>&& dev
         )
             : DeviceResource(std::move(dev))
-            , description(desc)
-            , width(0), height(0)
-
-        {
-            if(description.colorTarget.size() > 0){
-                auto& texDesc = description.colorTarget.front().target->GetDesc();
-                width = texDesc.width;
-                height = texDesc.height;
-            } else if(description.depthTarget.target != nullptr){
-                auto& texDesc = description.depthTarget.target->GetDesc();
-                width = texDesc.width;
-                height = texDesc.height;
-            }
-        }
+        {}
 
     public:
         /*TODO: Settle for now*/
@@ -86,10 +90,7 @@ namespace Veldrid
             return odesc;
         }
         
-        const Description& GetDesc() const { return description; }
-
-        std::uint32_t Width() const {return width;}
-        std::uint32_t Height() const {return height;}
+        virtual const Description& GetDesc() const = 0;
 
     };
 
