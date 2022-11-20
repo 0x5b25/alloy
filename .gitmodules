@@ -13,3 +13,7 @@
 [submodule "src/backend/vk/3rd-party/Vulkan-Headers"]
 	path = src/backend/vk/3rd-party/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers.git
+
+[submodule "demo/glfw"]
+	path = demo/glfw
+	url = https://github.com/glfw/glfw.git
