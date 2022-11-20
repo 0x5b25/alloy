@@ -15,6 +15,17 @@ namespace Veldrid
     class SwapChain : public DeviceResource{
 
     public:
+        enum class State {
+            //Swap chain is operational and optimal
+            Optimal, 
+            //Swap chain is operational, but properties don't match exactly, recreation is advised.
+            Suboptimal, 
+            //Swap chain is inoperational, maybe size is changed, recreation is needed.
+            OutOfDate,
+            //Swap chain is inoperational, an error has occured.
+            Error
+        };
+
         struct Description
         {
             // The <see cref="SwapchainSource"/> which will be used as the target of rendering operations.
@@ -59,6 +70,8 @@ namespace Veldrid
 
         virtual std::uint32_t GetWidth() const = 0;
         virtual std::uint32_t GetHeight() const = 0;
+
+        virtual State SwapBuffers() = 0;
 
     };
     

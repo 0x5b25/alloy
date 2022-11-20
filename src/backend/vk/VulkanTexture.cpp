@@ -1,10 +1,17 @@
 #include "VulkanTexture.hpp"
 
+#include "veldrid/common/Macros.h"
+#include "veldrid/Helpers.hpp"
+
 #include "VkCommon.hpp"
 #include "VulkanDevice.hpp"
 #include "VkTypeCvt.hpp"
 
 namespace Veldrid {
+    
+    VulkanTexture::VulkanTexture(const sp<VulkanDevice>& dev, const Texture::Description& desc) 
+        : Texture(dev, desc)
+    { }
 
     Veldrid::VulkanTexture::~VulkanTexture() {
         if(IsOwnTexture()){
@@ -66,53 +73,11 @@ namespace Veldrid {
 
             if (res != VK_SUCCESS) return nullptr;
 
-            auto subresourceCount = desc.mipLevels * actualImageArrayLayers * desc.depth;
-            std::vector<VkImageLayout> imgLayouts(
-                subresourceCount,
-                VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED);
-            //_imageLayouts = new VkImageLayout[subresourceCount];
-            //for (int i = 0; i < _imageLayouts.Length; i++)
-            //{
-            //    _imageLayouts[i] = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
-            //}
-            //VkImage _optimalImage;
-            //VK_CHECK(vkCreateImage(dev->LogicalDev(), &imageCI, nullptr, &_optimalImage));
-            //
-            //VkMemoryRequirements memoryRequirements;
-            //bool prefersDedicatedAllocation;
-            //if (_gd.GetImageMemoryRequirements2 != null)
-            //{
-            //    VkImageMemoryRequirementsInfo2KHR memReqsInfo2 = VkImageMemoryRequirementsInfo2KHR.New();
-            //    memReqsInfo2.image = _optimalImage;
-            //    VkMemoryRequirements2KHR memReqs2 = VkMemoryRequirements2KHR.New();
-            //    VkMemoryDedicatedRequirementsKHR dedicatedReqs = VkMemoryDedicatedRequirementsKHR.New();
-            //    memReqs2.pNext = &dedicatedReqs;
-            //    _gd.GetImageMemoryRequirements2(_gd.Device, &memReqsInfo2, &memReqs2);
-            //    memoryRequirements = memReqs2.memoryRequirements;
-            //    prefersDedicatedAllocation = dedicatedReqs.prefersDedicatedAllocation || dedicatedReqs.requiresDedicatedAllocation;
-            //}
-            //else
-            //{
-            //    vkGetImageMemoryRequirements(gd.Device, _optimalImage, out memoryRequirements);
-            //    prefersDedicatedAllocation = false;
-            //}
-            //
-            //
-            //
-            //VkMemoryBlock memoryToken = gd.MemoryManager.Allocate(
-            //    gd.PhysicalDeviceMemProperties,
-            //    memoryRequirements.memoryTypeBits,
-            //    VkMemoryPropertyFlags.DeviceLocal,
-            //    false,
-            //    memoryRequirements.size,
-            //    memoryRequirements.alignment,
-            //    prefersDedicatedAllocation,
-            //    _optimalImage,
-            //    Vulkan.VkBuffer.Null);
-            //_memoryBlock = memoryToken;
-            //result = vkBindImageMemory(gd.Device, _optimalImage, _memoryBlock.DeviceMemory, _memoryBlock.Offset);
-            //CheckResult(result);
-            //
+            //auto subresourceCount = desc.mipLevels * actualImageArrayLayers * desc.depth;
+            //std::vector<VkImageLayout> imgLayouts(
+            //    subresourceCount,
+            //    VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED);
+            
             
         //}
         //else // isStaging
@@ -183,6 +148,9 @@ namespace Veldrid {
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = img;
         tex->_allocation = allocation;
+        tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
+        tex->_accessFlag = 0;
+        tex->_pipelineFlag = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         //ClearIfRenderTarget();
         // If the image is going to be used as a render target, we need to clear the data before its first use.
         //if (desc.usage.renderTarget) {
@@ -207,11 +175,17 @@ namespace Veldrid {
     sp<Texture> VulkanTexture::WrapNative(
         const sp<VulkanDevice>& dev, 
         const Texture::Description& desc,
+        VkImageLayout layout,
+        VkAccessFlags accessFlag,
+        VkPipelineStageFlags pipelineFlag,
         void* nativeHandle
     ){
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = (VkImage)nativeHandle;
         tex->_allocation = VK_NULL_HANDLE;
+        tex->_layout = layout;
+        tex->_accessFlag = accessFlag;
+        tex->_pipelineFlag = pipelineFlag;
         //Debug.Assert(width > 0 && height > 0);
         //    _gd = gd;
         //    MipLevels = mipLevels;
@@ -231,8 +205,86 @@ namespace Veldrid {
 //
         //    ClearIfRenderTarget();
         //    RefCount = new ResourceRefCount(DisposeCore);
+        return sp(tex);
     }
 
+    
+    static std::uint32_t CalculateSubresource(
+        const Veldrid::Texture::Description& desc,
+        std::uint32_t mipLevel, std::uint32_t arrayLayer
+    ) {
+        return arrayLayer * desc.mipLevels+ mipLevel;
+    }
+
+    void VulkanTexture::TransitionImageLayout(
+        VkCommandBuffer cb,
+        //std::uint32_t baseMipLevel,
+        //std::uint32_t levelCount,
+        //std::uint32_t baseArrayLayer,
+        //std::uint32_t layerCount,
+        VkImageLayout layout,
+        VkAccessFlags accessFlag,
+        VkPipelineStageFlags pipelineFlag
+    ){
+        /*VkImageLayout oldLayout = _imageLayouts[
+           CalculateSubresource(description, baseMipLevel, baseArrayLayer)];
+#ifdef VLD_DEBUG
+        //layout of all subresources should be the same
+        for (unsigned level = 0; level < levelCount; level++)
+        {
+            for (unsigned layer = 0; layer < layerCount; layer++)
+            {
+                assert(_imageLayouts[CalculateSubresource(
+                    description, baseMipLevel + level, baseArrayLayer + layer)] == oldLayout);
+            }
+        }
+#endif*/
+        if (_layout       == layout
+         && _accessFlag   == accessFlag
+         && _pipelineFlag == pipelineFlag) {
+            return;
+        }
+
+        VkImageMemoryBarrier barrier{};
+        barrier.oldLayout = _layout;
+        barrier.newLayout = layout;
+        barrier.srcAccessMask = _accessFlag;
+        barrier.dstAccessMask = accessFlag;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = _img;
+        auto& aspectMask = barrier.subresourceRange.aspectMask;
+        if (description.usage.depthStencil) {
+            aspectMask = Helpers::FormatHelpers::IsStencilFormat(description.format)
+                ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
+                : VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else {
+            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = description.mipLevels;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = description.arrayLayers;
+
+        VkPipelineStageFlags srcStageFlags = _pipelineFlag;
+        VkPipelineStageFlags dstStageFlags = pipelineFlag;
+
+        vkCmdPipelineBarrier(
+            cb,
+            srcStageFlags,
+            dstStageFlags,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier);
+
+        _layout = layout;
+        _pipelineFlag = pipelineFlag;
+        _accessFlag = accessFlag;
+
+    }
+    
     VulkanTextureView::~VulkanTextureView() {
         auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
         vkDestroyImageView(_dev->LogicalDev(), _view, nullptr);

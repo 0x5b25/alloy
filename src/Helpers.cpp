@@ -23,75 +23,75 @@ namespace Veldrid::Helpers
     std::uint32_t GetDimension(std::uint32_t largestLevelDimension, std::uint32_t mipLevel)
     {
         std::uint32_t ret = largestLevelDimension;
-        for (std::uint32_t i = 0; i < mipLevel; i++)
-        {
-            ret /= 2;
-        }
-
+        //for (std::uint32_t i = 0; i < mipLevel; i++)
+        //{
+        //    ret /= 2;
+        //}
+        ret <<= mipLevel;
         return std::max(1U, ret);
     }
     void GetMipDimensions(
-        Veldrid::sp<Veldrid::Texture>& tex, 
+        const Veldrid::Texture::Description& texDesc, 
         std::uint32_t mipLevel, 
         std::uint32_t& width, std::uint32_t& height, std::uint32_t& depth)
     {
-        auto& desc = tex->GetDesc();
+        auto& desc = texDesc;
         width = GetDimension(desc.width, mipLevel);
         height = GetDimension(desc.height, mipLevel);
         depth = GetDimension(desc.depth, mipLevel);
     }
     
     void GetMipLevelAndArrayLayer(
-        sp<Veldrid::Texture>& tex, std::uint32_t subresource, 
+        const Veldrid::Texture::Description& texDesc, std::uint32_t subresource, 
         std::uint32_t& mipLevel, std::uint32_t& arrayLayer)
     {
-        arrayLayer = subresource / tex->GetDesc().mipLevels;
-        mipLevel = subresource - (arrayLayer * tex->GetDesc().mipLevels);
+        arrayLayer = subresource / texDesc.mipLevels;
+        mipLevel = subresource - (arrayLayer * texDesc.mipLevels);
     }
 
     std::uint64_t ComputeSubresourceOffset(
-        sp<Veldrid::Texture>& tex, std::uint32_t mipLevel, std::uint32_t arrayLayer)
+        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer)
     {
         //assert(tex->GetDesc().usage.staging == true);
-        return ComputeArrayLayerOffset(tex, arrayLayer) + ComputeMipOffset(tex, mipLevel);
+        return ComputeArrayLayerOffset(texDesc, arrayLayer) + ComputeMipOffset(texDesc, mipLevel);
     }
 
     std::uint32_t ComputeArrayLayerOffset(
-        Veldrid::sp<Veldrid::Texture>& tex, std::uint32_t arrayLayer)
+        const Veldrid::Texture::Description& texDesc, std::uint32_t arrayLayer)
     {
         if (arrayLayer == 0)
         {
             return 0;
         }
 
-        std::uint32_t blockSize = FormatHelpers::IsCompressedFormat(tex->GetDesc().format) ? 4u : 1u;
+        std::uint32_t blockSize = FormatHelpers::IsCompressedFormat(texDesc.format) ? 4u : 1u;
         std::uint32_t layerPitch = 0;
-        for (std::uint32_t level = 0; level < tex->GetDesc().mipLevels; level++)
+        for (std::uint32_t level = 0; level < texDesc.mipLevels; level++)
         {
             std::uint32_t mipWidth, mipHeight, mipDepth;
             
-            GetMipDimensions(tex, level, mipWidth, mipHeight, mipDepth);
+            GetMipDimensions(texDesc, level, mipWidth, mipHeight, mipDepth);
             std::uint32_t storageWidth =  std::max(mipWidth, blockSize);
             std::uint32_t storageHeight = std::max(mipHeight, blockSize);
-            layerPitch += FormatHelpers::GetRegionSize(storageWidth, storageHeight, mipDepth, tex->GetDesc().format);
+            layerPitch += FormatHelpers::GetRegionSize(storageWidth, storageHeight, mipDepth, texDesc.format);
         }
 
         return layerPitch * arrayLayer;
     }
 
     std::uint32_t ComputeMipOffset(
-        sp<Veldrid::Texture>& tex, std::uint32_t mipLevel)
+        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel)
     {
-        std::uint32_t blockSize = FormatHelpers::IsCompressedFormat(tex->GetDesc().format) ? 4u : 1u;
+        std::uint32_t blockSize = FormatHelpers::IsCompressedFormat(texDesc.format) ? 4u : 1u;
         std::uint32_t offset = 0;
         for (std::uint32_t level = 0; level < mipLevel; level++)
         {
             std::uint32_t mipWidth, mipHeight, mipDepth;
             
-            GetMipDimensions(tex, level, mipWidth, mipHeight, mipDepth);
+            GetMipDimensions(texDesc, level, mipWidth, mipHeight, mipDepth);
             std::uint32_t storageWidth =  std::max(mipWidth, blockSize);
             std::uint32_t storageHeight = std::max(mipHeight, blockSize);
-            offset += FormatHelpers::GetRegionSize(storageWidth, storageHeight, mipDepth, tex->GetDesc().format);
+            offset += FormatHelpers::GetRegionSize(storageWidth, storageHeight, mipDepth, texDesc.format);
         }
 
         return offset;

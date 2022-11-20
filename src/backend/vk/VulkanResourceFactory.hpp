@@ -43,7 +43,7 @@ namespace Veldrid{
             const Texture::Description& description) override;
 
         virtual sp<TextureView> CreateTextureView(
-            sp<Texture>& texture,
+            const sp<Texture>& texture,
             const TextureView::Description& description) override;
 
        

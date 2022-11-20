@@ -1,5 +1,7 @@
 #include "VulkanResourceFactory.hpp"
 
+#include <volk.h>
+
 #include <cassert>
 
 #include "VulkanDevice.hpp"
@@ -49,25 +51,21 @@ namespace Veldrid
         return VulkanComputePipeline::Make(_CreateNewDevHandle(), description);
     }
 
-    sp<Shader> VulkanResourceFactory::CreateShader(
-        const Shader::Description& desc,
-        const std::vector<std::uint32_t>& spv
-    ) {
-        return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
-    }
-
     sp<Texture> VulkanResourceFactory::WrapNativeTexture(
         void* nativeHandle,
         const Texture::Description& description
     ){
-        return VulkanTexture::WrapNative(_CreateNewDevHandle(), description, nativeHandle);
+        return VulkanTexture::WrapNative(_CreateNewDevHandle(), description,
+            VK_IMAGE_LAYOUT_GENERAL, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            nativeHandle);
     }
 
     sp<TextureView> VulkanResourceFactory::CreateTextureView(
-        sp<Texture>& texture,
+        const sp<Texture>& texture,
         const TextureView::Description& description
     ){
-        return VulkanTextureView::Make(_CreateNewDevHandle(), texture, description);
+        auto vkTex = PtrCast<VulkanTexture>(texture.get());
+        return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
     }
 
     

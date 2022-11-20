@@ -6,6 +6,8 @@
 #include "veldrid/Texture.hpp"
 #include "veldrid/Sampler.hpp"
 
+#include <vector>
+
 namespace Veldrid
 {
     class VulkanDevice;
@@ -15,19 +17,25 @@ namespace Veldrid
         VkImage _img;
         VmaAllocation _allocation;
 
+        //std::vector<VkImageLayout> _imageLayouts;
+
+        //Layout tracking
+        VkImageLayout _layout;
+        VkAccessFlags _accessFlag;
+        VkPipelineStageFlags _pipelineFlag;
+
+
         VulkanTexture(
             const sp<VulkanDevice>& dev,
             const Texture::Description& desc
-        ) :
-            Texture(dev, desc)
-        {}
+        );
 
 
     public:
 
         ~VulkanTexture();
 
-        VkImage GetHandle() const { return _img; }
+        const VkImage& GetHandle() const { return _img; }
         bool IsOwnTexture() const {return _allocation != VK_NULL_HANDLE; }
 
         static sp<Texture> Make(
@@ -38,8 +46,28 @@ namespace Veldrid
         static sp<Texture> WrapNative(
             const sp<VulkanDevice>& dev,
             const Texture::Description& desc,
+            VkImageLayout layout,
+            VkAccessFlags accessFlag,
+            VkPipelineStageFlags pipelineFlag,
             void* nativeHandle
         );
+
+
+
+    public:
+        void TransitionImageLayout(
+            VkCommandBuffer cb,
+            //std::uint32_t baseMipLevel,
+            //std::uint32_t levelCount,
+            //std::uint32_t baseArrayLayer,
+            //std::uint32_t layerCount,
+            VkImageLayout layout,
+            VkAccessFlags accessFlag,
+            VkPipelineStageFlags pipelineFlag
+        );
+
+        const VkImageLayout& GetLayout() const { return _layout; }
+        void SetLayout(VkImageLayout newLayout) { _layout = newLayout; }
 
     };
 
@@ -66,7 +94,7 @@ namespace Veldrid
 
         ~VulkanTextureView();
 
-        VkImageView GetHandle() const { return _view; }
+        const VkImageView& GetHandle() const { return _view; }
 
         static sp<TextureView> Make(
             const sp<VulkanDevice>& dev,
@@ -90,7 +118,7 @@ namespace Veldrid
 
         ~VulkanSampler();
 
-        VkSampler GetHandle() const { return _sampler; }
+        const VkSampler& GetHandle() const { return _sampler; }
 
         static sp<VulkanSampler> Make(
             const sp<VulkanDevice>& dev,

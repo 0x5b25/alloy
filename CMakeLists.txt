@@ -6,7 +6,7 @@ project(veldridcpp
 
 set(VLD_MISC_HEADERS
     "include/veldrid/backend/Backends.hpp"
-    "include/veldrid/common/ETS.hpp"
+    "include/veldrid/common/Common.hpp"
     "include/veldrid/common/Macros.h"
     "include/veldrid/common/RefCnt.hpp"
 )
@@ -47,7 +47,7 @@ if (WIN32)
 endif()
 
 target_link_libraries(Veldrid 
-    PRIVATE
+    PUBLIC
     #    common
     #    glm
         glslang
@@ -62,8 +62,4 @@ include("src/backend/vk/CMakeLists.txt")
 target_include_directories(Veldrid PUBLIC "include")
 target_compile_features(Veldrid PUBLIC cxx_std_17)
 
-add_executable(demo
-    "demo.cpp"
-)
-
-target_link_libraries(demo PUBLIC Veldrid)
+add_subdirectory("demo")

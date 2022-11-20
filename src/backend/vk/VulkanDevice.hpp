@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include "VkDescriptorPoolMgr.hpp"
+#include "VulkanResourceFactory.hpp"
 
 class _VkCtx;
 
@@ -23,6 +24,7 @@ namespace Veldrid
 {
     class VulkanBuffer;
     class VulkanDevice;
+    //class VulkanResourceFactory;
 
     
     struct PhyDevInfo {
@@ -34,38 +36,33 @@ namespace Veldrid
     };
 
     //Manage command pools, to achieve one command pool per thread
+    
+    struct _CmdPoolContainer;
     class _CmdPoolMgr {
         friend class VulkanDevice;
-        
-    public:
-
-        struct Container : public RefCntBase {
-            VkCommandPool pool;
-            _CmdPoolMgr* mgr;
-            std::thread::id boundID;
-
-            ~Container() {
-                mgr->_ReleaseCmdPoolHolder(this);
-            }
-
-        };
-
+        friend struct _CmdPoolContainer;
+ 
     private:
         VkDevice _dev;
         std::uint32_t _queueFamily;
 
         std::deque<VkCommandPool> _freeCmdPools;
-        std::map<std::thread::id, Container*> _threadBoundCmdPools;
+        std::map<std::thread::id, _CmdPoolContainer*> _threadBoundCmdPools;
         std::mutex _m_cmdPool;
 
-        void _ReleaseCmdPoolHolder(Container* holder);
+        void _ReleaseCmdPoolHolder(_CmdPoolContainer* holder);
 
-        sp<Container> _AcquireCmdPoolHolder();
+        sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
 
     public:
         _CmdPoolMgr() { }
+        ~_CmdPoolMgr() { }
 
-        ~_CmdPoolMgr() {
+        void Init(VkDevice dev, std::uint32_t queueFamily){
+            _dev = dev; _queueFamily = queueFamily;
+        }
+
+        void DeInit(){
             //Threoretically there should be no bound command pools,
             // i.e. all command buffers holded by threads should be released
             // then the VulkanDevice can be destroyed.
@@ -75,11 +72,20 @@ namespace Veldrid
             }
         }
 
-        void Init(VkDevice dev, std::uint32_t queueFamily){
-            _dev = dev; _queueFamily = queueFamily;
+        sp<_CmdPoolContainer> GetOnePool() { return _AcquireCmdPoolHolder(); }
+    };
+
+    struct _CmdPoolContainer : public RefCntBase {
+        VkCommandPool pool;
+        _CmdPoolMgr* mgr;
+        std::thread::id boundID;
+
+        ~_CmdPoolContainer() {
+            mgr->_ReleaseCmdPoolHolder(this);
         }
 
-        sp<Container> GetOnePool() { return _AcquireCmdPoolHolder(); }
+        VkCommandBuffer AllocateBuffer();
+        void FreeBuffer(VkCommandBuffer buf);
     };
 
     class VulkanDevice : public GraphicsDevice {
@@ -116,6 +122,8 @@ namespace Veldrid
         VkQueue _queueGraphics, _queueCopy, _queueCompute;
 
         VkSurfaceKHR _surface;
+        bool _isOwnSurface;
+        VulkanResourceFactory _resFactory;
 
         Features _features;
         GraphicsApiVersion _apiVer;
@@ -124,7 +132,7 @@ namespace Veldrid
         std::string _drvName, _drvInfo;
         GraphicsDevice::Features _commonFeat;
 
-        VulkanDevice() = default;
+        VulkanDevice();
 
     public:
 
@@ -142,7 +150,7 @@ namespace Veldrid
         virtual const GraphicsApiVersion ApiVersion() const override { return _apiVer; }
         virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
-        virtual ResourceFactory* GetResourceFactory() override { return nullptr; };
+        virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
 
         const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
         const VkDevice& LogicalDev() const {return _dev;}
@@ -154,19 +162,23 @@ namespace Veldrid
 
         const VmaAllocator& Allocator() const {return _allocator;}
 
+        //TODO: temporary querier
+        bool SupportsFlippedYDirection() const {return _features.supportsMaintenance1;}
 
     private:
 
 
     public:
-        sp<_CmdPoolMgr::Container> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-        _DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout){
-            return _descPoolMgr.Allocate(layout);
-        }
-
+        sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
+        _DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
     //Interface
     public:
-        void WaitForIdle() override;
+
+        virtual void SubmitCommand(CommandList* cmd, Fence* fence) override;
+        virtual SwapChain::State PresentToSwapChain(SwapChain* sc) override;
+
+        //virtual bool WaitForFence(const sp<Fence>& fence, std::uint32_t timeOutNs) override;
+        void WaitForIdle() override {vkDeviceWaitIdle(_dev);}
     };
 
     class VulkanBuffer : public Buffer{
@@ -202,7 +214,11 @@ namespace Veldrid
             const Buffer::Description& desc
         );
 
-        VkBuffer GetHandle() const {return _buffer;}
+        const VkBuffer& GetHandle() const {return _buffer;}
+
+        virtual void* MapToCPU();
+
+        virtual void UnMap();
 
     };
 
@@ -227,8 +243,12 @@ namespace Veldrid
             bool signaled = false
         );
 
-        const VkFence& Handle() const { return _fence; }
+        const VkFence& GetHandle() const { return _fence; }
 
+        bool WaitForSignal(std::uint64_t timeoutNs) const override {
+            auto res = vkWaitForFences(_Dev()->LogicalDev(), 1, &_fence, 0, timeoutNs);
+            return res == VK_SUCCESS;
+        }
         bool IsSignaled() const override;
 
         void Reset() override;

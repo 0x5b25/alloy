@@ -1,7 +1,7 @@
 #pragma once
 
-
 #include "veldrid/Types.hpp"
+#include "veldrid/FixedFunctions.hpp"
 #include "veldrid/DeviceResource.hpp"
 #include "veldrid/BindableResource.hpp"
 

@@ -129,6 +129,11 @@ namespace Veldrid
 
     public:
         virtual ~VulkanPipelineBase();
+
+        const VkPipeline& GetHandle() const {return _devicePipeline;}
+        const VkPipelineLayout& GetLayout() const { return _pipelineLayout; }
+        std::uint32_t GetResourceSetCount() const { return resourceSetCount; }
+        std::uint32_t GetDynamicOffsetCount() const {return dynamicOffsetsCount;}
     
     };
 

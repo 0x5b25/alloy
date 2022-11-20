@@ -65,7 +65,7 @@ namespace Veldrid
             return CreateTextureView(texture, desc);
         }
         virtual sp<TextureView> CreateTextureView(
-            sp<Texture>& texture,
+            const sp<Texture>& texture,
             const TextureView::Description& description) = 0;
 
        

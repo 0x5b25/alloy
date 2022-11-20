@@ -1,5 +1,7 @@
 #include "VulkanBindableResource.hpp"
 
+#include "veldrid/common/Common.hpp"
+
 #include <vector>
 
 #include "VkTypeCvt.hpp"
@@ -135,7 +137,7 @@ namespace Veldrid
         assert(descriptorWriteCount == vkLayout->GetDesc().elements.size());
 
         //std::vector<sp<BindableResource>> _refCounts;
-
+        std::unordered_set<VulkanTexture*> texReadOnly, texRW;
         for (int i = 0; i < descriptorWriteCount; i++)
         {
             auto& elem = vkLayout->GetDesc().elements[i];
@@ -166,6 +168,9 @@ namespace Veldrid
                     imageInfos[i].imageView = vkTexView->GetHandle();
                     imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     descriptorWrites[i].pImageInfo = &imageInfos[i];
+
+                    auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
+                    texReadOnly.insert(vkTex);
                     //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
                     //_refCounts.push_back(boundResources[i]);
                 }break;
@@ -175,6 +180,9 @@ namespace Veldrid
                     imageInfos[i].imageView = vkTexView->GetHandle();
                     imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
                     descriptorWrites[i].pImageInfo = &imageInfos[i];
+
+                    auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
+                    texRW.insert(vkTex);
                     //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
                     //_refCounts.push_back(boundResources[i]);
                 }break;
@@ -186,16 +194,31 @@ namespace Veldrid
                     //_refCounts.push_back(boundResources[i]);
                 }break;
             }
-
-           
             
         }
 
         vkUpdateDescriptorSets(dev->LogicalDev(), descriptorWriteCount, descriptorWrites.data(), 0, nullptr);
         
         auto descSet = new VulkanResourceSet(dev, std::move(descriptorAllocationToken), desc);
+        descSet->_texReadOnly = std::move(texReadOnly);
+        descSet->_texRW = std::move(texRW);
 
         return sp(descSet);
+    }
+
+    void VulkanResourceSet::VisitElements(ElementVisitor visitor) {
+        VulkanResourceLayout* vkLayout = reinterpret_cast<VulkanResourceLayout*>(description.layout.get());
+
+        auto& boundResources = description.boundResources;
+        auto descriptorWriteCount = boundResources.size();
+        assert(descriptorWriteCount == vkLayout->GetDesc().elements.size());
+
+        for (int i = 0; i < descriptorWriteCount; i++)
+        {
+            auto& elem = vkLayout->GetDesc().elements[i];
+            auto type = elem.kind;
+        }
+
     }
 
 } // namespace Veldrid

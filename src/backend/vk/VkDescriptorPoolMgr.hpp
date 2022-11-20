@@ -7,7 +7,7 @@
 
 #include <cstdint>
 #include <queue>
-#include <set>
+#include <unordered_set>
 #include <mutex>
 
 namespace Veldrid {
@@ -67,7 +67,7 @@ namespace Veldrid {
 		//'Clean' pools.
 		std::queue<VkDescriptorPool> _freePools;
 		//previously full pools, some sets might be freed, but at least one set is in use.
-		std::set<Container*> _dirtyPools;
+		std::unordered_set<Container*> _dirtyPools;
 		//Currently active pool, that is not full.
 		sp<Container> _currentPool;
 
@@ -85,6 +85,7 @@ namespace Veldrid {
 		~_DescriptorPoolMgr();
 
 		void Init(VkDevice dev, unsigned maxSets);
+		void DeInit();
 
 		_DescriptorSet Allocate(VkDescriptorSetLayout layout);
 	};
@@ -126,9 +127,10 @@ namespace Veldrid {
 		_DescriptorSet& operator=(_DescriptorSet&& that){
 		 	_pool = std::move(that._pool);
 			_descSet = that._descSet;
+			return *this;
 		}
 
-		VkDescriptorSet GetHandle() const {return _descSet;}
+		const VkDescriptorSet& GetHandle() const {return _descSet;}
 
 	};
 }

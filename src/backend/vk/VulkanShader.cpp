@@ -19,7 +19,7 @@ namespace Veldrid
     ){
         VkShaderModuleCreateInfo shaderModuleCI {};
         shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        shaderModuleCI.codeSize = spvBinary.size();
+        shaderModuleCI.codeSize = spvBinary.size() * sizeof(std::uint32_t);
         shaderModuleCI.pCode = spvBinary.data();
         VkShaderModule module;
         VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &module));

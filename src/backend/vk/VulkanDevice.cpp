@@ -2,6 +2,7 @@
 
 #include "VulkanDevice.hpp"
 
+#include "veldrid/common/Common.hpp"
 #include "veldrid/backend/Backends.hpp"
 
 #include <atomic>
@@ -9,14 +10,16 @@
 #include <cassert>
 #include <optional>
 #include <vector>
-#include <set>
+#include <unordered_set>
 
 #include "VkSurfaceUtil.hpp"
 #include "VkCommon.hpp"
+#include "VulkanCommandList.hpp"
+#include "VulkanSwapChain.hpp"
 
 template<typename T, typename U>
-std::set<T> ToSet(U&& obj) {
-    return std::set<T>(obj.begin(), obj.end());
+std::unordered_set<T> ToSet(U&& obj) {
+    return std::unordered_set<T>(obj.begin(), obj.end());
 }
 
 template<typename T, typename U>
@@ -74,8 +77,8 @@ private:
 
         _isVkLoaded = true;
 
-        std::set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
-        std::set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
+        std::unordered_set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
+        std::unordered_set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
 
 
         VkApplicationInfo appInfo{};
@@ -168,15 +171,15 @@ private:
 #define LOG(...) printf(__VA_ARGS__)
 
         if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-            LOG("ERR " "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+            LOG("ERR " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
         else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-            LOG("WARN" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+            LOG("WARN" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
         else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-            LOG("DBG " "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+            LOG("DBG " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
         else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-            LOG("PERF" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+            LOG("PERF" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
         else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-            LOG("INFO" "[%s] [Vk#%d]: %s", pLayerPrefix, msgCode, pMsg);
+            LOG("INFO" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
         return 0;
 #undef LOG
     }
@@ -223,7 +226,7 @@ public:
         return Veldrid::sp{ _pinstance.load()};
     }
 
-    VkInstance GetHandle() const { return _instance; }
+    const VkInstance& GetHandle() const { return _instance; }
 
     bool IsVulkanSupported() {
         return _instance != VK_NULL_HANDLE;
@@ -263,7 +266,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         std::vector<VkExtensionProperties> availableExtensions(extensionCount);
         vkEnumerateDeviceExtensionProperties(phyDev, nullptr, &extensionCount, availableExtensions.data());
 
-        std::set<std::string> requiredExtensions(extensions.begin(), extensions.end());
+        std::unordered_set<std::string> requiredExtensions(extensions.begin(), extensions.end());
 
         for (const auto& extension : availableExtensions) {
             requiredExtensions.erase(extension.extensionName);
@@ -409,13 +412,20 @@ namespace Veldrid {
 		return VulkanDevice::Make(options, swapChainSource);
 	}
 
+    VulkanDevice::VulkanDevice() : _resFactory(this) {};
 
     VulkanDevice::~VulkanDevice()
     {
         vkDeviceWaitIdle(_dev);
-
-        vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
+        if(_isOwnSurface){
+            vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
+        }
         vmaDestroyAllocator(_allocator);
+
+        //Uninit managers
+        _descPoolMgr.DeInit();
+        _cmdPoolMgr.DeInit();
+
         vkDestroyDevice(_dev, nullptr);
 
         DEBUGCODE(_ctx = nullptr);
@@ -440,12 +450,13 @@ namespace Veldrid {
         }
 
         //Make the surface if possible
-        VkSurfaceKHR _surf = VK_NULL_HANDLE;
+        SurfaceContainer _surf = {VK_NULL_HANDLE, false};
+
         if (swapChainSource != nullptr) {
             _surf = CreateSurface(ctx->GetHandle(), swapChainSource);
         }
 
-        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf, {});
+        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf.surface, {});
         if (!phyDev.has_value()) {
             return {};
         }
@@ -454,8 +465,10 @@ namespace Veldrid {
 
         auto dev = sp<VulkanDevice>(new VulkanDevice());
         dev->_ctx = ctx;
-        dev->_surface = _surf;
+        dev->_surface = _surf.surface;
+        dev->_isOwnSurface = _surf.isOwnSurface;
         dev->_phyDev = devInfo;
+        dev->_features = {};
         dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
 
         dev->_devName = devInfo.name;
@@ -515,7 +528,7 @@ namespace Veldrid {
 
         //Requested device extensions
         //First, get all available extensions
-        std::set<std::string> availableDevExts{};
+        std::unordered_set<std::string> availableDevExts{};
         {
 
             std::uint32_t propCount = 0;
@@ -667,6 +680,68 @@ namespace Veldrid {
         return dev;
 	}
 
+    void VulkanDevice::SubmitCommand(CommandList* cmd, Fence* fence){
+        assert(cmd != nullptr);
+        VulkanCommandList* vkCmd = PtrCast<VulkanCommandList>(cmd);
+        VkSubmitInfo info{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+        info.commandBufferCount = 1;
+        info.pCommandBuffers = &vkCmd->GetHandle();
+
+        VkFence vkFence = VK_NULL_HANDLE;
+        if (fence != nullptr) {
+            VulkanFence* _vkFence = PtrCast<VulkanFence>(fence);
+            vkFence = _vkFence->GetHandle();
+        }
+
+        VK_CHECK(vkQueueSubmit(
+            _queueGraphics, 1, &info, vkFence
+        ));
+    }
+
+    SwapChain::State VulkanDevice::PresentToSwapChain(SwapChain* sc) {
+        VulkanSwapChain* vkSC = PtrCast<VulkanSwapChain>(sc);
+        VkSwapchainKHR deviceSwapchain = vkSC->GetHandle();
+        VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &deviceSwapchain;
+        auto imageIndex = vkSC->GetCurrentImageIdx();
+        presentInfo.pImageIndices = &imageIndex;
+
+        //object presentLock = vkSC.PresentQueueIndex == _graphicsQueueIndex ? _graphicsQueueLock : vkSC;
+        //lock(presentLock)
+        {
+            auto res = vkQueuePresentKHR(_queueGraphics, &presentInfo);
+            //if (vkSC.AcquireNextImage(_device, VkSemaphore.Null, vkSC.ImageAvailableFence))
+            //{
+            //    Vulkan.VkFence fence = vkSC.ImageAvailableFence;
+            //    vkWaitForFences(_device, 1, ref fence, true, ulong.MaxValue);
+            //    vkResetFences(_device, 1, ref fence);
+            //}
+            switch (res)
+            {
+            case VK_SUCCESS:
+                return SwapChain::State::Optimal;
+            case VK_SUBOPTIMAL_KHR:
+                return SwapChain::State::Suboptimal;
+            case VK_ERROR_OUT_OF_DATE_KHR:
+                return SwapChain::State::OutOfDate;
+            default:
+                return SwapChain::State::Error;
+            }
+        }
+    }
+
+    //bool VulkanDevice::WaitForFences(const sp<Fence>& fence, std::uint32_t timeOutNs) {
+    //    auto vkFence = PtrCast<VulkanFence>(fence.get());
+    //
+    //    VkResult result = vkWaitForFences(_dev, 1, &vkFence->GetHandle(), true, timeOutNs);
+    //    return result == VkResult::VK_SUCCESS;
+    //}
+
+    //sp<_CmdPoolContainer> VulkanDevice::GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
+    _DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout){
+        return _descPoolMgr.Allocate(layout);
+    }
 
     sp<Buffer> VulkanBuffer::Make(
             const sp<VulkanDevice>& dev,
@@ -718,6 +793,7 @@ namespace Veldrid {
         }
 
         if(isStaging){
+            allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
             // Use "host cached" memory for staging when available, 
             // for better performance of GPU -> CPU transfers
             allocInfo.preferredFlags |= 
@@ -748,6 +824,21 @@ namespace Veldrid {
         DEBUGCODE(dev = nullptr);
         DEBUGCODE(_buffer = VK_NULL_HANDLE);
         DEBUGCODE(_allocation = VK_NULL_HANDLE);
+    }
+
+    void* VulkanBuffer::MapToCPU()
+    {
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        void* mappedData;
+        auto res = vmaMapMemory(vkDev->Allocator(), _allocation, &mappedData);
+        if (res != VK_SUCCESS) return nullptr;
+        return mappedData;
+    }
+
+    void VulkanBuffer::UnMap()
+    {
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        vmaUnmapMemory(vkDev->Allocator(), _allocation);
     }
 
     VulkanFence::~VulkanFence()
@@ -782,15 +873,34 @@ namespace Veldrid {
 
         return sp<Fence>(fen);
     }
+
+    VkCommandBuffer _CmdPoolContainer::AllocateBuffer(){
+        assert(std::this_thread::get_id() == boundID);
+
+        VkCommandBufferAllocateInfo cbufInfo{};
+        cbufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbufInfo.commandPool = pool;
+        cbufInfo.commandBufferCount = 1;
+        cbufInfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        VkCommandBuffer cbuf;
+        VK_CHECK(vkAllocateCommandBuffers(mgr->_dev, &cbufInfo, &cbuf));
+        return cbuf;
+
+    }
+
+    void _CmdPoolContainer::FreeBuffer(VkCommandBuffer buf) {
+        vkFreeCommandBuffers(mgr->_dev, pool, 1, &buf);
+    }
     
-    void _CmdPoolMgr::_ReleaseCmdPoolHolder(Container* holder) {
+    void _CmdPoolMgr::_ReleaseCmdPoolHolder(_CmdPoolContainer* holder) {
         std::scoped_lock _lock{ _m_cmdPool };
+        vkResetCommandPool(_dev, holder->pool, 0);
         _threadBoundCmdPools.erase(holder->boundID);
         _freeCmdPools.push_back(holder->pool);
     }
 
-    sp<_CmdPoolMgr::Container> _CmdPoolMgr::_AcquireCmdPoolHolder() {
-        Container* holder = nullptr;
+    sp<_CmdPoolContainer> _CmdPoolMgr::_AcquireCmdPoolHolder() {
+        _CmdPoolContainer* holder = nullptr;
         std::scoped_lock _lock{ _m_cmdPool };
         auto id = std::this_thread::get_id();
         auto res = _threadBoundCmdPools.find(id);
@@ -811,7 +921,7 @@ namespace Veldrid {
                 VK_CHECK(vkCreateCommandPool(_dev, &cmdPoolCI, nullptr, &raw_pool));
             }
 
-            holder = new Container{};
+            holder = new _CmdPoolContainer{};
             holder->mgr = this;
             holder->pool = raw_pool;
             holder->boundID = id;
@@ -822,4 +932,6 @@ namespace Veldrid {
 
         return sp(holder);
     }
+
+    //sp<_CmdPoolContainer> _CmdPoolMgr::GetOnePool() { return _AcquireCmdPoolHolder(); }
 }

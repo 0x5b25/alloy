@@ -1,5 +1,6 @@
 #include "VulkanFramebuffer.hpp"
 
+#include "veldrid/common/Common.hpp"
 #include "veldrid/Helpers.hpp"
 
 #include <vector>
@@ -24,14 +25,15 @@ namespace Veldrid
     ){
 
         VkRenderPassCreateInfo renderPassCI{};
+        renderPassCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 
         std::vector<VkAttachmentDescription> attachments{};
 
-        unsigned colorAttachmentCount = desc.colorTarget.size();
+        unsigned colorAttachmentCount = desc.colorTargets.size();
         std::vector<VkAttachmentReference> colorAttachmentRefs{};
         for (int i = 0; i < colorAttachmentCount; i++)
         {
-            auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTarget[i].target.get());
+            auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
             auto& texDesc = vkColorTex->GetDesc();
             VkAttachmentDescription colorAttachmentDesc{};
             colorAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
@@ -40,12 +42,12 @@ namespace Veldrid
             colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
             colorAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             colorAttachmentDesc.stencilStoreOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            colorAttachmentDesc.initialLayout = isPresented
-                ? VkImageLayout::VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                : (texDesc.usage.sampled)
+            colorAttachmentDesc.initialLayout = (texDesc.usage.sampled)
                     ? VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                     : VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachmentDesc.finalLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentDesc.finalLayout = isPresented
+                ? VkImageLayout::VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                : VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachments.push_back(colorAttachmentDesc);
 
             VkAttachmentReference colorAttachmentRef {};
@@ -182,7 +184,7 @@ namespace Veldrid
     ){
         
 
-        unsigned colorAttachmentCount = desc.colorTarget.size();
+        unsigned colorAttachmentCount = desc.colorTargets.size();
 
         //Actually create the framebuffer
         VkFramebufferCreateInfo fbCI {};
@@ -193,16 +195,16 @@ namespace Veldrid
         std::vector<VkImageView> fbAttachments{fbAttachmentsCount};
         for (int i = 0; i < colorAttachmentCount; i++)
         {
-            VulkanTexture* vkColorTarget = PtrCast<VulkanTexture>(desc.colorTarget[i].target.get());
+            VulkanTexture* vkColorTarget = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
             VkImageViewCreateInfo imageViewCI{};
             imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             imageViewCI.image = vkColorTarget->GetHandle();
             imageViewCI.format = VdToVkPixelFormat(vkColorTarget->GetDesc().format);
             imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
             imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-            imageViewCI.subresourceRange.baseMipLevel = desc.colorTarget[i].mipLevel;
+            imageViewCI.subresourceRange.baseMipLevel = desc.colorTargets[i].mipLevel;
             imageViewCI.subresourceRange.levelCount = 1;
-            imageViewCI.subresourceRange.baseArrayLayer = desc.colorTarget[i].arrayLayer;
+            imageViewCI.subresourceRange.baseArrayLayer = desc.colorTargets[i].arrayLayer;
             imageViewCI.subresourceRange.layerCount = 1;
 
             VK_CHECK(vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &fbAttachments[i]));
@@ -248,15 +250,15 @@ namespace Veldrid
         {
             //At least we should have a target
             assert(desc.HasColorTarget());
-            dimTex = desc.colorTarget[0].target;
-            mipLevel = desc.colorTarget[0].mipLevel;
+            dimTex = desc.colorTargets[0].target;
+            mipLevel = desc.colorTargets[0].mipLevel;
         }
 
         auto framebuffer = new VulkanFramebuffer(dev, desc);
 
 
         std::uint32_t mipWidth, mipHeight, mipDepth;
-        Helpers::GetMipDimensions(dimTex, mipLevel, mipWidth, mipHeight, mipDepth);
+        Helpers::GetMipDimensions(dimTex->GetDesc(), mipLevel, mipWidth, mipHeight, mipDepth);
 
         fbCI.width = mipWidth;
         fbCI.height = mipHeight;
@@ -275,5 +277,54 @@ namespace Veldrid
         return sp<Framebuffer>(framebuffer);
     }
 
+
+    void VulkanFramebuffer::TransitionToAttachmentLayout(VkCommandBuffer cb) {
+        //TODO: Need to support compute shader pipeline stage?
+        for (auto& colorDesc : description.colorTargets)
+        {
+            VulkanTexture* vkColorTarget = PtrCast<VulkanTexture>(colorDesc.target.get());
+            vkColorTarget->TransitionImageLayout(cb,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                );
+        }
+
+        // Depth
+        if (description.HasDepthTarget())
+        {
+            VulkanTexture* vkDepthTarget = PtrCast<VulkanTexture>(description.depthTarget.target.get());
+            bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(vkDepthTarget->GetDesc().format);
+
+            vkDepthTarget->TransitionImageLayout(cb,
+                hasStencil
+                    ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                );
+        }
+    }
+
+    void VulkanFramebuffer::VisitAttachments(AttachmentVisitor visitor) {
+        //TODO: Need to support compute shader pipeline stage?
+        for (auto& colorDesc : description.colorTargets)
+        {
+            sp<VulkanTexture> vkColorTarget = SPCast<VulkanTexture>(colorDesc.target);
+            visitor(vkColorTarget, VisitedAttachmentType::ColorAttachment);
+        }
+
+        // Depth
+        if (description.HasDepthTarget())
+        {
+            sp<VulkanTexture> vkDepthTarget = SPCast<VulkanTexture>(description.depthTarget.target);
+            bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(vkDepthTarget->GetDesc().format);
+            auto type = hasStencil
+                ? VisitedAttachmentType::DepthStencilAttachment
+                : VisitedAttachmentType::DepthAttachment;
+
+            visitor(vkDepthTarget, type);
+        }
+    }
 
 } // namespace Veldrid

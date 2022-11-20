@@ -13,7 +13,7 @@
 
 //VKBP_DISABLE_WARNINGS()
 #include <glslang/Public/ShaderLang.h>
-#include <vulkan/vulkan.h>
+//#include <vulkan/vulkan.h>
 #include <spirv_glsl.hpp>
 //VKBP_ENABLE_WARNINGS()
 
@@ -365,7 +365,7 @@ namespace Veldrid
     	 * @param[out] info_log Stores any log messages during the compilation process
     	 */
         virtual bool CompileToSPIRV(Shader::Description::Stages    stage,
-    	                            const std::vector<uint8_t> &   glslSource,
+    	                            const std::string &            glslSource,
     	                            const std::string &            entryPoint,
     	                            const ShaderVariant &          shaderVariant,
     	                            std::vector<std::uint32_t> &   spirv,

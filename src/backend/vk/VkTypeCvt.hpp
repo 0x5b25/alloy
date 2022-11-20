@@ -6,6 +6,7 @@
 #include "veldrid/FixedFunctions.hpp"
 #include "veldrid/BindableResource.hpp"
 #include "veldrid/Sampler.hpp"
+#include "veldrid/Texture.hpp"
 
 namespace Veldrid {
     

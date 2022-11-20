@@ -4,6 +4,7 @@
 #include "veldrid/common/RefCnt.hpp"
 #include "veldrid/Types.hpp"
 #include "veldrid/DeviceResource.hpp"
+#include "veldrid/BindableResource.hpp"
 
 #include <cstdint>
 
@@ -124,6 +125,13 @@ namespace Veldrid
             description(desc),
             target(std::move(target))
         {}
+
+    public:
+        const Description& GetDesc() const {
+            return description;
+        }
+
+        const sp<Texture>& GetTarget() const { return target; }
 
     };
 

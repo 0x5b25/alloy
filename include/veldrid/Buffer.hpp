@@ -90,6 +90,12 @@ namespace Veldrid
     protected:
         Description description;
 
+    public:
+        const Description& GetDesc() {return description;}
+
+        virtual void* MapToCPU() = 0;
+
+        virtual void UnMap() = 0;
     };
 
 
@@ -121,7 +127,7 @@ namespace Veldrid
             return sp{range};
         }
 
-        const Buffer* GetBufferObject() const {return _buffer.get();}
+        Buffer* GetBufferObject() const {return _buffer.get();}
         std::uint32_t GetSizeInBytes() const { return _size; }
         std::uint32_t GetOffsetInBytes() const { return _offset; }
 

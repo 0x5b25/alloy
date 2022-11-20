@@ -24,23 +24,23 @@ namespace Veldrid::Helpers
     std::uint32_t GetDimension(std::uint32_t largestLevelDimension, std::uint32_t mipLevel);
 
     void GetMipDimensions(
-        Veldrid::sp<Veldrid::Texture>& tex, 
+        const Veldrid::Texture::Description& texDesc, 
         std::uint32_t mipLevel, 
         std::uint32_t& width, std::uint32_t& height, std::uint32_t& depth);
 
     void GetMipLevelAndArrayLayer(
-        Veldrid::sp<Veldrid::Texture>& tex, std::uint32_t subresource, 
+        const Veldrid::Texture::Description& texDesc, std::uint32_t subresource, 
         std::uint32_t& mipLevel, std::uint32_t& arrayLayer);
 
 
     std::uint64_t ComputeSubresourceOffset(
-        Veldrid::sp<Veldrid::Texture>& tex, std::uint32_t mipLevel, std::uint32_t arrayLayer);
+        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer);
 
     std::uint32_t ComputeArrayLayerOffset(
-        Veldrid::sp<Veldrid::Texture>& tex, std::uint32_t arrayLayer);
+        const Veldrid::Texture::Description& texDesc, std::uint32_t arrayLayer);
 
     std::uint32_t ComputeMipOffset(
-        Veldrid::sp<Veldrid::Texture>& tex, std::uint32_t mipLevel);
+        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel);
 
     namespace FormatHelpers{
         /// <summary>

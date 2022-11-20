@@ -8,15 +8,131 @@
 //VKBP_DISABLE_WARNINGS()
 #include <SPIRV/GLSL.std.450.h>
 #include <SPIRV/GlslangToSpv.h>
-#include <StandAlone/ResourceLimits.h>
+#include <glslang/Include/ResourceLimits.h>
 #include <glslang/Include/ShHandle.h>
 #include <glslang/OSDependent/osinclude.h>
 //VKBP_ENABLE_WARNINGS()
 
 //#include "common/helpers.h"
 
+const TBuiltInResource DefaultTBuiltInResource = {
+    /* .MaxLights = */ 32,
+    /* .MaxClipPlanes = */ 6,
+    /* .MaxTextureUnits = */ 32,
+    /* .MaxTextureCoords = */ 32,
+    /* .MaxVertexAttribs = */ 64,
+    /* .MaxVertexUniformComponents = */ 4096,
+    /* .MaxVaryingFloats = */ 64,
+    /* .MaxVertexTextureImageUnits = */ 32,
+    /* .MaxCombinedTextureImageUnits = */ 80,
+    /* .MaxTextureImageUnits = */ 32,
+    /* .MaxFragmentUniformComponents = */ 4096,
+    /* .MaxDrawBuffers = */ 32,
+    /* .MaxVertexUniformVectors = */ 128,
+    /* .MaxVaryingVectors = */ 8,
+    /* .MaxFragmentUniformVectors = */ 16,
+    /* .MaxVertexOutputVectors = */ 16,
+    /* .MaxFragmentInputVectors = */ 15,
+    /* .MinProgramTexelOffset = */ -8,
+    /* .MaxProgramTexelOffset = */ 7,
+    /* .MaxClipDistances = */ 8,
+    /* .MaxComputeWorkGroupCountX = */ 65535,
+    /* .MaxComputeWorkGroupCountY = */ 65535,
+    /* .MaxComputeWorkGroupCountZ = */ 65535,
+    /* .MaxComputeWorkGroupSizeX = */ 1024,
+    /* .MaxComputeWorkGroupSizeY = */ 1024,
+    /* .MaxComputeWorkGroupSizeZ = */ 64,
+    /* .MaxComputeUniformComponents = */ 1024,
+    /* .MaxComputeTextureImageUnits = */ 16,
+    /* .MaxComputeImageUniforms = */ 8,
+    /* .MaxComputeAtomicCounters = */ 8,
+    /* .MaxComputeAtomicCounterBuffers = */ 1,
+    /* .MaxVaryingComponents = */ 60,
+    /* .MaxVertexOutputComponents = */ 64,
+    /* .MaxGeometryInputComponents = */ 64,
+    /* .MaxGeometryOutputComponents = */ 128,
+    /* .MaxFragmentInputComponents = */ 128,
+    /* .MaxImageUnits = */ 8,
+    /* .MaxCombinedImageUnitsAndFragmentOutputs = */ 8,
+    /* .MaxCombinedShaderOutputResources = */ 8,
+    /* .MaxImageSamples = */ 0,
+    /* .MaxVertexImageUniforms = */ 0,
+    /* .MaxTessControlImageUniforms = */ 0,
+    /* .MaxTessEvaluationImageUniforms = */ 0,
+    /* .MaxGeometryImageUniforms = */ 0,
+    /* .MaxFragmentImageUniforms = */ 8,
+    /* .MaxCombinedImageUniforms = */ 8,
+    /* .MaxGeometryTextureImageUnits = */ 16,
+    /* .MaxGeometryOutputVertices = */ 256,
+    /* .MaxGeometryTotalOutputComponents = */ 1024,
+    /* .MaxGeometryUniformComponents = */ 1024,
+    /* .MaxGeometryVaryingComponents = */ 64,
+    /* .MaxTessControlInputComponents = */ 128,
+    /* .MaxTessControlOutputComponents = */ 128,
+    /* .MaxTessControlTextureImageUnits = */ 16,
+    /* .MaxTessControlUniformComponents = */ 1024,
+    /* .MaxTessControlTotalOutputComponents = */ 4096,
+    /* .MaxTessEvaluationInputComponents = */ 128,
+    /* .MaxTessEvaluationOutputComponents = */ 128,
+    /* .MaxTessEvaluationTextureImageUnits = */ 16,
+    /* .MaxTessEvaluationUniformComponents = */ 1024,
+    /* .MaxTessPatchComponents = */ 120,
+    /* .MaxPatchVertices = */ 32,
+    /* .MaxTessGenLevel = */ 64,
+    /* .MaxViewports = */ 16,
+    /* .MaxVertexAtomicCounters = */ 0,
+    /* .MaxTessControlAtomicCounters = */ 0,
+    /* .MaxTessEvaluationAtomicCounters = */ 0,
+    /* .MaxGeometryAtomicCounters = */ 0,
+    /* .MaxFragmentAtomicCounters = */ 8,
+    /* .MaxCombinedAtomicCounters = */ 8,
+    /* .MaxAtomicCounterBindings = */ 1,
+    /* .MaxVertexAtomicCounterBuffers = */ 0,
+    /* .MaxTessControlAtomicCounterBuffers = */ 0,
+    /* .MaxTessEvaluationAtomicCounterBuffers = */ 0,
+    /* .MaxGeometryAtomicCounterBuffers = */ 0,
+    /* .MaxFragmentAtomicCounterBuffers = */ 1,
+    /* .MaxCombinedAtomicCounterBuffers = */ 1,
+    /* .MaxAtomicCounterBufferSize = */ 16384,
+    /* .MaxTransformFeedbackBuffers = */ 4,
+    /* .MaxTransformFeedbackInterleavedComponents = */ 64,
+    /* .MaxCullDistances = */ 8,
+    /* .MaxCombinedClipAndCullDistances = */ 8,
+    /* .MaxSamples = */ 4,
+    /* .maxMeshOutputVerticesNV = */ 256,
+    /* .maxMeshOutputPrimitivesNV = */ 512,
+    /* .maxMeshWorkGroupSizeX_NV = */ 32,
+    /* .maxMeshWorkGroupSizeY_NV = */ 1,
+    /* .maxMeshWorkGroupSizeZ_NV = */ 1,
+    /* .maxTaskWorkGroupSizeX_NV = */ 32,
+    /* .maxTaskWorkGroupSizeY_NV = */ 1,
+    /* .maxTaskWorkGroupSizeZ_NV = */ 1,
+    /* .maxMeshViewCountNV = */ 4,
+    /* .maxMeshOutputVerticesEXT = */ 256,
+    /* .maxMeshOutputPrimitivesEXT = */ 256,
+    /* .maxMeshWorkGroupSizeX_EXT = */ 128,
+    /* .maxMeshWorkGroupSizeY_EXT = */ 128,
+    /* .maxMeshWorkGroupSizeZ_EXT = */ 128,
+    /* .maxTaskWorkGroupSizeX_EXT = */ 128,
+    /* .maxTaskWorkGroupSizeY_EXT = */ 128,
+    /* .maxTaskWorkGroupSizeZ_EXT = */ 128,
+    /* .maxMeshViewCountEXT = */ 4,
+    /* .maxDualSourceDrawBuffersEXT = */ 1,
 
-class _GlslangContainer : Veldrid::RefCntBase {
+    /* .limits = */ {
+        /* .nonInductiveForLoops = */ 1,
+        /* .whileLoops = */ 1,
+        /* .doWhileLoops = */ 1,
+        /* .generalUniformIndexing = */ 1,
+        /* .generalAttributeMatrixVectorIndexing = */ 1,
+        /* .generalVaryingIndexing = */ 1,
+        /* .generalSamplerIndexing = */ 1,
+        /* .generalVariableIndexing = */ 1,
+        /* .generalConstantMatrixVectorIndexing = */ 1,
+    }};
+
+
+class _GlslangContainer : public Veldrid::RefCntBase {
 
     static std::atomic<_GlslangContainer*> _pinstance;
     static std::mutex _m;
@@ -99,22 +215,22 @@ namespace Veldrid{
         }
 
         bool CompileToSPIRV(Shader::Description::Stages    stage,
-    	                    const std::vector<uint8_t> &   glslSource,
+    	                    const std::string &            glslSource,
     	                    const std::string &            entryPoint,
     	                    const ShaderVariant &          shaderVariant,
     	                    std::vector<std::uint32_t> &   spirv,
     	                    std::string &                  infoLog) override
         {
             // Initialize glslang library.
-	        glslang::InitializeProcess();
+	        //glslang::InitializeProcess();
 
 	        EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
 
 	        EShLanguage language = FindShaderLanguage(stage);
-	        std::string source   = std::string(glslSource.begin(), glslSource.end());
+	        //std::string source   = std::string(glslSource.begin(), glslSource.end());
 
 	        const char *file_name_list[1] = {""};
-	        const char *shader_source     = reinterpret_cast<const char *>(source.data());
+	        const char *shader_source     = reinterpret_cast<const char *>(glslSource.data());
 
 	        glslang::TShader shader(language);
 	        shader.setStringsWithLengthsAndNames(&shader_source, nullptr, file_name_list, 1);
@@ -122,12 +238,15 @@ namespace Veldrid{
 	        shader.setSourceEntryPoint(entryPoint.c_str());
 	        shader.setPreamble(shaderVariant.get_preamble().c_str());
 	        shader.addProcesses(shaderVariant.get_processes());
-	        if (env_target_language != glslang::EShTargetLanguage::EShTargetNone)
-	        {
-	        	shader.setEnvTarget(env_target_language, env_target_language_version);
-	        }
+			shader.setEnvClient(glslang::EShClient::EShClientVulkan, glslang::EShTargetClientVersion::EShTargetVulkan_1_1);
+			shader.setEnvTarget(glslang::EShTargetLanguage::EshTargetSpv, glslang::EShTargetLanguageVersion::EShTargetSpv_1_3);
 
-	        if (!shader.parse(&glslang::DefaultTBuiltInResource, 100, false, messages))
+	        //if (env_target_language != glslang::EShTargetLanguage::EShTargetNone)
+	        //{
+	        //	shader.setEnvTarget(env_target_language, env_target_language_version);
+	        //}
+
+	        if (!shader.parse(&DefaultTBuiltInResource, 100, false, messages))
 	        {
 	        	infoLog = std::string(shader.getInfoLog()) + "\n" + std::string(shader.getInfoDebugLog());
 	        	return false;
@@ -245,6 +364,15 @@ inline std::vector<uint8_t> convert_to_bytes(std::vector<std::string> &lines)
 	return bytes;
 }
 
+std::string Connect(const std::vector<std::string> &lines){
+	std::string result;
+	for (auto &line : lines)
+	{
+		result += line + "\n";
+	}
+	return result;
+}
+
 ShaderModule::ShaderModule(
 	//std::shared_ptr<Device>& device,
 	Shader::Description::Stages stage, 
@@ -279,13 +407,13 @@ ShaderModule::ShaderModule(
 	}
 
 	// Precompile source into the final spirv bytecode
-	auto glsl_final_source = precompile_shader(source);
+	auto glsl_final_source = Connect(precompile_shader(source));
 
 	// Compile the GLSL source
 	
 	auto glsl_compiler = IGLSLCompiler::Get();
 
-	if (!glsl_compiler->CompileToSPIRV(stage, convert_to_bytes(glsl_final_source), entry_point, shader_variant, spirv, info_log))
+	if (!glsl_compiler->CompileToSPIRV(stage, glsl_final_source, entry_point, shader_variant, spirv, info_log))
 	{
 		//LOGE("Shader compilation failed for shader \"{}\"", glsl_source.get_filename());
 		//LOGE("Shader compilation failed");
@@ -840,21 +968,6 @@ inline void read_shader_resource<ShaderResourceType::BufferStorage>(const spirv_
 	}
 }
 
-bool SPIRVReflection::reflect_shader_resources(const std::vector<uint32_t> &spirv, std::vector<ShaderResource> &resources, const ShaderVariant &variant)
-{
-	spirv_cross::CompilerGLSL compiler{spirv};
-
-	auto opts                     = compiler.get_common_options();
-	opts.enable_420pack_extension = true;
-
-	compiler.set_common_options(opts);
-
-	parse_shader_resources(compiler, resources, variant);
-	parse_push_constants(compiler, resources, variant);
-	parse_specialization_constants(compiler, resources, variant);
-
-	return true;
-}
 
 void parse_shader_resources(const spirv_cross::Compiler &compiler,std::vector<ShaderResource> &resources, const ShaderVariant &variant)
 {
@@ -919,5 +1032,21 @@ void parse_specialization_constants(const spirv_cross::Compiler &compiler, std::
 
 		resources.push_back(shader_resource);
 	}
+}
+
+bool SPIRVReflection::reflect_shader_resources(const std::vector<uint32_t> &spirv, std::vector<ShaderResource> &resources, const ShaderVariant &variant)
+{
+	spirv_cross::CompilerGLSL compiler{spirv};
+
+	auto opts                     = compiler.get_common_options();
+	opts.enable_420pack_extension = true;
+
+	compiler.set_common_options(opts);
+
+	parse_shader_resources(compiler, resources, variant);
+	parse_push_constants(compiler, resources, variant);
+	parse_specialization_constants(compiler, resources, variant);
+
+	return true;
 }
 }

@@ -134,7 +134,7 @@ namespace Veldrid
         {}
 
     public:
-        const Description& GetDest() const {return description;}
+        const Description& GetDesc() const {return description;}
 
     };
  

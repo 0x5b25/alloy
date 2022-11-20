@@ -5,13 +5,13 @@
 #include <cassert>
 
 
-VkSurfaceKHR CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource) {
+SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
 	switch (swapchainSource->tag) {
 		case Veldrid::SwapChainSource::Tag::Opaque:{
 			auto opaqueSource = (Veldrid::OpaqueSwapchainSource*)swapchainSource;
-			return (VkSurfaceKHR)opaqueSource->handle;
+			return {(VkSurfaceKHR)opaqueSource->handle, false};
 		}
 		case Veldrid::SwapChainSource::Tag::Win32: {
 			auto win32Source = (Veldrid::Win32SwapchainSource*)swapchainSource;
@@ -24,10 +24,10 @@ VkSurfaceKHR CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapch
 			VkSurfaceKHR surface;
 			VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCI, nullptr, &surface);
 			
-			return surface;
+			return {surface, true};
 		}
 		default: {
-			return VK_NULL_HANDLE;
+			return {VK_NULL_HANDLE, false};
 		}
 	}
 

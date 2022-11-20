@@ -130,6 +130,106 @@ namespace Veldrid
             
             // Controls the function used to combine the source and destination alpha factors.
             BlendFunction alphaFunction;
+
+            /// <summary>
+            /// Describes a blend attachment state in which the source completely overrides the destination.
+            /// Settings:
+            ///     BlendEnabled = true
+            ///     ColorWriteMask = null
+            ///     SourceColorFactor = BlendFactor.One
+            ///     DestinationColorFactor = BlendFactor.Zero
+            ///     ColorFunction = BlendFunction.Add
+            ///     SourceAlphaFactor = BlendFactor.One
+            ///     DestinationAlphaFactor = BlendFactor.Zero
+            ///     AlphaFunction = BlendFunction.Add
+            /// </summary>
+            static constexpr Attachment MakeOverrideBlend(){
+                Attachment res{};
+                res.blendEnabled = true;
+                res.sourceColorFactor = BlendFactor::One;
+                res.destinationColorFactor = BlendFactor::Zero;
+                res.colorFunction = BlendFunction::Add;
+                res.sourceAlphaFactor = BlendFactor::One;
+                res.destinationAlphaFactor = BlendFactor::Zero;
+                res.alphaFunction = BlendFunction::Add;
+                res.colorWriteMask.value = 0xf;
+                return res;
+            };
+
+            /// <summary>
+            /// Describes a blend attachment state in which the source and destination are blended in an inverse relationship.
+            /// Settings:
+            ///     BlendEnabled = true
+            ///     ColorWriteMask = null
+            ///     SourceColorFactor = BlendFactor.SourceAlpha
+            ///     DestinationColorFactor = BlendFactor.InverseSourceAlpha
+            ///     ColorFunction = BlendFunction.Add
+            ///     SourceAlphaFactor = BlendFactor.SourceAlpha
+            ///     DestinationAlphaFactor = BlendFactor.InverseSourceAlpha
+            ///     AlphaFunction = BlendFunction.Add
+            /// </summary>
+            static constexpr Attachment MakeAlphaBlend() {
+                Attachment res{};
+                res.blendEnabled = true;
+                res.sourceColorFactor = BlendFactor::SourceAlpha;
+                res.destinationColorFactor = BlendFactor::InverseSourceAlpha;
+                res.colorFunction = BlendFunction::Add;
+                res.sourceAlphaFactor = BlendFactor::SourceAlpha;
+                res.alphaFunction = BlendFunction::Add;
+                res.destinationAlphaFactor = BlendFactor::InverseSourceAlpha;
+                res.colorWriteMask.value = 0xf;
+                return res;
+            };
+
+            /// <summary>
+            /// Describes a blend attachment state in which the source is added to the destination based on its alpha channel.
+            /// Settings:
+            ///     BlendEnabled = true
+            ///     ColorWriteMask = null
+            ///     SourceColorFactor = BlendFactor.SourceAlpha
+            ///     DestinationColorFactor = BlendFactor.One
+            ///     ColorFunction = BlendFunction.Add
+            ///     SourceAlphaFactor = BlendFactor.SourceAlpha
+            ///     DestinationAlphaFactor = BlendFactor.One
+            ///     AlphaFunction = BlendFunction.Add
+            /// </summary>
+            static constexpr Attachment MakeAdditiveBlend() {
+                Attachment res{};
+                res.blendEnabled = true;
+                res.sourceColorFactor = BlendFactor::SourceAlpha;
+                res.destinationColorFactor = BlendFactor::One;
+                res.colorFunction = BlendFunction::Add;
+                res.sourceAlphaFactor = BlendFactor::SourceAlpha;
+                res.alphaFunction = BlendFunction::Add;
+                res.destinationAlphaFactor = BlendFactor::One;
+                res.colorWriteMask.value = 0xf;
+                return res;
+            };
+
+            /// <summary>
+            /// Describes a blend attachment state in which blending is disabled.
+            /// Settings:
+            ///     BlendEnabled = false
+            ///     ColorWriteMask = null
+            ///     SourceColorFactor = BlendFactor.One
+            ///     DestinationColorFactor = BlendFactor.Zero
+            ///     ColorFunction = BlendFunction.Add
+            ///     SourceAlphaFactor = BlendFactor.One
+            ///     DestinationAlphaFactor = BlendFactor.Zero
+            ///     AlphaFunction = BlendFunction.Add
+            /// </summary>
+            static constexpr Attachment MakeDisabled() {
+                Attachment res{};
+                res.blendEnabled = false;
+                res.sourceColorFactor = BlendFactor::One;
+                res.destinationColorFactor = BlendFactor::Zero;
+                res.colorFunction = BlendFunction::Add;
+                res.sourceAlphaFactor = BlendFactor::One;
+                res.alphaFunction = BlendFunction::Add;
+                res.destinationAlphaFactor = BlendFactor::Zero;
+                res.colorWriteMask.value = 0xf;
+                return res;
+            };
             
         };
 
@@ -139,7 +239,7 @@ namespace Veldrid
             float r,g,b,a;
         } blendConstant;
 
-        std::vector<Attachment*> attachments;
+        std::vector<Attachment> attachments;
         
         // Enables alpha-to-coverage, which causes a fragment's alpha value to be used when determining multi-sample coverage.
         bool alphaToCoverageEnabled;
@@ -199,7 +299,7 @@ namespace Veldrid
         // Controls the winding order used to determine the front face of primitives.
         enum class FrontFace{
             Clockwise, CounterClockwise
-        } FrontFace;
+        } frontFace;
         
         // Controls whether depth clipping is enabled.
         bool depthClipEnabled;
@@ -228,18 +328,7 @@ namespace Veldrid
     };
     
     
-    // A description of the output attachments used by the <see cref="Pipeline"/>.
-    struct OutputDescription {
-
-        struct Attachment{
-            PixelFormat format;
-        };
-
-        std::optional<Attachment> depthAttachment;
-        std::vector<Attachment> colorAttachment;
-        Texture::Description::SampleCount sampleCount;
-
-    };
+    
     
     // Specifies which model the rendering backend should use for binding resources.
     enum class ResourceBindingModel{

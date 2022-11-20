@@ -1,8 +1,11 @@
 #pragma once
 
+#include "veldrid/Helpers.hpp"
 #include "veldrid/DeviceResource.hpp"
+#include "veldrid/BindableResource.hpp"
 #include "veldrid/FixedFunctions.hpp"
 #include "veldrid/Shader.hpp"
+#include "veldrid/Framebuffer.hpp"
 
 
 #include <cstdint>
@@ -59,6 +62,7 @@ namespace Veldrid
                     ShaderDataType format;
                     
                     // The offset in bytes from the beginning of the vertex.
+                    // If any vertex element has an explicit offset, then all elements must have an explicit offset.
                     std::uint32_t offset;
                 };
                 
@@ -66,18 +70,37 @@ namespace Veldrid
                 std::uint32_t stride;
                 
                 // An array of <see cref="VertexElementDescription"/> objects, each describing a single element of vertex data.
-                std::vector<Element*> elements;
+                std::vector<Element> elements;
                 
                 /// A value controlling how often data for instances is advanced for this layout. For per-vertex elements, this value
                 /// should be 0.
                 /// For example, an InstanceStepRate of 3 indicates that 3 instances will be drawn with the same value for this layout. The
                 /// next 3 instances will be drawn with the next value, and so on.
                 std::uint32_t instanceStepRate;
+
+                void SetElements(std::initializer_list<Element> elements){
+        
+                    this->elements = elements;
+                    unsigned computedStride = 0;
+                    for (int i = 0; i < elements.size(); i++)
+                    {
+                        auto& thisElem = this->elements[i];
+                        unsigned elementSize = Helpers::FormatHelpers::GetSizeInBytes(thisElem.format);
+                        if (thisElem.offset != 0){
+                            computedStride = thisElem.offset + elementSize;
+                        } else {
+                            computedStride += elementSize;
+                        }
+                    }
+
+                    stride = computedStride;
+                    instanceStepRate = 0;
+                }
             };
 
-            std::vector<VertexLayout*> vertexLayouts;
+            std::vector<VertexLayout> vertexLayouts;
             std::vector<sp<Shader>> shaders;
-            std::vector<SpecializationConstant*> specializations;
+            std::vector<SpecializationConstant> specializations;
 
         } shaderSet;
         

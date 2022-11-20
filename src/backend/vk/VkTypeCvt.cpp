@@ -234,7 +234,7 @@ namespace Veldrid {
         case PrimitiveTopology::PointList:
             return VkPrimitiveTopology::VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
         default:
-            return ;
+            return VkPrimitiveTopology::VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
         }
     }
 

@@ -89,7 +89,9 @@ namespace Veldrid
         virtual const Features& GetFeatures() const = 0;
 
         virtual ResourceFactory* GetResourceFactory() = 0;
-
+        virtual void SubmitCommand(CommandList* cmd, Fence* fence) = 0;
+        virtual SwapChain::State PresentToSwapChain(SwapChain* sc) = 0;
+               
         virtual void WaitForIdle() = 0;
 
     };

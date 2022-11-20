@@ -1,5 +1,6 @@
 #include "VulkanPipeline.hpp"
 
+#include "veldrid/common/Common.hpp"
 #include "veldrid/Helpers.hpp"
 
 #include <vector>
@@ -23,6 +24,7 @@ namespace Veldrid{
         bool hasDepthAttachment = outputDesc.depthAttachment.has_value();
 
         VkRenderPassCreateInfo renderPassCI{};
+        renderPassCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 
         std::vector<VkAttachmentDescription> attachments{};
         unsigned colorAttachmentCount = outputDesc.colorAttachment.size();
@@ -108,6 +110,10 @@ namespace Veldrid{
         vkDestroyPipeline(vkDev->LogicalDev(), _devicePipeline, nullptr);
     }
 
+    VulkanComputePipeline::~VulkanComputePipeline(){
+
+    }
+
     VulkanGraphicsPipeline::~VulkanGraphicsPipeline(){
 
         auto vkDev = _Dev();
@@ -117,6 +123,144 @@ namespace Veldrid{
         }
     }
 
+    void _CreateStandardPipeline(
+        VkDevice dev,
+        VkShaderModule vertShaderModule,
+        VkShaderModule fragShaderModule,
+        float width,
+        float height,
+        VkRenderPass compatRenderPass,
+
+        VkPipelineLayout& outLayout,
+        VkPipeline& outPipeline
+    ) {
+        //auto vertShaderCode = readFile("shaders/vert.spv");
+        //auto fragShaderCode = readFile("shaders/frag.spv");
+        //
+        //VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+        //VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = vertShaderModule;
+        vertShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 0;
+        vertexInputInfo.vertexAttributeDescriptionCount = 0;
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = width;
+        viewport.height = height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = {(unsigned)width, (unsigned)height};
+        
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.pViewports = &viewport;
+        viewportState.scissorCount = 1;
+        viewportState.pScissors = &scissor;
+
+        // Dynamic State
+        VkPipelineDynamicStateCreateInfo dynamicStateCI{};
+        dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        VkDynamicState dynamicStates[2];
+        dynamicStates[0] = VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT;
+        dynamicStates[1] = VkDynamicState::VK_DYNAMIC_STATE_SCISSOR;
+        dynamicStateCI.dynamicStateCount = 2;
+        dynamicStateCI.pDynamicStates = dynamicStates;
+
+        //pipelineCI.pDynamicState = &dynamicStateCI;
+
+        VkPipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.depthBiasEnable = VK_FALSE;
+
+        VkPipelineMultisampleStateCreateInfo multisampling{};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.logicOp = VK_LOGIC_OP_COPY;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+        colorBlending.blendConstants[0] = 0.0f;
+        colorBlending.blendConstants[1] = 0.0f;
+        colorBlending.blendConstants[2] = 0.0f;
+        colorBlending.blendConstants[3] = 0.0f;
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 0;
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+
+
+        VkPipelineLayout pipelineLayout;
+        if (vkCreatePipelineLayout(dev, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create pipeline layout!");
+        }
+        outLayout = pipelineLayout;
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pDynamicState = &dynamicStateCI;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.renderPass = compatRenderPass;
+        pipelineInfo.subpass = 0;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+        VkPipeline graphicsPipeline;
+        if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create graphics pipeline!");
+        }
+
+        outPipeline = graphicsPipeline;
+
+        return;
+    }
 
     sp<Pipeline> VulkanGraphicsPipeline::Make(
         const sp<VulkanDevice>& dev,
@@ -127,6 +271,13 @@ namespace Veldrid{
         VkGraphicsPipelineCreateInfo pipelineCI{};
         pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
+        //*************************************************
+        //*************************************************
+        //*************************************************
+        // From Standard creation info ***Makes it work!***
+        //*************************************************
+        //*************************************************
+        //*************************************************
         // Blend State
         VkPipelineColorBlendStateCreateInfo blendStateCI{};
         blendStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -136,16 +287,16 @@ namespace Veldrid{
         {
             auto vdDesc = desc.blendState.attachments[i];
             auto& attachmentState = attachments[i];
-            attachmentState.srcColorBlendFactor = VdToVkBlendFactor(vdDesc->sourceAlphaFactor);
-            attachmentState.dstColorBlendFactor = VdToVkBlendFactor(vdDesc->destinationColorFactor);
-            attachmentState.colorBlendOp = VdToVkBlendOp(vdDesc->colorFunction);
-            attachmentState.srcAlphaBlendFactor = VdToVkBlendFactor(vdDesc->sourceAlphaFactor);
-            attachmentState.dstAlphaBlendFactor = VdToVkBlendFactor(vdDesc->destinationAlphaFactor);
-            attachmentState.alphaBlendOp = VdToVkBlendOp(vdDesc->alphaFunction);
-            attachmentState.colorWriteMask = VdToVkColorWriteMask(vdDesc->colorWriteMask);
-            attachmentState.blendEnable = vdDesc->blendEnabled;
+            attachmentState.srcColorBlendFactor = VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
+            attachmentState.dstColorBlendFactor = VdToVkBlendFactor(vdDesc.destinationColorFactor);
+            attachmentState.colorBlendOp = VdToVkBlendOp(vdDesc.colorFunction);
+            attachmentState.srcAlphaBlendFactor = VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
+            attachmentState.dstAlphaBlendFactor = VdToVkBlendFactor(vdDesc.destinationAlphaFactor);
+            attachmentState.alphaBlendOp = VdToVkBlendOp(vdDesc.alphaFunction);
+            attachmentState.colorWriteMask = VdToVkColorWriteMask(vdDesc.colorWriteMask);
+            attachmentState.blendEnable = vdDesc.blendEnabled;
         }
-
+        
         blendStateCI.attachmentCount = attachmentsCount;
         blendStateCI.pAttachments = attachments.data();
         auto& blendFactor = desc.blendState.blendConstant;
@@ -156,6 +307,7 @@ namespace Veldrid{
 
         pipelineCI.pColorBlendState = &blendStateCI;
 
+        
         // Rasterizer State
         auto& rsDesc = desc.rasterizerState;
         VkPipelineRasterizationStateCreateInfo rsCI{};
@@ -163,11 +315,10 @@ namespace Veldrid{
         rsCI.cullMode = VdToVkCullMode(rsDesc.cullMode);
         rsCI.polygonMode = VdToVkPolygonMode(rsDesc.fillMode);
         rsCI.depthClampEnable = !rsDesc.depthClipEnabled;
-        rsCI.frontFace = rsDesc.FrontFace == RasterizerStateDescription::FrontFace::Clockwise
+        rsCI.frontFace = rsDesc.frontFace == RasterizerStateDescription::FrontFace::Clockwise
             ? VkFrontFace::VK_FRONT_FACE_CLOCKWISE 
             : VkFrontFace::VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rsCI.lineWidth = 1.f;
-
         pipelineCI.pRasterizationState = &rsCI;
 
         // Dynamic State
@@ -214,14 +365,13 @@ namespace Veldrid{
         VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.outputs.sampleCount);
         multisampleCI.rasterizationSamples = vkSampleCount;
         multisampleCI.alphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
-
         pipelineCI.pMultisampleState = &multisampleCI;
 
         // Input Assembly
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI{};
         inputAssemblyCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         inputAssemblyCI.topology = VdToVkPrimitiveTopology(desc.primitiveTopology);
-
+        inputAssemblyCI.primitiveRestartEnable = VK_FALSE;
         pipelineCI.pInputAssemblyState = &inputAssemblyCI;
 
         // Vertex Input State
@@ -233,7 +383,7 @@ namespace Veldrid{
         unsigned attributeCount = 0;
         for (int i = 0; i < inputDescriptions.size(); i++)
         {
-            attributeCount += inputDescriptions[i]->elements.size();
+            attributeCount += inputDescriptions[i].elements.size();
         }
         std::vector<VkVertexInputBindingDescription> bindingDescs(bindingCount);
         std::vector<VkVertexInputAttributeDescription> attributeDescs(attributeCount);
@@ -242,30 +392,30 @@ namespace Veldrid{
         int targetLocation = 0;
         for (int binding = 0; binding < inputDescriptions.size(); binding++)
         {
-            auto* inputDesc = inputDescriptions[binding];
+            auto& inputDesc = inputDescriptions[binding];
             bindingDescs[binding].binding = binding;
-            bindingDescs[binding].inputRate = (inputDesc->instanceStepRate != 0) 
+            bindingDescs[binding].inputRate = (inputDesc.instanceStepRate != 0) 
                 ? VkVertexInputRate::VK_VERTEX_INPUT_RATE_INSTANCE 
                 : VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;
-            bindingDescs[binding].stride = inputDesc->stride;
+            bindingDescs[binding].stride = inputDesc.stride;
             
             unsigned currentOffset = 0;
-            for (int location = 0; location < inputDesc->elements.size(); location++)
+            for (int location = 0; location < inputDesc.elements.size(); location++)
             {
-                auto* inputElement = inputDesc->elements[location];
+                auto& inputElement = inputDesc.elements[location];
 
-                attributeDescs[targetIndex].format = VdToVkShaderDataType(inputElement->format);
+                attributeDescs[targetIndex].format = VdToVkShaderDataType(inputElement.format);
                 attributeDescs[targetIndex].binding = binding;
                 attributeDescs[targetIndex].location = targetLocation + location;
-                attributeDescs[targetIndex].offset = inputElement->offset != 0 
-                    ? inputElement->offset 
+                attributeDescs[targetIndex].offset = inputElement.offset != 0 
+                    ? inputElement.offset 
                     : currentOffset;
                 
                 targetIndex += 1;
-                currentOffset += Helpers::FormatHelpers::GetSizeInBytes(inputElement->format);
+                currentOffset += Helpers::FormatHelpers::GetSizeInBytes(inputElement.format);
             }
 
-            targetLocation += inputDesc->elements.size();
+            targetLocation += inputDesc.elements.size();
         }
 
         vertexInputCI.vertexBindingDescriptionCount = bindingCount;
@@ -282,8 +432,8 @@ namespace Veldrid{
         if (!specDescs.empty())
         {
             unsigned specDataSize = 0;
-            for (auto* spec : specDescs) {
-                specDataSize += GetSpecializationConstantSize(spec->type);
+            for (auto& spec : specDescs) {
+                specDataSize += GetSpecializationConstantSize(spec.type);
             }
             std::vector<std::uint8_t> fullSpecData(specDataSize);
             int specializationCount = specDescs.size();
@@ -291,12 +441,12 @@ namespace Veldrid{
             unsigned specOffset = 0;
             for (int i = 0; i < specializationCount; i++)
             {
-                auto data = specDescs[i]->data;
+                auto data = specDescs[i].data;
                 auto srcData = (byte*)&data;
-                auto dataSize = GetSpecializationConstantSize(specDescs[i]->type);
+                auto dataSize = GetSpecializationConstantSize(specDescs[i].type);
                 //Unsafe.CopyBlock(fullSpecData + specOffset, srcData, dataSize);
                 memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
-                mapEntries[i].constantID = specDescs[i]->id;
+                mapEntries[i].constantID = specDescs[i].id;
                 mapEntries[i].offset = specOffset;
                 mapEntries[i].size = dataSize;
                 specOffset += dataSize;
@@ -325,6 +475,8 @@ namespace Veldrid{
         pipelineCI.pStages = stageCIs.data();
 
         // ViewportState
+        // Vulkan spec specifies that there must be 1 viewport no matter
+        // dynamic viewport state enabled or not...
         VkPipelineViewportStateCreateInfo viewportStateCI{};
         viewportStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewportStateCI.viewportCount = 1;
@@ -343,20 +495,30 @@ namespace Veldrid{
             dsls[i] = PtrCast<VulkanResourceLayout>(resourceLayouts[i].get())->GetHandle();
         }
         pipelineLayoutCI.pSetLayouts = dsls.data();
-
+        
         VkPipelineLayout pipelineLayout;
         VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
         pipelineCI.layout = pipelineLayout;
-
+        
         // Create fake RenderPass for compatibility.
-
         auto& outputDesc = desc.outputs;
+        
+        //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, VK_SAMPLE_COUNT_1_BIT);
         auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, vkSampleCount);
         
         pipelineCI.renderPass = compatRenderPass;
-
+        
         VkPipeline devicePipeline;
         VK_CHECK(vkCreateGraphicsPipelines(dev->LogicalDev(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &devicePipeline));
+
+        //auto vkVertShader = reinterpret_cast<VulkanShader*>(shaders[0].get());
+        //auto vkFragShader = reinterpret_cast<VulkanShader*>(shaders[1].get());
+
+        //_CreateStandardPipeline(dev->LogicalDev(),
+        //    vkVertShader->GetHandle(), vkFragShader->GetHandle(),
+        //    640,480, compatRenderPass, 
+        //    pipelineLayout, devicePipeline
+        //    );
 
         std::uint32_t resourceSetCount = desc.resourceLayouts.size();
         std::uint32_t dynamicOffsetsCount = 0;

@@ -8,16 +8,16 @@
 namespace Veldrid {
 
 	_DescriptorPoolMgr::~_DescriptorPoolMgr(){
-		//All dirty pools should be recycled by now.
-		assert(_dirtyPools.empty());
-		//Retire current pool
-		_currentPool = nullptr;
-
-		while (!_freePools.empty()) {
-			auto pool = _freePools.front();
-			_freePools.pop();
-			vkDestroyDescriptorPool(_dev, pool, nullptr);
-		}
+		////All dirty pools should be recycled by now.
+		//assert(_dirtyPools.empty());
+		////Retire current pool
+		//_currentPool = nullptr;
+//
+		//while (!_freePools.empty()) {
+		//	auto pool = _freePools.front();
+		//	_freePools.pop();
+		//	vkDestroyDescriptorPool(_dev, pool, nullptr);
+		//}
 	}
 
 	void _DescriptorPoolMgr::Init(VkDevice dev, unsigned maxSets){
@@ -31,12 +31,26 @@ namespace Veldrid {
 		_currentPool.reset(firstPoolContainer);
 	}
 
+	void _DescriptorPoolMgr::DeInit(){
+		//All dirty pools should be recycled by now.
+		assert(_dirtyPools.empty());
+		//Retire current pool
+		_currentPool = nullptr;
+
+		while (!_freePools.empty()) {
+			auto pool = _freePools.front();
+			_freePools.pop();
+			vkDestroyDescriptorPool(_dev, pool, nullptr);
+		}
+	}
+
 
 	void _DescriptorPoolMgr::_ReleaseContainer(Container* container){
 		//std::scoped_lock l{_m_pool};
 
 		//Mainly for debug purposes
-		assert(_dirtyPools.find(container) != _dirtyPools.end());
+		//assert(_dirtyPools.find(container) != _dirtyPools.end());
+		//may not be in dirty pool list during manager destruction
 		_dirtyPools.erase(container);
 
 		VK_CHECK(vkResetDescriptorPool(_dev, container->pool, 0));
@@ -63,7 +77,7 @@ namespace Veldrid {
 		std::vector<VkDescriptorPoolSize> sizes;
 		sizes.reserve(_poolSizes.sizes.size());
 		for (auto sz : _poolSizes.sizes) {
-			sizes.emplace_back( sz.type, uint32_t(sz.multiplier * _maxSets) );
+			sizes.push_back({sz.type, uint32_t(sz.multiplier * _maxSets)});
 		}
 		VkDescriptorPoolCreateInfo pool_info = {};
 		pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;

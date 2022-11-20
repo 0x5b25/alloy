@@ -4,11 +4,14 @@
 
 #include "veldrid/BindableResource.hpp"
 
+#include <unordered_set>
+
 #include "VkDescriptorPoolMgr.hpp"
 
 namespace Veldrid{
 
     class VulkanDevice;
+    class VulkanTexture;
 
     class VulkanResourceLayout : public ResourceLayout{
 
@@ -30,14 +33,19 @@ namespace Veldrid{
             const Description& desc
         );
 
-        VkDescriptorSetLayout GetHandle() const {return _dsl;}
+        const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
         std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
         const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
     };
 
     class VulkanResourceSet : public ResourceSet{
+    public:
+        using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
+    private:
 
         _DescriptorSet _descSet;
+
+        std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 
         VulkanResourceSet(
             const sp<VulkanDevice>& dev,
@@ -57,5 +65,10 @@ namespace Veldrid{
             const Description& desc
         );
 
+        const VkDescriptorSet& GetHandle() const { return _descSet.GetHandle(); }
+
+
+        void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
+        void VisitElements(ElementVisitor visitor);
     };
 }

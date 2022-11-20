@@ -28,19 +28,7 @@
 
 constexpr const char* GetVkPlatformSurfaceExt();
 
-template<typename T, typename U>
-T* PtrCast(U* ptr){
-#ifdef VLD_DEBUG
-    T* res = dynamic_cast<T*>(ptr);
-    //Actually is the target type
-    assert(res != nullptr);
-    //And can be done using a reinterpret_cast
-    assert((void*)res == (void*)ptr);
-    return res;
-#else
-    return reinterpret_cast<T*>(ptr);
-#endif
-}
+
 
 struct VkInstExtNames {
     static const char* VK_KHR_SURFACE;

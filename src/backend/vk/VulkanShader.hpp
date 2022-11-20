@@ -28,7 +28,7 @@ namespace Veldrid
        
 
     public:
-        VkShaderModule GetHandle() const { return _shaderModule; }
+        const VkShaderModule& GetHandle() const { return _shaderModule; }
 
         ~VulkanShader();
 

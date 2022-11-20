@@ -9,7 +9,19 @@
 
 namespace Veldrid
 {
-    
+    // A description of the output attachments used by the <see cref="Pipeline"/>.
+    struct OutputDescription {
+
+        struct Attachment{
+            PixelFormat format;
+        };
+
+        std::optional<Attachment> depthAttachment;
+        std::vector<Attachment> colorAttachment;
+        Texture::Description::SampleCount sampleCount;
+
+    };
+
     class Framebuffer : public DeviceResource{
 
     public:
@@ -29,13 +41,17 @@ namespace Veldrid
             };
 
             Attachment depthTarget;
-            std::vector<Attachment> colorTarget;
+            std::vector<Attachment> colorTargets;
 
-            bool HasColorTarget() const {return !colorTarget.empty();}
+            bool HasColorTarget() const {return !colorTargets.empty();}
             bool HasDepthTarget() const {return depthTarget.target != nullptr;}
+            std::uint32_t GetAttachmentCount() const {
+                return HasDepthTarget()? colorTargets.size() + 1
+                                       : colorTargets.size();
+            }
             std::uint32_t GetWidth() const {
-                if(colorTarget.size() > 0){
-                    auto& texDesc = colorTarget.front().target->GetDesc();
+                if(colorTargets.size() > 0){
+                    auto& texDesc = colorTargets.front().target->GetDesc();
                     return texDesc.width;
                 } else if(depthTarget.target != nullptr){
                     auto& texDesc = depthTarget.target->GetDesc();
@@ -44,8 +60,8 @@ namespace Veldrid
                 return 0;
             }
             std::uint32_t GetHeight() const {
-                if(colorTarget.size() > 0){
-                    auto& texDesc = colorTarget.front().target->GetDesc();
+                if(colorTargets.size() > 0){
+                    auto& texDesc = colorTargets.front().target->GetDesc();
                     return texDesc.height;
                 } else if(depthTarget.target != nullptr){
                     auto& texDesc = depthTarget.target->GetDesc();
@@ -56,7 +72,7 @@ namespace Veldrid
         };
 
     protected:
-        Description description;
+        //Description description;
 
         Framebuffer(
             sp<GraphicsDevice>&& dev
@@ -70,6 +86,7 @@ namespace Veldrid
             OutputDescription odesc{};
 
             auto& sampleCount = odesc.sampleCount;
+            auto& description = GetDesc();
 
             sampleCount = Texture::Description::SampleCount::x1;
             //OutputAttachmentDescription? depthAttachment = null;
@@ -79,10 +96,10 @@ namespace Veldrid
                 odesc.depthAttachment = OutputDescription::Attachment{ texDesc.format };
                 sampleCount = texDesc.sampleCount;
             }
-            odesc.colorAttachment.resize(description.colorTarget.size());
-            for (int i = 0; i < description.colorTarget.size(); i++)
+            odesc.colorAttachment.resize(description.colorTargets.size());
+            for (int i = 0; i < description.colorTargets.size(); i++)
             {
-                auto& texDesc = description.colorTarget[i].target->GetDesc();
+                auto& texDesc = description.colorTargets[i].target->GetDesc();
                 odesc.colorAttachment[i].format = texDesc.format;
                 sampleCount = texDesc.sampleCount;
             }

@@ -295,6 +295,9 @@ public:
         return *this;
     }
 
+    template <typename U>
+    bool operator==(const sp<U>& that){ return this->fPtr == that.fPtr;}
+
     T& operator*() const {
         assert(this->get() != nullptr);
         return *this->get();
@@ -386,4 +389,15 @@ template <typename T> sp<T> ref_sp(const T* obj) {
     return sp<T>(const_cast<T*>(SafeRef(obj)));
 }
 
+}
+
+namespace std {
+  template <typename T> struct hash<Veldrid::sp<T>>
+  {
+    size_t operator()(const Veldrid::sp<T> & x) const
+    {
+      /* your code here, e.g. "return hash<int>()(x.value);" */
+      return hash<void*>()(x.get());
+    }
+  };
 }

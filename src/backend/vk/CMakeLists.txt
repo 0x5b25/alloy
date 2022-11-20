@@ -49,6 +49,8 @@ target_sources(Veldrid
         "${CMAKE_CURRENT_LIST_DIR}/VulkanPipeline.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/VkCommon.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/VkCommon.hpp"
+        "${CMAKE_CURRENT_LIST_DIR}/VkTypeCvt.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/VkTypeCvt.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/VkDescriptorPoolMgr.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/VkDescriptorPoolMgr.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.cpp"
