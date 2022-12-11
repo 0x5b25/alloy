@@ -85,7 +85,7 @@ namespace Veldrid
 
     protected:
         Texture(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Texture::Description& desc
         ) : 
             DeviceResource(std::move(dev)),
@@ -117,7 +117,7 @@ namespace Veldrid
 
     protected:
         TextureView(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             sp<Texture>&& target,
             const TextureView::Description& desc
         ) :

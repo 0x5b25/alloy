@@ -21,7 +21,7 @@ namespace Veldrid{
         DescriptorResourceCounts _drcs;
 
         VulkanResourceLayout(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) : ResourceLayout(dev, desc){}
 
@@ -48,7 +48,7 @@ namespace Veldrid{
         std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 
         VulkanResourceSet(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             _DescriptorSet&& set,
             const Description& desc
         ) 

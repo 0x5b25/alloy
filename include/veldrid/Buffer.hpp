@@ -80,10 +80,10 @@ namespace Veldrid
 
     protected:
         Buffer(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) : 
-            DeviceResource(std::move(dev)),
+            DeviceResource(dev),
             description(desc)
         {};
 
@@ -125,6 +125,13 @@ namespace Veldrid
         ){
             auto range = new BufferRange{buffer, offsetInBytes, sizeInBytes};
             return sp{range};
+        }
+
+        static sp<BufferRange> Make(
+            const sp<Buffer>& buffer
+        ) {
+            auto range = new BufferRange{ buffer, 0, buffer->GetDesc().sizeInBytes};
+            return sp{ range };
         }
 
         Buffer* GetBufferObject() const {return _buffer.get();}

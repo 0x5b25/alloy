@@ -26,7 +26,7 @@ namespace Veldrid
 
 
         VulkanTexture(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Texture::Description& desc
         );
 
@@ -83,7 +83,7 @@ namespace Veldrid
         VkImageView _view;
 
         VulkanTextureView(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const sp<VulkanTexture>& target,
             const TextureView::Description& desc
         ) :
@@ -109,7 +109,7 @@ namespace Veldrid
         VkSampler _sampler;
 
         VulkanSampler(
-            const sp<VulkanDevice>& dev
+            const sp<GraphicsDevice>& dev
         ) :
             Sampler(dev)
         {}

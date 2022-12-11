@@ -222,11 +222,11 @@ public:
      *  created sp both have a reference to it.
      */
     sp(const sp<T>& that) : fPtr(SafeRef(that.get())) {}
-    template <typename U>
-    //          typename = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
+    template <typename U,
+              typename = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
     sp(const sp<U>& that) : fPtr(SafeRef(that.get())) {
-        static_assert(std::is_convertible<U*, T*>::value,
-            "Type not convertable!");
+        //static_assert(std::is_convertible<U*, T*>::value,
+        //    "Type not convertable!");
     }
 
     /**
@@ -235,11 +235,11 @@ public:
      *  No call to ref() or unref() will be made.
      */
     sp(sp<T>&& that) : fPtr(that.release()) {}
-    template <typename U>
-    //          typename = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
+    template <typename U,
+              typename = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
     sp(sp<U>&& that) : fPtr(that.release()) { 
-        static_assert(std::is_convertible<U*, T*>::value,
-            "Type not convertable!");
+        //static_assert(std::is_convertible<U*, T*>::value,
+        //    "Type not convertable!");
     }
 
     /**

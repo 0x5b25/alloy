@@ -17,3 +17,6 @@
 [submodule "demo/glfw"]
 	path = demo/glfw
 	url = https://github.com/glfw/glfw.git
+[submodule "demo/glm"]
+	path = demo/glm
+	url = https://github.com/g-truc/glm.git

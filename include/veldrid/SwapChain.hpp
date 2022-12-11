@@ -3,6 +3,7 @@
 #include "veldrid/DeviceResource.hpp"
 #include "veldrid/Framebuffer.hpp"
 #include "veldrid/SwapChainSources.hpp"
+#include "veldrid/SyncObjects.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -51,10 +52,10 @@ namespace Veldrid
         Description description;
 
         SwapChain(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) 
-            : DeviceResource(std::move(dev))
+            : DeviceResource(dev)
             , description(desc) {}
 
     public:
@@ -71,7 +72,12 @@ namespace Veldrid
         virtual std::uint32_t GetWidth() const = 0;
         virtual std::uint32_t GetHeight() const = 0;
 
-        virtual State SwapBuffers() = 0;
+        //virtual State SwapBuffers() = 0;
+
+        virtual State SwitchToNextFrameBuffer(
+            //Semaphore* signalSemaphore,
+            //Fence* fence
+        ) = 0;
 
     };
     

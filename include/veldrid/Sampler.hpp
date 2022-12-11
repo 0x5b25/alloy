@@ -86,8 +86,8 @@ namespace Veldrid
 
     protected:
         Sampler(
-            sp<GraphicsDevice>&& dev
-        ) : BindableResource(std::move(dev)){}
+            const sp<GraphicsDevice>& dev
+        ) : BindableResource(dev){}
 
     };
 } // namespace Veldrid

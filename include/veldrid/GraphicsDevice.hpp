@@ -2,6 +2,7 @@
 
 #include <string>
 #include <sstream>
+#include <vector>`
 
 #include "veldrid/common/Macros.h"
 #include "veldrid/common/RefCnt.hpp"
@@ -89,8 +90,14 @@ namespace Veldrid
         virtual const Features& GetFeatures() const = 0;
 
         virtual ResourceFactory* GetResourceFactory() = 0;
-        virtual void SubmitCommand(CommandList* cmd, Fence* fence) = 0;
-        virtual SwapChain::State PresentToSwapChain(SwapChain* sc) = 0;
+        virtual void SubmitCommand(
+            const std::vector<CommandList*>& cmd,
+            const std::vector<Semaphore*>& waitSemaphores,
+            const std::vector<Semaphore*>& signalSemaphores,
+            Fence* fence) = 0;
+        virtual SwapChain::State PresentToSwapChain(
+            const std::vector<Semaphore*>& waitSemaphores,
+            SwapChain* sc) = 0;
                
         virtual void WaitForIdle() = 0;
 

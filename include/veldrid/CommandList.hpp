@@ -18,7 +18,7 @@ namespace Veldrid
     class CommandList : public DeviceResource{
 
     protected:
-        CommandList(sp<GraphicsDevice>&& dev) : DeviceResource(std::move(dev)){}
+        CommandList(const sp<GraphicsDevice>& dev) : DeviceResource(dev){}
 
     public:
 

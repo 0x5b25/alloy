@@ -25,7 +25,7 @@ namespace Veldrid
         sp<GraphicsDevice> dev;
 
     protected:
-        DeviceResource(sp<GraphicsDevice>&& dev);
+        DeviceResource(const sp<GraphicsDevice>& dev);
 
 
     };

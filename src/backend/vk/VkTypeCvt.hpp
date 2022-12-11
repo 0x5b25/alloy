@@ -42,8 +42,11 @@ namespace Veldrid {
 
     VkFormat VdToVkShaderDataType(ShaderDataType format);
 
-    VkShaderStageFlagBits VdToVkShaderStages(
-        Shader::Description::Stages stage);
+    VkShaderStageFlags VdToVkShaderStages(
+        Shader::Description::Stage stage);
+
+    VkShaderStageFlagBits VdToVkShaderStageSingle(
+        Shader::Description::Stage stage);
      
     VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor);
 

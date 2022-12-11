@@ -75,9 +75,9 @@ namespace Veldrid
         //Description description;
 
         Framebuffer(
-            sp<GraphicsDevice>&& dev
+            const sp<GraphicsDevice>& dev
         )
-            : DeviceResource(std::move(dev))
+            : DeviceResource(dev)
         {}
 
     public:

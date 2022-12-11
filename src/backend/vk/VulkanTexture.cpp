@@ -9,7 +9,7 @@
 
 namespace Veldrid {
     
-    VulkanTexture::VulkanTexture(const sp<VulkanDevice>& dev, const Texture::Description& desc) 
+    VulkanTexture::VulkanTexture(const sp<GraphicsDevice>& dev, const Texture::Description& desc)
         : Texture(dev, desc)
     { }
 

@@ -147,7 +147,7 @@ namespace Veldrid
     class Pipeline : public DeviceResource{
 
     protected:
-        Pipeline(sp<GraphicsDevice>&& dev) : DeviceResource(std::move(dev)){}
+        Pipeline(const sp<GraphicsDevice>& dev) : DeviceResource(dev){}
 
     public:
         

@@ -680,12 +680,41 @@ namespace Veldrid {
         return dev;
 	}
 
-    void VulkanDevice::SubmitCommand(CommandList* cmd, Fence* fence){
-        assert(cmd != nullptr);
-        VulkanCommandList* vkCmd = PtrCast<VulkanCommandList>(cmd);
+    void VulkanDevice::SubmitCommand(
+        const std::vector<CommandList*>& cmd,
+        const std::vector<Semaphore*>& waitSemaphores,
+        const std::vector<Semaphore*>& signalSemaphores,
+        Fence* fence
+    ){
+        std::vector<VkPipelineStageFlags> vkWaitStages; vkWaitStages.reserve(waitSemaphores.size());
+        std::vector<VkSemaphore> vkWaitSems; vkWaitSems.reserve(waitSemaphores.size());
+        for (auto* s : waitSemaphores) {
+            assert(s != nullptr);
+            auto* vkS = PtrCast<VulkanSemaphore>(s); vkWaitSems.push_back(vkS->GetHandle());
+            vkWaitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+        }
+
+        std::vector<VkSemaphore> vkSignalSems; vkSignalSems.reserve(signalSemaphores.size());
+        for (auto* s : signalSemaphores) {
+            assert(s != nullptr);
+            auto* vkS = PtrCast<VulkanSemaphore>(s); vkSignalSems.push_back(vkS->GetHandle());
+        }
+
+        std::vector<VkCommandBuffer> vkCmdBufs; vkCmdBufs.reserve(cmd.size());
+        for (auto* c : cmd) {
+            assert(c != nullptr);
+            auto* vkCmd = PtrCast<VulkanCommandList>(c);
+            vkCmdBufs.push_back(vkCmd->GetHandle());
+        }
         VkSubmitInfo info{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-        info.commandBufferCount = 1;
-        info.pCommandBuffers = &vkCmd->GetHandle();
+        info.signalSemaphoreCount = vkSignalSems.size();
+        info.pSignalSemaphores = vkSignalSems.data();
+        info.commandBufferCount = vkCmdBufs.size();
+        info.pCommandBuffers = vkCmdBufs.data();
+
+        info.waitSemaphoreCount = vkWaitSems.size();
+        info.pWaitSemaphores = vkWaitSems.data();
+        info.pWaitDstStageMask = vkWaitStages.data();
 
         VkFence vkFence = VK_NULL_HANDLE;
         if (fence != nullptr) {
@@ -698,10 +727,21 @@ namespace Veldrid {
         ));
     }
 
-    SwapChain::State VulkanDevice::PresentToSwapChain(SwapChain* sc) {
+    SwapChain::State VulkanDevice::PresentToSwapChain(
+        const std::vector<Semaphore*>& waitSemaphores,
+        SwapChain* sc
+    ) {
+        std::vector<VkSemaphore> vkWaitSems; vkWaitSems.reserve(waitSemaphores.size());
+        for (auto* s : waitSemaphores) {
+            assert(s != nullptr);
+            auto* vkS = PtrCast<VulkanSemaphore>(s); vkWaitSems.push_back(vkS->GetHandle());
+        }
+
         VulkanSwapChain* vkSC = PtrCast<VulkanSwapChain>(sc);
         VkSwapchainKHR deviceSwapchain = vkSC->GetHandle();
         VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        presentInfo.waitSemaphoreCount = vkWaitSems.size();
+        presentInfo.pWaitSemaphores = vkWaitSems.data();
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &deviceSwapchain;
         auto imageIndex = vkSC->GetCurrentImageIdx();
@@ -874,6 +914,24 @@ namespace Veldrid {
         return sp<Fence>(fen);
     }
 
+    VulkanSemaphore::~VulkanSemaphore() {
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        vkDestroySemaphore(vkDev->LogicalDev(), _sem, nullptr);
+    }
+
+    sp<Semaphore> VulkanSemaphore::Make(const sp<VulkanDevice>& dev)
+    {
+        VkSemaphoreCreateInfo semCI{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+
+        VkSemaphore raw_sem;
+        VK_CHECK(vkCreateSemaphore(dev->LogicalDev(), &semCI, nullptr, &raw_sem));
+
+        auto sem = new VulkanSemaphore(dev);
+        sem->_sem = raw_sem;
+
+        return sp(sem);
+    }
+
     VkCommandBuffer _CmdPoolContainer::AllocateBuffer(){
         assert(std::this_thread::get_id() == boundID);
 
@@ -906,6 +964,7 @@ namespace Veldrid {
         auto res = _threadBoundCmdPools.find(id);
         if (res != _threadBoundCmdPools.end()) {
             holder = (*res).second;
+            holder->ref();
         }
         else {
             VkCommandPool raw_pool;

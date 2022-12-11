@@ -178,20 +178,16 @@ namespace Veldrid{
 
         sp<_GlslangContainer> _core;
 
-        static inline EShLanguage FindShaderLanguage(Shader::Description::Stages stage)
+        static inline EShLanguage FindShaderLanguage(Shader::Description::Stage stage)
         {
-            using Stages = typename Shader::Description::Stages;
-        	switch (stage)
-        	{
-        		case Stages::Vertex: return EShLangVertex;
-        		case Stages::TessellationControl: return EShLangTessControl;
-        		case Stages::TessellationEvaluation: return EShLangTessEvaluation;
-        		case Stages::Geometry: return EShLangGeometry;
-        		case Stages::Fragment: return EShLangFragment;
-        		case Stages::Compute: return EShLangCompute;
-        		default:
-        			return EShLangVertex;
-        	}
+            if(stage.vertex) return EShLangVertex;
+        	if(stage.tessellationControl) return EShLangTessControl;
+        	if(stage.tessellationEvaluation) return EShLangTessEvaluation;
+        	if(stage.geometry) return EShLangGeometry;
+        	if(stage.fragment) return EShLangFragment;
+        	if(stage.compute) return EShLangCompute;
+        	return EShLangVertex;
+        
         }
 
 
@@ -214,7 +210,7 @@ namespace Veldrid{
             env_target_language_version = (glslang::EShTargetLanguageVersion) 0;
         }
 
-        bool CompileToSPIRV(Shader::Description::Stages    stage,
+        bool CompileToSPIRV(Shader::Description::Stage    stage,
     	                    const std::string &            glslSource,
     	                    const std::string &            entryPoint,
     	                    const ShaderVariant &          shaderVariant,
@@ -375,7 +371,7 @@ std::string Connect(const std::vector<std::string> &lines){
 
 ShaderModule::ShaderModule(
 	//std::shared_ptr<Device>& device,
-	Shader::Description::Stages stage, 
+	Shader::Description::Stage stage, 
 	const std::string &glsl_source, 
 	const std::string &entry_point, 
 	const ShaderVariant &shader_variant

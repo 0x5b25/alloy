@@ -6,7 +6,7 @@
 #include "veldrid/common/RefCnt.hpp"
 
 #include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/Fence.hpp"
+#include "veldrid/SyncObjects.hpp"
 #include "veldrid/Buffer.hpp"
 #include "veldrid/SwapChain.hpp"
 
@@ -174,8 +174,14 @@ namespace Veldrid
     //Interface
     public:
 
-        virtual void SubmitCommand(CommandList* cmd, Fence* fence) override;
-        virtual SwapChain::State PresentToSwapChain(SwapChain* sc) override;
+        virtual void SubmitCommand(
+            const std::vector<CommandList*>& cmd,
+            const std::vector<Semaphore*>& waitSemaphores,
+            const std::vector<Semaphore*>& signalSemaphores,
+            Fence* fence) override;
+        virtual SwapChain::State PresentToSwapChain(
+            const std::vector<Semaphore*>& waitSemaphores,
+            SwapChain* sc) override;
 
         //virtual bool WaitForFence(const sp<Fence>& fence, std::uint32_t timeOutNs) override;
         void WaitForIdle() override {vkDeviceWaitIdle(_dev);}
@@ -195,10 +201,10 @@ namespace Veldrid
         }
 
         VulkanBuffer(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Buffer::Description& desc
         ) : 
-            Buffer(sp<GraphicsDevice>{dev}, desc)
+            Buffer(dev, desc)
         {}
 
     public:
@@ -232,7 +238,7 @@ namespace Veldrid
             return reinterpret_cast<VulkanDevice*>(dev.get());
         }
 
-        VulkanFence(const sp<VulkanDevice>& dev) : Fence(dev) {}
+        VulkanFence(const sp<GraphicsDevice>& dev) : Fence(dev) {}
 
     public:
 
@@ -255,5 +261,23 @@ namespace Veldrid
 
     };
     
+    class VulkanSemaphore : public Semaphore {
+
+    private:
+        VkSemaphore _sem;
+
+        VulkanSemaphore(const sp<GraphicsDevice>& dev) : Semaphore(dev) {}
+
+    public:
+        ~VulkanSemaphore();
+
+        static sp<Semaphore> Make(
+            const sp<VulkanDevice>& dev
+        );
+
+        const VkSemaphore& GetHandle() const { return _sem; }
+
+    };
+
 } // namespace Veldrid
 

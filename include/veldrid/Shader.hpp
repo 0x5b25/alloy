@@ -37,20 +37,24 @@ namespace Veldrid
     public:
 
         struct Description{
-            enum class Stages {
-                None = 0,
-                // The vertex shader stage.
-                Vertex,
-                // The geometry shader stage.
-                Geometry,
-                // The tessellation control (or hull) shader stage.
-                TessellationControl,
-                // The tessellation evaluation (or domain) shader stage.
-                TessellationEvaluation,
-                // The fragment (or pixel) shader stage.
-                Fragment,
-                // The compute shader stage.
-                Compute,
+
+            union Stage {
+                struct {
+                    // The vertex shader stage.
+                    std::uint8_t vertex : 1;
+                    // The geometry shader stage.
+                    std::uint8_t geometry : 1;
+                    // The tessellation control (or hull) shader stage.
+                    std::uint8_t tessellationControl : 1;
+                    // The tessellation evaluation (or domain) shader stage.
+                    std::uint8_t tessellationEvaluation : 1;
+                    // The fragment (or pixel) shader stage.
+                    std::uint8_t fragment : 1;
+                    // The compute shader stage.
+                    std::uint8_t compute : 1;
+                };
+
+                std::uint8_t value;
             } stage;
             //std::vector<std::uint8_t> bytes;
             std::string entryPoint;
@@ -62,11 +66,11 @@ namespace Veldrid
         Description description;
 
         Shader(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) : 
             description(desc),
-            DeviceResource(std::move(dev)){}
+            DeviceResource(dev){}
 
     public: 
         const Description& GetDesc() {return description;}
@@ -246,7 +250,7 @@ namespace Veldrid
     public:
     	ShaderModule(
     		//std::shared_ptr<Device>& device,
-    	    Shader::Description::Stages stage,
+    	    Shader::Description::Stage stage,
     		const std::string &   glsl_source,
     		const std::string &   entry_point = "main",
     		const ShaderVariant & shader_variant = {});
@@ -256,7 +260,7 @@ namespace Veldrid
 
     	static std::shared_ptr<ShaderModule> Make(
     		//std::shared_ptr<Device>& device,
-    		Shader::Description::Stages stage,
+    		Shader::Description::Stage stage,
     		const std::string& glsl_source,
     		const std::string& entry_point = "main",
     		const ShaderVariant& shader_variant = {}
@@ -282,7 +286,7 @@ namespace Veldrid
 
     	size_t GetID() const {return id;}
 
-    	Shader::Description::Stages GetStage() const{return stage;}
+    	Shader::Description::Stage GetStage() const{return stage;}
 
     	const std::string& GetEntryPoint() const{return entry_point;}
 
@@ -318,7 +322,7 @@ namespace Veldrid
     	size_t id;
 
     	/// Stage of the shader (vertex, fragment, etc)
-    	Shader::Description::Stages stage;
+    	Shader::Description::Stage stage;
 
     	/// Name of the main function
     	std::string entry_point;
@@ -364,7 +368,7 @@ namespace Veldrid
     	 * @param[out] spirv The generated SPIRV code
     	 * @param[out] info_log Stores any log messages during the compilation process
     	 */
-        virtual bool CompileToSPIRV(Shader::Description::Stages    stage,
+        virtual bool CompileToSPIRV(Shader::Description::Stage     stage,
     	                            const std::string &            glslSource,
     	                            const std::string &            entryPoint,
     	                            const ShaderVariant &          shaderVariant,

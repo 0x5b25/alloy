@@ -13,8 +13,8 @@ namespace Veldrid
     class BindableResource : public DeviceResource{
 
     protected:
-        BindableResource(sp<GraphicsDevice>&& dev)
-            : DeviceResource(std::move(dev))
+        BindableResource(const sp<GraphicsDevice>& dev)
+            : DeviceResource(dev)
         {}
 
     public:
@@ -65,7 +65,7 @@ namespace Veldrid
                     Sampler,
                 } kind;
 
-                Shader::Description::Stages stages;
+                Shader::Description::Stage stages;
 
                 union Options
                 {
@@ -97,10 +97,10 @@ namespace Veldrid
         Description description;
 
         ResourceLayout(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         )
-        : DeviceResource(std::move(dev))
+        : DeviceResource(dev)
         , description(desc){}
 
     public:
@@ -126,10 +126,10 @@ namespace Veldrid
         Description description;
 
         ResourceSet(
-            sp<GraphicsDevice>&& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) 
-            : DeviceResource(std::move(dev))
+            : DeviceResource(dev)
             , description(desc)
         {}
 

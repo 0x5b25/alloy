@@ -10,7 +10,7 @@
 #include "veldrid/Shader.hpp"
 #include "veldrid/CommandList.hpp"
 #include "veldrid/BindableResource.hpp"
-#include "veldrid/Fence.hpp"
+#include "veldrid/SyncObjects.hpp"
 #include "veldrid/SwapChain.hpp"
 
 namespace Veldrid
@@ -72,6 +72,9 @@ namespace Veldrid
         virtual sp<CommandList> CreateCommandList() = 0;
 
         virtual sp<Fence> CreateFence(bool initialSignaled) = 0;
+        //Why don't call CreateSemaphore? because there is a WinBase #define 
+        // called CreateSemaphore!!!
+        virtual sp<Semaphore> CreateDeviceSemaphore() = 0;
 
     };
 

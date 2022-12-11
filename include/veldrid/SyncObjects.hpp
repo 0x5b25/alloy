@@ -13,8 +13,8 @@ namespace Veldrid{
 
     protected:
 
-        Fence(sp<GraphicsDevice>&& dev) 
-            : DeviceResource(std::move(dev)) {}
+        Fence(const sp<GraphicsDevice>& dev) 
+            : DeviceResource(dev) {}
 
     public:
         virtual ~Fence() = default;
@@ -26,6 +26,18 @@ namespace Veldrid{
         virtual bool IsSignaled() const = 0;
 
         virtual void Reset() = 0;
+
+    };
+
+    class Semaphore : public DeviceResource {
+
+    protected:
+
+        Semaphore(const sp<GraphicsDevice>& dev)
+            : DeviceResource(dev) {}
+
+    public:
+        virtual ~Semaphore() = default;
 
     };
 

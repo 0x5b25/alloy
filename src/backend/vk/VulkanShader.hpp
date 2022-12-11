@@ -22,7 +22,7 @@ namespace Veldrid
         //VkShaderModule ShaderModule => _shaderModule;
 
         VulkanShader(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
         ) : Shader(dev, desc){}
        
@@ -37,6 +37,7 @@ namespace Veldrid
             const Shader::Description& desc,
             const std::vector<std::uint32_t>& spvBinary
         );
+
     };
 
 } // namespace Veldrid

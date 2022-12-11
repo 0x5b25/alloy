@@ -34,7 +34,7 @@ namespace Veldrid
 
 
     protected:
-        VulkanPipelineBase(const sp<VulkanDevice>& dev) : Pipeline(dev){}
+        VulkanPipelineBase(const sp<GraphicsDevice>& dev) : Pipeline(dev){}
 /*
         VulkanPipelineBase(VkGraphicsDevice gd, ref ComputePipelineDescription description)
             : base(ref description)
@@ -140,7 +140,7 @@ namespace Veldrid
     class VulkanComputePipeline : public VulkanPipelineBase{
 
         VulkanComputePipeline(
-            const sp<VulkanDevice>& dev
+            const sp<GraphicsDevice>& dev
         ) : VulkanPipelineBase(dev){}
 
 
@@ -166,7 +166,7 @@ namespace Veldrid
         bool scissorTestEnabled;
 
         VulkanGraphicsPipeline(
-            const sp<VulkanDevice>& dev
+            const sp<GraphicsDevice>& dev
         ) : VulkanPipelineBase(dev){}
 
 

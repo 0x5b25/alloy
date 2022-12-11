@@ -32,7 +32,7 @@ namespace Veldrid
         VkFramebuffer _fb;
 
 
-        _SCFB(const sp<VulkanDevice>& dev) : VulkanFramebufferBase(dev){}
+        _SCFB(const sp<GraphicsDevice>& dev) : VulkanFramebufferBase(dev){}
 
     public:
 
@@ -119,7 +119,7 @@ namespace Veldrid
         std::uint32_t _currentImageIndex;
 
         VulkanSwapChain(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc
             ) : SwapChain(dev, desc){
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
@@ -134,7 +134,7 @@ namespace Veldrid
 
         VkResult AcquireNextImage(VkSemaphore semaphore, VkFence fence);
 
-        void RecreateAndReacquire(std::uint32_t width, std::uint32_t height);
+        //void RecreateAndReacquire(std::uint32_t width, std::uint32_t height);
         
 
     public:
@@ -164,7 +164,8 @@ namespace Veldrid
             std::uint32_t width, 
             std::uint32_t height) override
         {
-            RecreateAndReacquire(width, height);
+            CreateSwapchain(width, height);
+            //RecreateAndReacquire(width, height);
         }
 
         bool IsSyncToVerticalBlank() const override {return _syncToVBlank;}
@@ -175,7 +176,12 @@ namespace Veldrid
         std::uint32_t GetWidth() const override {return _scExtent.width;}
         std::uint32_t GetHeight() const override {return _scExtent.height;}
 
-        virtual State SwapBuffers() override;
+        //virtual State SwapBuffers() override;
+
+        virtual State SwitchToNextFrameBuffer(
+            //Semaphore* signalSemaphore,
+            //Fence* fence
+        ) override;
     };
 
 } // namespace Veldrid

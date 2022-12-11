@@ -77,6 +77,10 @@ namespace Veldrid
         return VulkanFence::Make(_CreateNewDevHandle(), initialSignaled);
     }
 
+    sp<Semaphore> VulkanResourceFactory::CreateDeviceSemaphore() {
+        return VulkanSemaphore::Make(_CreateNewDevHandle());
+    }
+
 
 } // namespace Veldrid
 

@@ -276,8 +276,8 @@ namespace Veldrid
         if (_newSyncToVBlank != _syncToVBlank)
         {
             _syncToVBlank = _newSyncToVBlank;
-            RecreateAndReacquire(GetWidth(), GetHeight());
-            return VK_SUCCESS;//TODO: really success?
+            CreateSwapchain(GetWidth(), GetHeight());
+            //return VK_SUCCESS;//TODO: really success?
         }
 
         VkResult result = vkAcquireNextImageKHR(
@@ -305,19 +305,19 @@ namespace Veldrid
         return VK_SUCCESS;
     }
 
-    void VulkanSwapChain::RecreateAndReacquire(std::uint32_t width, std::uint32_t height)
-    {
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
-        if (CreateSwapchain(width, height))
-        {
-            auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
-            if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
-            {
-                vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
-                vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
-            }
-        }
-    }
+    //void VulkanSwapChain::RecreateAndReacquire(std::uint32_t width, std::uint32_t height)
+    //{
+    //    auto _gd = PtrCast<VulkanDevice>(dev.get());
+    //    if (CreateSwapchain(width, height))
+    //    {
+    //        auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
+    //        if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
+    //        {
+    //            vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
+    //            vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
+    //        }
+    //    }
+    //}
 
 
     bool VulkanSwapChain::CreateSwapchain(std::uint32_t width, std::uint32_t height)
@@ -533,7 +533,7 @@ namespace Veldrid
         VkFence _imageAvailableFence;
         VK_CHECK(vkCreateFence(dev->LogicalDev(), &fenceCI, nullptr, &sc->_imageAvailableFence));
 
-        sc->RecreateAndReacquire(desc.initialWidth, desc.initialHeight);
+        sc->CreateSwapchain(desc.initialWidth, desc.initialHeight);
         //AcquireNextImage(_gd.Device, VkSemaphore.Null, _imageAvailableFence);
         //vkWaitForFences(_gd.Device, 1, ref _imageAvailableFence, true, ulong.MaxValue);
         //vkResetFences(_gd.Device, 1, ref _imageAvailableFence);
@@ -543,7 +543,7 @@ namespace Veldrid
     }
     
 
-    SwapChain::State VulkanSwapChain::SwapBuffers() {
+    SwapChain::State VulkanSwapChain::SwitchToNextFrameBuffer() {
 
         auto _gd = PtrCast<VulkanDevice>(dev.get());
         auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
@@ -564,4 +564,6 @@ namespace Veldrid
             return SwapChain::State::Error;
         }
     }
+
+
 } // namespace Veldrid

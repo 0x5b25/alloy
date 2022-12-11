@@ -3,7 +3,7 @@
 
 namespace Veldrid {
 
-	DeviceResource::DeviceResource(sp<GraphicsDevice>&& dev)
+	DeviceResource::DeviceResource(const sp<GraphicsDevice>& dev)
 		: dev(dev)
 	{
 	}

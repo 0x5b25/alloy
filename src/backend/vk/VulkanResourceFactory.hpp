@@ -50,7 +50,7 @@ namespace Veldrid{
         virtual sp<CommandList> CreateCommandList() override;
 
         virtual sp<Fence> CreateFence(bool initialSignaled) override;
-
+        virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };
 
 }

@@ -108,13 +108,18 @@ namespace Veldrid
             bool IsValid() const {return resSet != nullptr;}
         };
         std::vector<_ResSetHolder> _resourceSets;
+        VulkanPipelineBase* _currentPipeline;
 
         struct _RenderPassInfo{
             //Pipeline resources
             sp<VulkanFramebufferBase> fb;
-            sp<VulkanPipelineBase> pipeline;
+            //sp<VulkanPipelineBase> pipeline;
             std::vector<std::optional<VkClearColorValue>> clearColorTargets;
             std::optional<VkClearDepthStencilValue> clearDSTarget;
+
+            //bool IsComputePass() const {
+            //    return pipeline->IsComputePipeline();
+            //}
         };
         //renderpasses
 
@@ -133,7 +138,7 @@ namespace Veldrid
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
-        VulkanCommandList(const sp<VulkanDevice>& dev) : CommandList(dev){}
+        VulkanCommandList(const sp<GraphicsDevice>& dev) : CommandList(dev){}
 
     public:
         ~VulkanCommandList();
@@ -184,7 +189,7 @@ namespace Veldrid
         virtual void SetFullScissorRect(std::uint32_t index) override;
         virtual void SetFullScissorRects() override;
 
-        void _RegisterResourceSetUsage();
+        void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
         void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
         void PreDrawCommand();
         virtual void Draw(
@@ -204,6 +209,7 @@ namespace Veldrid
             const sp<Buffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 
+        void PreDispatchCommand();
         virtual void Dispatch(std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) override;
 
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override;

@@ -16,7 +16,7 @@ set(VLD_IFACE_HEADERS
     "include/veldrid/Buffer.hpp"
     "include/veldrid/CommandList.hpp"
     "include/veldrid/DeviceResource.hpp"
-    "include/veldrid/Fence.hpp"
+    "include/veldrid/SyncObjects.hpp"
     "include/veldrid/FixedFunctions.hpp"
     "include/veldrid/Framebuffer.hpp"
     "include/veldrid/GraphicsDevice.hpp"
@@ -31,16 +31,26 @@ set(VLD_IFACE_HEADERS
     "include/veldrid/Types.hpp"
 )
 
+
+set(VLD_IFACE_IMP_SRCS
+    "src/GraphicsDevice.cpp"
+    "src/BindableResource.cpp"
+    "src/Shader.cpp"
+    "src/Helpers.cpp"
+    "src/DeviceResource.cpp"
+)
+
+source_group(
+    TREE "${CMAKE_CURRENT_SOURCE_DIR}"
+    FILES ${VLD_MISC_HEADERS} ${VLD_IFACE_HEADERS} ${VLD_IFACE_IMP_SRCS})
+
 add_subdirectory("3rd-party")
 
 add_library(Veldrid STATIC
     ${VLD_MISC_HEADERS}
     ${VLD_IFACE_HEADERS}
-    "src/GraphicsDevice.cpp"
-    "src/BindableResource.cpp"
-    "src/Shader.cpp"
-    "src/Helpers.cpp"
-    "src/DeviceResource.cpp")
+    ${VLD_IFACE_IMP_SRCS}
+    )
 
 if (WIN32)
     add_definitions(-DNOMINMAX)

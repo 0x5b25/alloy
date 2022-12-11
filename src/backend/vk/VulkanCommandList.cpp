@@ -266,11 +266,12 @@ namespace Veldrid{
         auto cmdPool = vkDev->GetCmdPool();
         auto vkCmdBuf = cmdPool->AllocateBuffer();
 
-        auto cmdBuf = new VulkanCommandList(dev);
+        sp<GraphicsDevice> _dev(dev);
+        auto cmdBuf = new VulkanCommandList(_dev);
         cmdBuf->_cmdBuf = vkCmdBuf;
         cmdBuf->_cmdPool = std::move(cmdPool);
 
-        return sp(cmdBuf);
+        return sp<CommandList>(cmdBuf);
     }
 
     VulkanCommandList::~VulkanCommandList(){
@@ -290,25 +291,28 @@ namespace Veldrid{
     }
 
     void VulkanCommandList::SetPipeline(const sp<Pipeline>& pipeline){
-        CHK_RENDERPASS_BEGUN();
-        assert(_currentRenderPass->pipeline != pipeline);
         VulkanPipelineBase* vkPipeline = PtrCast<VulkanPipelineBase>(pipeline.get());
-        _currentRenderPass->pipeline = RefRawPtr(vkPipeline);
+        assert(vkPipeline != _currentPipeline);
+        _miscResReg.insert(pipeline);
+        bool isComputePipeline = vkPipeline->IsComputePipeline();
+                
 
-        auto setCnt = vkPipeline->GetResourceSetCount();
-
-        //ensure resource set counts
-        if (setCnt > _resourceSets.size()) {
-            _resourceSets.resize(setCnt, {});
-        }
-
-        if(vkPipeline->IsComputePipeline()){
-            vkCmdBindPipeline(
+        if(isComputePipeline){
+           vkCmdBindPipeline(
                 _cmdBuf, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE, vkPipeline->GetHandle());
         } else {
             vkCmdBindPipeline(
                 _cmdBuf, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->GetHandle());
         }
+
+        //ensure resource set counts
+        auto setCnt = vkPipeline->GetResourceSetCount();
+        if (setCnt > _resourceSets.size()) {
+            _resourceSets.resize(setCnt, {});
+        }
+
+        //Mark current pipeline
+        _currentPipeline = vkPipeline;
     }
 
     void VulkanCommandList::BeginRenderPass(const sp<Framebuffer>& fb){
@@ -531,7 +535,7 @@ namespace Veldrid{
     ){
         CHK_PIPELINE_SET();
         assert(slot < _resourceSets.size());
-        assert(!_currentRenderPass->pipeline->IsComputePipeline());
+        assert(!_currentPipeline->IsComputePipeline());
 
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
@@ -548,7 +552,7 @@ namespace Veldrid{
     ){
         CHK_PIPELINE_SET();
         assert(slot < _resourceSets.size());
-        assert(!_currentRenderPass->pipeline->IsComputePipeline());
+        assert(_currentPipeline->IsComputePipeline());
 
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
@@ -718,8 +722,23 @@ namespace Veldrid{
         }
     }
 
-    void VulkanCommandList::_RegisterResourceSetUsage() {
-        auto accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    void VulkanCommandList::_RegisterResourceSetUsage(VkPipelineBindPoint bindPoint) {
+        VkPipelineStageFlags accessStage = 0;
+        switch (bindPoint)
+        {
+        case VK_PIPELINE_BIND_POINT_GRAPHICS:
+            accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+            break;
+        case VK_PIPELINE_BIND_POINT_COMPUTE:
+            accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            break;
+        case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR:
+            accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+            break;
+        default:
+            break;
+        }
+       
         for (auto& set : _resourceSets) {
             if (!set.isNewlyChanged) continue;
 
@@ -775,7 +794,7 @@ namespace Veldrid{
     void VulkanCommandList::_FlushNewResourceSets(
         VkPipelineBindPoint bindPoint
     ) {
-        auto pipeline = _currentRenderPass->pipeline;
+        auto pipeline = _currentPipeline;
         auto resourceSetCount = pipeline->GetResourceSetCount();
 
         std::vector<VkDescriptorSet> descriptorSets;
@@ -838,11 +857,16 @@ namespace Veldrid{
     }
 
     void VulkanCommandList::PreDrawCommand(){
+        //Run some checks
         //TODO:Handle renderpass end after begun but no draw command
         CHK_RENDERPASS_BEGUN();
+        //We have a pipeline
+        assert(_currentPipeline != nullptr);
+        //And the pipeline is a graphics one
+        assert(!_currentPipeline->IsComputePipeline());
 
         //Register resource sets
-        _RegisterResourceSetUsage();
+        _RegisterResourceSetUsage(VK_PIPELINE_BIND_POINT_GRAPHICS);
 
         //Begin renderpass
         VulkanFramebufferBase* vkfb = _currentRenderPass->fb.get();
@@ -893,18 +917,7 @@ namespace Veldrid{
             )){
                 clearAttachment.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
             }     
-            
-            auto renderableWidth = fb->GetDesc().GetWidth();
-            auto renderableHeight = fb->GetDesc().GetHeight();
-            if (renderableWidth > 0 && renderableHeight > 0)
-            {
-                VkClearRect clearRect{};
-                clearRect.baseArrayLayer = 0;
-                clearRect.layerCount = 1;
-                clearRect.rect = {0, 0, renderableWidth, renderableHeight};
-            
-                vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-            }
+           
         }
 
         if (!clearAttachments.empty()) {
@@ -963,10 +976,9 @@ namespace Veldrid{
             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
             VK_ACCESS_INDIRECT_COMMAND_READ_BIT
             );
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         PreDrawCommand();
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
-        _devRes.insert(indirectBuffer);
         vkCmdDrawIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
 
@@ -974,17 +986,69 @@ namespace Veldrid{
         const sp<Buffer>& indirectBuffer, 
         std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride
     ){
+        _resReg.RegisterBufferUsage(indirectBuffer,
+            VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+            VK_ACCESS_INDIRECT_COMMAND_READ_BIT
+        );
         PreDrawCommand();
+
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
-        _devRes.insert(indirectBuffer);
         vkCmdDrawIndexedIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
 
     
-    void VulkanCommandList::Dispatch(
-        std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) {};
+    void VulkanCommandList::PreDispatchCommand() {
+        //Run some checks
+        //TODO:Handle renderpass end after begun but no draw command
+        CHK_RENDERPASS_ENDED();
+        //We have a pipeline
+        assert(_currentPipeline != nullptr);
+        //And the pipeline is a compute one
+        assert(_currentPipeline->IsComputePipeline());
 
-    void VulkanCommandList::DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) {};
+        //Register resource sets
+        _RegisterResourceSetUsage(VK_PIPELINE_BIND_POINT_COMPUTE);
+
+        //Bind resource sets
+        _FlushNewResourceSets(VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE);
+
+        //Begin render pass
+        
+    }
+
+    void VulkanCommandList::Dispatch(
+        std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
+    ){
+        PreDispatchCommand();
+        vkCmdDispatch(_cmdBuf, groupCountX, groupCountY, groupCountZ);
+    };
+
+    void VulkanCommandList::DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) {
+        //The name of the stage flag is slightly confusing, but the spec is 
+        //otherwisely very clear it aplies to compute :
+        //
+        //    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT specifies the stage of the 
+        //    pipeline where VkDrawIndirect* / VkDispatchIndirect * / VkTraceRaysIndirect * 
+        //    data structures are consumed.
+        //
+        //and also :
+        //
+        //    For the compute pipeline, the following stages occur in this order :
+        //
+        //    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
+        //    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+        //
+
+        _resReg.RegisterBufferUsage(indirectBuffer,
+            VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+            VK_ACCESS_INDIRECT_COMMAND_READ_BIT
+        );
+        
+        PreDispatchCommand();
+
+        VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
+        vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
+    };
 
     void VulkanCommandList::ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) {
         

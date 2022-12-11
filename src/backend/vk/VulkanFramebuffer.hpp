@@ -23,7 +23,7 @@ namespace Veldrid
         
 
         VulkanFramebufferBase(
-            const sp<VulkanDevice>& dev
+            const sp<GraphicsDevice>& dev
         ) : Framebuffer(dev)
         { 
             //CreateCompatibleRenderPasses(
@@ -69,15 +69,16 @@ namespace Veldrid
         Description description;
 
         VulkanFramebuffer(
-            const sp<VulkanDevice>& dev,
+            const sp<GraphicsDevice>& dev,
             const Description& desc,
             bool isPresented = false
         ) 
             : VulkanFramebufferBase(dev)
             , description(desc)
         { 
+
             CreateCompatibleRenderPasses(
-                dev.get(), description, isPresented,
+                reinterpret_cast<VulkanDevice*>(dev.get()), description, isPresented,
                 renderPassNoClear, renderPassNoClearLoad, renderPassClear
             );
         }

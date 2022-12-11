@@ -465,7 +465,7 @@ namespace Veldrid{
             auto& stageCI = stageCIs[i];
             stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stageCI.module = vkShader->GetHandle();
-            stageCI.stage = VdToVkShaderStages(shader->GetDesc().stage);
+            stageCI.stage = VdToVkShaderStageSingle(shader->GetDesc().stage);
             // stageCI.pName = CommonStrings.main; // Meh
             stageCI.pName = shader->GetDesc().entryPoint.c_str(); // TODO: DONT ALLOCATE HERE
             stageCI.pSpecializationInfo = &specializationInfo;
@@ -597,7 +597,7 @@ namespace Veldrid{
         auto* vkShader = PtrCast<VulkanShader>(shader.get());
         VkPipelineShaderStageCreateInfo stageCI{};
         stageCI.module = vkShader->GetHandle();
-        stageCI.stage = VdToVkShaderStages(shader->GetDesc().stage);
+        stageCI.stage = VdToVkShaderStageSingle(shader->GetDesc().stage);
         stageCI.pName = "main"; // Meh
         stageCI.pSpecializationInfo = &specializationInfo;
         pipelineCI.stage = stageCI;
