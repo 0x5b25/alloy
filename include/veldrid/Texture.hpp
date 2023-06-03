@@ -71,12 +71,17 @@ namespace Veldrid
 
             //std::uint32_t usage;
 
-            enum class Type{
+            enum class Type: uint8_t{
                 Texture1D, Texture2D, Texture3D
             } type;
 
-            enum class SampleCount{
-                x1, x2, x4, x8, x16, x32
+            enum class SampleCount : uint8_t{
+                x1 = 1,
+                x2 = 2,
+                x4 = 4,
+                x8 = 8,
+                x16 = 16,
+                x32 = 32
             } sampleCount;
         };
         
