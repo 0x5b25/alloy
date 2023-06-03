@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "veldrid/common/Macros.h"
 
 namespace Veldrid
 {
@@ -9,30 +10,57 @@ namespace Veldrid
         enum class Tag : std::uint32_t{
             Opaque,
             Win32,
+            NSView,
+            NSWindow,
         } tag;
 
         SwapChainSource(SwapChainSource::Tag tag) :tag(tag) {}
     };
 
-    struct OpaqueSwapchainSource : SwapChainSource
+    struct OpaqueSwapChainSource : SwapChainSource
     {
         void* handle;
 
-        OpaqueSwapchainSource(void* handle)
+        OpaqueSwapChainSource(void* handle)
             : SwapChainSource(SwapChainSource::Tag::Opaque),
             handle(handle)
         {}
     };
-       
-    struct Win32SwapchainSource : SwapChainSource
+#ifdef VLD_PLATFORM_WIN32
+    struct Win32SwapChainSource : SwapChainSource
     {
         void *hWnd,*hInstance;
 
-        Win32SwapchainSource(void* hWnd, void* hInstance)
+        Win32SwapChainSource(void* hWnd, void* hInstance)
             : SwapChainSource(SwapChainSource::Tag::Win32),
             hWnd(hWnd), hInstance(hInstance)
         {}
     };
+#endif
+
+#ifdef VLD_PLATFORM_MACOS
+    struct NSViewSwapChainSource : SwapChainSource
+    {
+        void* nsView;
+
+        NSViewSwapChainSource(void* nsView)
+            : SwapChainSource(SwapChainSource::Tag::NSView),
+            nsView(nsView)
+        {}
+    };
+
+    struct NSWindowSwapChainSource : SwapChainSource
+    {
+        void* nsWindow;
+
+        NSWindowSwapChainSource(void* nsWindow)
+        : SwapChainSource(SwapChainSource::Tag::NSWindow),
+        nsWindow(nsWindow)
+        {}
+    };
+
+
+#endif
     /*
     internal class UwpSwapchainSource : SwapchainSource
     {
@@ -70,15 +98,6 @@ namespace Veldrid
         }
     }
 
-    internal class NSWindowSwapchainSource : SwapchainSource
-    {
-        public IntPtr NSWindow{ get; }
-
-            public NSWindowSwapchainSource(IntPtr nsWindow)
-        {
-            NSWindow = nsWindow;
-        }
-    }
 
     internal class UIViewSwapchainSource : SwapchainSource
     {
@@ -102,14 +121,6 @@ namespace Veldrid
         }
     }
 
-    internal class NSViewSwapchainSource : SwapchainSource
-    {
-        public IntPtr NSView{ get; }
-
-            public NSViewSwapchainSource(IntPtr nsView)
-        {
-            NSView = nsView;
-        }
-    }*/
+    internal */
 }
 

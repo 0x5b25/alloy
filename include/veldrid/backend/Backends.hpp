@@ -34,6 +34,16 @@ namespace Veldrid
         SwapChainSource* swapChainSource
     );
 
+    sp<GraphicsDevice> CreateMetalGraphicsDevice(
+        const GraphicsDevice::Options& options,
+        SwapChainSource* swapChainSource
+    );
+
+    sp<GraphicsDevice> CreateDefaultGraphicsDevice(
+        const GraphicsDevice::Options& options,
+        SwapChainSource* swapChainSource
+    );
+
 } // namespace Veldrid
 
 

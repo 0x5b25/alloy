@@ -38,6 +38,7 @@ set(VLD_IFACE_IMP_SRCS
     "src/Shader.cpp"
     "src/Helpers.cpp"
     "src/DeviceResource.cpp"
+    "src/Backends.cpp"
 )
 
 source_group(
@@ -46,15 +47,71 @@ source_group(
 
 add_subdirectory("3rd-party")
 
+#platform detection
+if(WIN32)
+    add_definitions(-DNOMINMAX)
+    set(VLD_BACKEND_DXC true)
+    set(VLD_BACKEND_VK  true)
+    set(VLD_BACKEND_MTL false)
+elseif(APPLE)
+    enable_language(OBJCXX)
+    set(VLD_BACKEND_DXC false)
+    set(VLD_BACKEND_VK  false)
+    set(VLD_BACKEND_MTL true)
+elseif(UNIX)
+    set(VLD_BACKEND_DXC false)
+    set(VLD_BACKEND_VK  true)
+    set(VLD_BACKEND_MTL false)
+endif()
+
+function(PrintBackendInfo)
+    if(WIN32)
+        message("Platform       : Windows")
+    elseif(APPLE)
+        message("Platform       : Apple")
+    elseif(UNIX)
+        message("Platform       : *nix")
+    endif()
+
+    if(${VLD_BACKEND_DXC})
+        message("Backend DX12   : Enabled")
+    else()
+        message("Backend DX12   : Disabled")
+    endif()
+
+    if(${VLD_BACKEND_VK})
+        message("Backend Vulkan : Enabled")
+    else()
+        message("Backend Vulkan : Disabled")
+    endif()
+
+    if(${VLD_BACKEND_MTL})
+        message("Backend Metal  : Enabled")
+    else()
+        message("Backend Metal  : Disabled")
+    endif()
+endfunction(PrintBackendInfo)
+
+PrintBackendInfo()
+if(${VLD_BACKEND_DXC})
+    #include("src/backend/vk/CMakeLists.txt")
+endif()
+
+
 add_library(Veldrid STATIC
     ${VLD_MISC_HEADERS}
     ${VLD_IFACE_HEADERS}
     ${VLD_IFACE_IMP_SRCS}
     )
 
-if (WIN32)
-    add_definitions(-DNOMINMAX)
+if(${VLD_BACKEND_VK})
+    include("src/backend/vk/CMakeLists.txt")
 endif()
+
+if(${VLD_BACKEND_MTL})
+    include("src/backend/mtl/CMakeLists.txt")
+endif()
+
 
 target_link_libraries(Veldrid 
     PUBLIC
@@ -67,9 +124,8 @@ target_link_libraries(Veldrid
     #    spdlog
     )
 
-include("src/backend/vk/CMakeLists.txt")
 
-target_include_directories(Veldrid PUBLIC "include")
+target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_features(Veldrid PUBLIC cxx_std_17)
 
 add_subdirectory("demo")

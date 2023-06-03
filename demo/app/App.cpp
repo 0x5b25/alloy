@@ -9,9 +9,15 @@
 
 #if defined(VLD_PLATFORM_WIN32)
 
-#include <Windows.h>
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
+    #include <Windows.h>
+    
+    #define GLFW_EXPOSE_NATIVE_WIN32
+    #include <GLFW/glfw3native.h>
+
+#elif defined(VLD_PLATFORM_MACOS)
+
+    #define GLFW_EXPOSE_NATIVE_COCOA
+    #include <GLFW/glfw3native.h>
 
 #endif
 
@@ -125,7 +131,9 @@ bool AppBase::Run(){
     auto hInst = GetModuleHandle(NULL);
     Veldrid::Win32SwapchainSource scSrc{ hWnd, nullptr };
 #elif defined(VLD_PLATFORM_MACOS)
-
+    //Get the NSWindow
+    auto hWnd = glfwGetCocoaWindow(window);
+    Veldrid::NSWindowSwapChainSource scSrc(hWnd);
 #endif
     OnAppStart(&scSrc, initialWidth, initialHeight);
 
