@@ -138,7 +138,7 @@ elseif (VKB_WSI_SELECTION STREQUAL WAYLAND)
     target_include_directories(volk PUBLIC ${WAYLAND_INCLUDE_DIRS})
 endif()
 
-set_property(TARGET volk PROPERTY FOLDER "ThirdParty")
+set_property(TARGET volk PROPERTY FOLDER "Veldrid/vk/3rd-party")
 
 
 # spdlog
