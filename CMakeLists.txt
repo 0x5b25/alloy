@@ -93,9 +93,7 @@ function(PrintBackendInfo)
 endfunction(PrintBackendInfo)
 
 PrintBackendInfo()
-if(${VLD_BACKEND_DXC})
-    #include("src/backend/vk/CMakeLists.txt")
-endif()
+
 
 
 add_library(Veldrid STATIC
@@ -103,6 +101,10 @@ add_library(Veldrid STATIC
     ${VLD_IFACE_HEADERS}
     ${VLD_IFACE_IMP_SRCS}
     )
+
+if(${VLD_BACKEND_DXC})
+    include("src/backend/dx12/CMakeLists.txt")
+endif()
 
 if(${VLD_BACKEND_VK})
     include("src/backend/vk/CMakeLists.txt")

@@ -2,7 +2,7 @@
 
 #include <string>
 #include <sstream>
-#include <vector>`
+#include <vector>
 
 #include "veldrid/common/Macros.h"
 #include "veldrid/common/RefCnt.hpp"

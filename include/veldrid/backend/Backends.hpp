@@ -12,6 +12,10 @@ namespace Veldrid
         /// </summary>
         //Direct3D11,
         /// <summary>
+        /// Direct3D 12.
+        /// </summary>
+        Direct3D12,
+        /// <summary>
         /// Vulkan.
         /// </summary>
         Vulkan,
@@ -27,8 +31,13 @@ namespace Veldrid
         /// OpenGL ES.
         /// </summary>
         //OpenGLES,
-    };
+    };    
     
+    sp<GraphicsDevice> CreateDX12GraphicsDevice(
+        const GraphicsDevice::Options& options,
+        SwapChainSource* swapChainSource
+    );
+
     sp<GraphicsDevice> CreateVulkanGraphicsDevice(
         const GraphicsDevice::Options& options,
         SwapChainSource* swapChainSource
