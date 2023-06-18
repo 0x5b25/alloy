@@ -10,11 +10,11 @@ SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* sw
 
 	switch (swapchainSource->tag) {
 		case Veldrid::SwapChainSource::Tag::Opaque:{
-			auto opaqueSource = (Veldrid::OpaqueSwapchainSource*)swapchainSource;
+			auto opaqueSource = (Veldrid::OpaqueSwapChainSource*)swapchainSource;
 			return {(VkSurfaceKHR)opaqueSource->handle, false};
 		}
 		case Veldrid::SwapChainSource::Tag::Win32: {
-			auto win32Source = (Veldrid::Win32SwapchainSource*)swapchainSource;
+			auto win32Source = (Veldrid::Win32SwapChainSource*)swapchainSource;
 			VkWin32SurfaceCreateInfoKHR surfaceCI{};
 			surfaceCI.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
 			surfaceCI.pNext = nullptr;

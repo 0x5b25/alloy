@@ -30,8 +30,8 @@ cmake_minimum_required(VERSION 3.13)
 set(VLD_BACKEND_DXC_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/DXCDevice.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCDevice.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanResourceFactory.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanResourceFactory.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanFramebuffer.cpp"

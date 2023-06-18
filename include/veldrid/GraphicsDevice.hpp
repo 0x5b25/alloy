@@ -79,6 +79,12 @@ namespace Veldrid
 
         enum class UVOrigin{ TopLeft, TopRight, BottomLeft, BottomRight };
 
+        struct SubmitBatch{
+            const std::vector<CommandList*>& cmd;
+            const std::vector<Semaphore*>& waitSemaphores;
+            const std::vector<Semaphore*>& signalSemaphores;
+        };
+
     protected:
         GraphicsDevice() = default;
 
@@ -91,9 +97,7 @@ namespace Veldrid
 
         virtual ResourceFactory* GetResourceFactory() = 0;
         virtual void SubmitCommand(
-            const std::vector<CommandList*>& cmd,
-            const std::vector<Semaphore*>& waitSemaphores,
-            const std::vector<Semaphore*>& signalSemaphores,
+            const std::vector<SubmitBatch>& batch,
             Fence* fence) = 0;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,

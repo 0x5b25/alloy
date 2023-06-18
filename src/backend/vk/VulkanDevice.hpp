@@ -175,9 +175,7 @@ namespace Veldrid
     public:
 
         virtual void SubmitCommand(
-            const std::vector<CommandList*>& cmd,
-            const std::vector<Semaphore*>& waitSemaphores,
-            const std::vector<Semaphore*>& signalSemaphores,
+            const std::vector<SubmitBatch>& batch,
             Fence* fence) override;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,
