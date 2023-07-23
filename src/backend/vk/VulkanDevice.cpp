@@ -450,10 +450,10 @@ namespace Veldrid {
         }
 
         //Make the surface if possible
-        SurfaceContainer _surf = {VK_NULL_HANDLE, false};
+        VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
 
         if (swapChainSource != nullptr) {
-            _surf = CreateSurface(ctx->GetHandle(), swapChainSource);
+            _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
         }
 
         auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf.surface, {});
@@ -470,9 +470,6 @@ namespace Veldrid {
         dev->_phyDev = devInfo;
         dev->_features = {};
         dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
-
-        dev->_devName = devInfo.name;
-
 
         //Create logical device
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
@@ -572,6 +569,8 @@ namespace Veldrid {
             dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
         }
 
+        dev->_features.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
+
         createInfo.enabledExtensionCount = static_cast<uint32_t>(devExtensions.size());
         createInfo.ppEnabledExtensionNames = devExtensions.data();
 
@@ -634,28 +633,42 @@ namespace Veldrid {
         //dev->_isValid = true;
 
         //Fill driver and api info
-        if (dev->_features.supportsDrvPropQuery)
-        {
-            VkPhysicalDeviceDriverProperties driverProps{};
-            driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
-            driverProps.pNext = nullptr;
+        //if (dev->_features.supportsDrvPropQuery)
+        //{
+            //VkPhysicalDeviceDriverProperties driverProps{};
+            //driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+            //driverProps.pNext = nullptr;
+//
+            //VkPhysicalDeviceProperties2KHR deviceProps{};
+            //deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            //deviceProps.pNext = &driverProps;
+//
+            //vkGetPhysicalDeviceProperties2(dev->_phyDev.handle, &deviceProps);
+//
+            //VkConformanceVersion conforming = driverProps.conformanceVersion;
+            //dev->_apiVer.major = conforming.major;
+            //dev->_apiVer.minor = conforming.minor;
+            //dev->_apiVer.subminor = conforming.subminor;
+            //dev->_apiVer.patch = conforming.major;
+            //dev->_drvName = driverProps.driverName;
+            //dev->_drvInfo = driverProps.driverInfo;
+        //}
 
-            VkPhysicalDeviceProperties2KHR deviceProps{};
-            deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            deviceProps.pNext = &driverProps;
 
-            vkGetPhysicalDeviceProperties2(dev->_phyDev.handle, &deviceProps);
+        VkPhysicalDeviceProperties deviceProps{};
+        vkGetPhysicalDeviceProperties(dev->_phyDev.handle, &deviceProps);
 
-            VkConformanceVersion conforming = driverProps.conformanceVersion;
-            dev->_apiVer.major = conforming.major;
-            dev->_apiVer.minor = conforming.minor;
-            dev->_apiVer.subminor = conforming.subminor;
-            dev->_apiVer.patch = conforming.major;
-            dev->_drvName = driverProps.driverName;
-            dev->_drvInfo = driverProps.driverInfo;
-        }
+        dev->_adpInfo.apiVersion.major = VK_API_VERSION_MAJOR(deviceProps.apiVersion);
+        dev->_adpInfo.apiVersion.minor = VK_API_VERSION_MINOR(deviceProps.apiVersion);
+        dev->_adpInfo.apiVersion.subminor = 0;
+        dev->_adpInfo.apiVersion.patch = VK_API_VERSION_PATCH(deviceProps.apiVersion);
 
-        dev->_devName = phyDev->name;
+        dev->_adpInfo.driverVersion = deviceProps.driverVersion;
+        dev->_adpInfo.vendorID = deviceProps.vendorID;
+        dev->_adpInfo.deviceID = deviceProps.deviceID;
+
+        dev->_adpInfo.deviceName = phyDev->name;
+
 
         dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
         dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
@@ -795,7 +808,7 @@ namespace Veldrid {
     //}
 
     //sp<_CmdPoolContainer> VulkanDevice::GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-    _DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout){
+    VK::priv::_DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout){
         return _descPoolMgr.Allocate(layout);
     }
 
@@ -830,8 +843,10 @@ namespace Veldrid {
             usages |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
         }
 
-        bool isStaging = desc.usage.staging;
-        bool hostVisible = isStaging || desc.usage.dynamic;
+        //bool isStaging = desc.usage.staging;
+        //bool hostVisible = isStaging || desc.usage.dynamic;
+
+        
 
         VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         bufferInfo.size = desc.sizeInBytes;
@@ -839,7 +854,28 @@ namespace Veldrid {
 
         VmaAllocationCreateInfo allocInfo{};
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-        if(hostVisible){
+
+        switch (desc.hostAccess)
+        {        
+        case Description::HostAccess::PreferRead:
+            //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+            allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+            allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+            break;
+        case Description::HostAccess::PreferWrite:
+            //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+            allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+            break;
+        case Description::HostAccess::None:
+            allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        default:
+            break;
+        }
+
+        /*if(hostVisible){
             allocInfo.requiredFlags |= 
                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
                 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -854,7 +890,7 @@ namespace Veldrid {
             // for better performance of GPU -> CPU transfers
             allocInfo.preferredFlags |= 
                 VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-        }
+        }*/
 
         VkBuffer buffer;
         VmaAllocation allocation;

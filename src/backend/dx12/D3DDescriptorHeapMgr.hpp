@@ -1,57 +1,39 @@
 #pragma once
 
-#include <volk.h>
+//3rd-party headers
 
+//veldrid public headers
 #include "veldrid/common/RefCnt.hpp"
-#include "veldrid/common/Macros.h"
 
-#include <cstdint>
-#include <queue>
-#include <unordered_set>
-#include <mutex>
+#include "veldrid/BindableResource.hpp"
+#include "veldrid/Pipeline.hpp"
+#include "veldrid/GraphicsDevice.hpp"
+#include "veldrid/SyncObjects.hpp"
+#include "veldrid/Buffer.hpp"
+#include "veldrid/SwapChain.hpp"
 
-namespace Veldrid::VK::priv {
+//standard library headers
+#include <vector>
 
-	class _DescriptorSet;
+//backend specific headers
 
-	struct DescriptorResourceCounts
-    {
-        std::uint32_t uniformBufferCount;
-        std::uint32_t sampledImageCount;
-        std::uint32_t samplerCount;
-        std::uint32_t storageBufferCount;
-        std::uint32_t storageImageCount;
-        std::uint32_t uniformBufferDynamicCount;
-        std::uint32_t storageBufferDynamicCount;
-    };
+//platform specific headers
+#include <d3d12.h>
+#include <dxgi1_4.h> //Guaranteed by DX12
+#include <wrl/client.h> // for ComPtr
 
-	struct PoolSize {
-		VkDescriptorType type;
-		float multiplier;
-	};
-	struct PoolSizes {
-		std::vector<PoolSize> sizes =
-		{
-			{ VK_DESCRIPTOR_TYPE_SAMPLER, 1.f },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4.f },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4.f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1.f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1.f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2.f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2.f },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1.f },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1.f },
-			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1.f }
-		};
-	};
+//Local headers
 
-	class _DescriptorPoolMgr{
+namespace Veldrid::DXC::priv {
+
+    class _DescriptorSet;
+
+    class _DescriptorHeapMgr{
 
 	public:
 		 struct Container : public RefCntBase{
 			VkDescriptorPool pool;
-			_DescriptorPoolMgr* mgr;
+			_DescriptorHeapMgr* mgr;
 
 			~Container(){
 				mgr->_ReleaseContainer(this);
@@ -90,7 +72,7 @@ namespace Veldrid::VK::priv {
 		_DescriptorSet Allocate(VkDescriptorSetLayout layout);
 	};
 
-
+    
 
 	class _DescriptorSet{
 		DISABLE_COPY_AND_ASSIGN(_DescriptorSet);
@@ -133,4 +115,5 @@ namespace Veldrid::VK::priv {
 		const VkDescriptorSet& GetHandle() const {return _descSet;}
 
 	};
+
 }

@@ -23,7 +23,6 @@ function(CreateDemoApp DemoName)
 
     target_link_libraries(${DemoName} 
         PUBLIC 
-            volk
             Veldrid
             glm::glm
             glfw

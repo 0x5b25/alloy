@@ -1,24 +1,42 @@
 #pragma once
 
-#include <volk.h>
+//3rd-party headers
+
+//veldrid public headers
+#include "veldrid/common/RefCnt.hpp"
 
 #include "veldrid/BindableResource.hpp"
+#include "veldrid/Pipeline.hpp"
+#include "veldrid/GraphicsDevice.hpp"
+#include "veldrid/SyncObjects.hpp"
+#include "veldrid/Buffer.hpp"
+#include "veldrid/SwapChain.hpp"
 
-#include <unordered_set>
+//standard library headers
+#include <vector>
 
-#include "VkDescriptorPoolMgr.hpp"
+//backend specific headers
+
+//platform specific headers
+#include <d3d12.h>
+#include <dxgi1_4.h> //Guaranteed by DX12
+#include <wrl/client.h> // for ComPtr
+
+//Local headers
+
 
 namespace Veldrid{
 
-    class VulkanDevice;
-    class VulkanTexture;
+    class DXCDevice;
+    class DXCTexture;
 
     class VulkanResourceLayout : public ResourceLayout{
+
 
         VkDescriptorSetLayout _dsl;
 
         std::uint32_t _dynamicBufferCount;
-        Veldrid::VK::priv::DescriptorResourceCounts _drcs;
+        DescriptorResourceCounts _drcs;
 
         VulkanResourceLayout(
             const sp<GraphicsDevice>& dev,
@@ -35,21 +53,21 @@ namespace Veldrid{
 
         const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
         std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
-        const Veldrid::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+        const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
     };
 
-    class VulkanResourceSet : public ResourceSet{
+    class DXCResourceSet : public ResourceSet{ //Actually d3d12 descriptor heap?
     public:
         using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
 
-        Veldrid::VK::priv::_DescriptorSet _descSet;
+        _DescriptorSet _descSet;
 
         std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 
-        VulkanResourceSet(
+        DXCResourceSet(
             const sp<GraphicsDevice>& dev,
-            Veldrid::VK::priv::_DescriptorSet&& set,
+            _DescriptorSet&& set,
             const Description& desc
         ) 
             : ResourceSet(dev, desc)
@@ -58,7 +76,7 @@ namespace Veldrid{
         {}
 
     public:
-        ~VulkanResourceSet();
+        ~DXCResourceSet();
 
         static sp<ResourceSet> Make(
             const sp<VulkanDevice>& dev,

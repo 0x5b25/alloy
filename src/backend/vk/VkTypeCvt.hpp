@@ -8,7 +8,7 @@
 #include "veldrid/Sampler.hpp"
 #include "veldrid/Texture.hpp"
 
-namespace Veldrid {
+namespace Veldrid::VK::priv {
     
     VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode);
 

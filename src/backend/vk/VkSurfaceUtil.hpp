@@ -23,11 +23,13 @@
 
 #include <string>
 
-struct SurfaceContainer{
-	VkSurfaceKHR surface;
-	bool isOwnSurface;//Is this surface managed by us
-};
+namespace Veldrid::VK::priv{
+	struct SurfaceContainer{
+		VkSurfaceKHR surface;
+		bool isOwnSurface;//Is this surface managed by us
+	};
 
-SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource);
+	SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource);
 
-std::string GetSurfaceExtension(Veldrid::SwapChainSource* swapchainSource);
+	std::string GetSurfaceExtension(Veldrid::SwapChainSource* swapchainSource);
+}

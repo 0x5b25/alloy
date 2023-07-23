@@ -286,11 +286,14 @@ class DemoApp : public AppBase{
         //Wait for previous render to complete
         renderFinishFence->WaitForSignal();
         renderFinishFence->Reset();
-
         dev->SubmitCommand(
-            { _commandList.get() },
-            {},
-            { renderFinishSemaphore.get()},
+            {
+                {
+                    { _commandList.get() },
+                    {},
+                    { renderFinishSemaphore.get()},
+                }
+            },
             renderFinishFence.get());
         cmd = _commandList;
         

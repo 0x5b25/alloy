@@ -28,19 +28,7 @@ inline void ThrowIfFailed(HRESULT hr)
 
 using Microsoft::WRL::ComPtr;
 
-HRESULT GetAdapter(bool enableDebug, ComPtr<IDXGIAdapter1>& outAdp) {
-
-
-    UINT createFactoryFlags = 0;
-    if(enableDebug){
-        createFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-    }
-
-    ComPtr<IDXGIFactory4> dxgiFactory;
-    auto status = CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
-    if(FAILED(status)) {
-        return status;
-    } 
+HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAdapter1>& outAdp) {
     
     ComPtr<IDXGIAdapter1> selectedAdp = nullptr;
     SIZE_T maxDedicatedVideoMemory = 0;
@@ -55,7 +43,7 @@ HRESULT GetAdapter(bool enableDebug, ComPtr<IDXGIAdapter1>& outAdp) {
         ++adapterIndex;
 
         DXGI_ADAPTER_DESC1 desc;
-        status = adapter->GetDesc1(&desc);
+        auto status = adapter->GetDesc1(&desc);
         if (FAILED(status))
             continue;
 
@@ -84,7 +72,7 @@ HRESULT GetAdapter(bool enableDebug, ComPtr<IDXGIAdapter1>& outAdp) {
     if(selectedAdp == nullptr) {
         if(enableDebug){
             //Get a WARP device if debug mode & no dx12 capable device found.
-            status = dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&selectedAdp));
+            auto status = dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&selectedAdp));
             if (FAILED(status)) {
                 return status;
             }
@@ -122,6 +110,8 @@ namespace Veldrid {
         if(FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&cmdQueue)))){
             return nullptr;
         }
+
+
     
         ComPtr<ID3D12Fence> fence;
         if(FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))){
@@ -200,8 +190,116 @@ namespace Veldrid {
         return mNextFenceValue++;
     }
 
+    DXCAutoFence::DXCAutoFence()
+        : _fence(nullptr)
+        , _expectedVal(0)
+        , _fenceEventHandle(nullptr)
+    {}
 
-    DXCDevice::DXCDevice() : _resFactory(this) {}
+    DXCAutoFence::~DXCAutoFence(){
+        if(_fenceEventHandle!=nullptr){
+            CloseHandle(_fenceEventHandle);
+        }
+    }
+
+    bool DXCAutoFence::Init(ComPtr<ID3D12Fence>&& fence) {
+        _fence = fence;
+        _expectedVal = 0;
+
+        HANDLE fenceEventHandle = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
+        if(fenceEventHandle == INVALID_HANDLE_VALUE){
+            return false;
+        }
+
+        _fenceEventHandle = fenceEventHandle;
+
+        return true;
+    }
+
+    HRESULT DXCAutoFence::WaitOnCPU(std::uint32_t timeoutMs) {
+        auto expectedVal = _expectedVal.load(std::memory_order_acquire);
+        std::lock_guard lockGuard{_waitLock};
+
+        //Return if current fence is already completed
+        if(expectedVal <= GetCurrentValue()) return S_OK;
+    
+        auto result = _fence->SetEventOnCompletion(expectedVal, nullptr);
+        if(FAILED(result)) return result;
+
+        auto waitResult = WaitForSingleObjectEx(_fenceEventHandle, timeoutMs, false);
+        switch(waitResult){
+            //The state of the specified object is signaled.
+            case WAIT_OBJECT_0: return S_OK;
+            //The time-out interval elapsed, and the object's state is nonsignaled.
+            case WAIT_TIMEOUT: return DXGI_ERROR_WAIT_TIMEOUT;
+            //Object not released before thread terminate
+            case WAIT_ABANDONED:
+            //The wait was ended by one or more user-mode asynchronous procedure calls (APC) queued to the thread.
+            case WAIT_IO_COMPLETION:
+            //Other generic failures
+            default: return E_FAIL;
+        }
+        
+    }
+
+    
+    HRESULT DXCAutoFence::SignalOnCPU() {
+        //Atomically increment the expected fence value
+        //auto sigVal = _expectedVal.fetch_add(1, std::memory_order_acq_rel);
+        auto sigVal = _expectedVal.load(std::memory_order_acq_rel);
+
+        //acquired old value, we need to +1
+        //sigVal++;
+
+        return _fence->Signal(sigVal);
+        //WaitForSingleObjectEx(_fenceEventHandle, INFINITE, false);
+          
+    }
+
+    HRESULT DXCAutoFence::SignalOnCPUAutoInc() {
+        //Atomically increment the expected fence value
+        auto sigVal = _expectedVal.fetch_add(1, std::memory_order_acq_rel);
+
+        //acquired old value, we need to +1
+        //sigVal++;
+
+        return _fence->Signal(sigVal);
+        //WaitForSingleObjectEx(_fenceEventHandle, INFINITE, false);
+          
+    }
+
+    HRESULT DXCAutoFence::InsertWaitToQueue(ID3D12CommandQueue *q) {
+        auto expectedVal = _expectedVal.load(std::memory_order_acquire);
+
+        return q->Wait(GetHandle(), expectedVal);
+    }
+
+    HRESULT DXCAutoFence::InsertSignalToQueue(ID3D12CommandQueue *q) {
+        //Atomically increment the expected fence value
+        //auto sigVal = _expectedVal.fetch_add(1, std::memory_order_acq_rel);
+        auto sigVal = _expectedVal.load(std::memory_order_acq_rel);
+        //acquired old value, we need to +1
+        //sigVal++;
+
+        return q->Signal(_fence.Get(), sigVal);
+    }
+
+    HRESULT DXCAutoFence::InsertSignalToQueueAutoInc(ID3D12CommandQueue *q) {
+        //Atomically increment the expected fence value
+        auto sigVal = _expectedVal.fetch_add(1, std::memory_order_acq_rel);
+        //acquired old value, we need to +1
+        //sigVal++;
+
+        return q->Signal(_fence.Get(), sigVal);
+    }
+
+    bool DXCAutoFence::IsCompleted() const {
+        return _expectedVal.load(std::memory_order_acquire) <= GetCurrentValue();
+    }
+
+    DXCDevice::DXCDevice() 
+        : _resFactory(this)
+    {}
 
     DXCDevice::~DXCDevice() {
     }
@@ -216,10 +314,21 @@ namespace Veldrid {
                 debugController->EnableDebugLayer();
             }
         }
+        //Create DXGIFactory
+        UINT createFactoryFlags = 0;
+        if(options.debug){
+            createFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+        }
+
+        ComPtr<IDXGIFactory4> dxgiFactory;
+        auto status = CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
+        if(FAILED(status)) {
+            return nullptr;
+        } 
 
         //Find physical dx12 adapter
         ComPtr<IDXGIAdapter1> adp;
-        if(FAILED(GetAdapter(options.debug, adp))){
+        if(FAILED(GetAdapter(dxgiFactory.Get(), options.debug, adp))){
             return nullptr;
         }
 
@@ -245,11 +354,56 @@ namespace Veldrid {
         if(FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&queue)))){
             return nullptr;
         }
+
+        ComPtr<ID3D12CommandAllocator> cmdAlloc;
+        if(FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAlloc)))){
+            return nullptr;
+        }
+
+        ComPtr<ID3D12Fence> waitIdleFence;
+        D3D12_FENCE_FLAGS fenceFlags {};
+        if(FAILED(device->CreateFence(0, fenceFlags, IID_PPV_ARGS(&waitIdleFence)))){
+            return nullptr;
+        }
+
+        ComPtr<D3D12MA::Allocator> allocator;
+        
+        D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
+        allocatorDesc.pDevice = device.Get();
+        allocatorDesc.pAdapter = adp.Get();
+
+        if(FAILED(D3D12MA::CreateAllocator(&allocatorDesc, &allocator))){
+            return nullptr;
+        }
+
         
         auto dev = sp<DXCDevice>(new DXCDevice());
+        
+
+        dev->_adp = std::move(adp);
+        dev->_dev = std::move(device);
+        dev->_q = std::move(queue);
+        dev->_cmdAlloc = std::move(cmdAlloc);
+        dev->_waitIdleFence.Init(std::move(waitIdleFence));
+        dev->_alloc = std::move(allocator);
+
+        dev->_adpInfo = {};
+
         //Fill driver and api info
-        {
-            dev->_apiVer = GraphicsApiVersion::Unknown;
+        {//Get device ID & driver version
+            DXGI_ADAPTER_DESC1 desc;
+            if(SUCCEEDED(dev->_adp->GetDesc1(&desc))){
+                dev->_adpInfo.vendorID = desc.VendorId;
+                dev->_adpInfo.deviceID = desc.DeviceId;
+            }
+
+            LARGE_INTEGER drvVer{};
+            dev->_adp->CheckInterfaceSupport(__uuidof(IDXGIDevice), &drvVer);
+            dev->_adpInfo.driverVersion = drvVer.QuadPart;
+        }
+
+        {//Get api version
+            dev->_adpInfo.apiVersion = GraphicsApiVersion::Unknown;
             static const D3D_FEATURE_LEVEL s_featureLevels[] =
             {
                 D3D_FEATURE_LEVEL_12_2,
@@ -264,17 +418,18 @@ namespace Veldrid {
                 _countof(s_featureLevels), s_featureLevels, D3D_FEATURE_LEVEL_11_0
             };
 
-            if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS,
+            if (SUCCEEDED(dev->_dev->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS,
                  &featLevels, sizeof(featLevels))))
             {
+                auto& apiVer = dev->_adpInfo.apiVersion;
                 switch (featLevels.MaxSupportedFeatureLevel)
                 {
-                case D3D_FEATURE_LEVEL_12_2:dev->_apiVer.major = 12; dev->_apiVer.minor = 2; break;
-                case D3D_FEATURE_LEVEL_12_1:dev->_apiVer.major = 12; dev->_apiVer.minor = 1; break;
-                case D3D_FEATURE_LEVEL_12_0:dev->_apiVer.major = 12; dev->_apiVer.minor = 0;break;
-                case D3D_FEATURE_LEVEL_11_1:dev->_apiVer.major = 11; dev->_apiVer.minor = 1;break;
+                case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
+                case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
+                case D3D_FEATURE_LEVEL_12_0:apiVer.major = 12; apiVer.minor = 0;break;
+                case D3D_FEATURE_LEVEL_11_1:apiVer.major = 11; apiVer.minor = 1;break;
                 case D3D_FEATURE_LEVEL_11_0:
-                default: dev->_apiVer.major = 11; dev->_apiVer.minor = 0;
+                default: apiVer.major = 11; apiVer.minor = 0;
                     break;
                 }
 
@@ -285,19 +440,29 @@ namespace Veldrid {
 
         {
             D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
-            if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,
+            if (SUCCEEDED(dev->_dev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,
                  &options, sizeof(options))))
             {
                 dev->_commonFeat.shaderFloat64 = options.DoublePrecisionFloatShaderOps;
             }
         }
 
-        {
+        {//get device name
             DXGI_ADAPTER_DESC1 desc{};
-            if (SUCCEEDED(adp->GetDesc1(&desc))){
-                std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
-                const std::wstring wdesc{desc.Description};
-                dev->_devName = utf8_conv.to_bytes(wdesc);
+            if (SUCCEEDED(dev->_adp->GetDesc1(&desc))){
+                do{
+                    auto& devNameStr = dev->_adpInfo.deviceName;
+                    auto required_size = WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, NULL, 0, NULL, NULL);
+                    devNameStr.resize(required_size);
+                    if (required_size == 0) break;
+
+                    WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, devNameStr.data(), required_size, NULL, NULL);
+                }while(0);
+    
+
+                //std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
+                //const std::wstring wdesc{desc.Description};
+                //dev->_devName = utf8_conv.to_bytes(wdesc);
             }            
         }
 
@@ -318,15 +483,156 @@ namespace Veldrid {
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
         
-
-        dev->_adp = std::move(adp);
-        dev->_dev = std::move(device);
-
         return dev;
     }
 
-    void DXCDevice::WaitForIdle() {
-
+    void DXCDevice::SubmitCommand(const std::vector<SubmitBatch> &batch, Fence *fence){
     }
-   
+    SwapChain::State DXCDevice::PresentToSwapChain(const std::vector<Semaphore *> &waitSemaphores, SwapChain *sc)
+    {
+        for(auto* sem : waitSemaphores){
+            //auto dxcSem = static_cast<DXCVLDFence*>(sem);
+        }
+        
+        return SwapChain::State::Optimal;
+    }
+
+    void DXCDevice::WaitForIdle()
+    {
+        _waitIdleFence.InsertSignalToQueueAutoInc(_q.Get());
+        _waitIdleFence.WaitOnCPU(INFINITE);
+    }
+
+    DXCBuffer::~DXCBuffer() {
+        _buffer->Release();
+
+        DEBUGCODE(_buffer = nullptr);
+    }
+
+    sp<Buffer> DXCBuffer::Make(
+        const sp<DXCDevice> &dev,
+        const Buffer::Description &desc)
+    {
+        
+        D3D12_RESOURCE_DESC resourceDesc = {};
+        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        //For buffers Alignment must be 64KB (D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) or 0, 
+        //which is effectively 64KB.
+        resourceDesc.Alignment = 0;
+        resourceDesc.Width = desc.sizeInBytes;
+        resourceDesc.Height = 1;
+        resourceDesc.DepthOrArraySize = 1;
+        resourceDesc.MipLevels = 1;
+        resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+        resourceDesc.SampleDesc.Count = 1;
+        resourceDesc.SampleDesc.Quality = 0;
+        resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+        D3D12MA::ALLOCATION_DESC allocationDesc = {};
+        D3D12_RESOURCE_STATES resourceState;
+
+        switch (desc.hostAccess)
+        {        
+        case Description::HostAccess::PreferRead:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_READBACK;
+            resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
+            break;
+        case Description::HostAccess::PreferWrite:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+            resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+            break;
+        case Description::HostAccess::None:
+        default:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+            resourceState = D3D12_RESOURCE_STATE_COMMON;
+            break;
+        }
+
+        allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+
+        D3D12MA::Allocation* allocation;
+        HRESULT hr = dev->Allocator()->CreateResource(
+            &allocationDesc,
+            &resourceDesc,
+            resourceState,
+            NULL,
+            &allocation,
+             IID_NULL, NULL);
+
+        if(FAILED(hr)){
+            return nullptr;
+        }
+
+        auto buf = new DXCBuffer{ dev, desc };
+        buf->_buffer = allocation;
+
+        return sp(buf);
+    }
+
+    void *DXCBuffer::MapToCPU() {
+        
+        void* mappedPtr;
+        auto hr = GetHandle()->Map(0, NULL, &mappedPtr);
+        if(FAILED(hr)){
+            return nullptr;
+        }
+
+        return mappedPtr;
+    }
+
+    
+    void DXCBuffer::UnMap() {        
+        GetHandle()->Unmap(0, NULL);
+    }
+
+    sp<Fence> DXCVLDFence::Make(const sp<DXCDevice> &dev, bool signaled) {
+
+        ComPtr<ID3D12Fence> fence;
+        D3D12_FENCE_FLAGS fenceFlags {};
+        if(FAILED(dev->GetDevice()->CreateFence(0, fenceFlags, IID_PPV_ARGS(&fence)))){
+            return nullptr;
+        }
+
+
+        auto fen = sp<DXCVLDFence>{new DXCVLDFence(dev)};
+        if(!fen->_fence.Init(std::move(fence))){
+            return nullptr;
+        }
+
+        return fen;
+    }
+
+    
+    bool DXCVLDFence::WaitForSignal(std::uint64_t timeoutNs) {
+        auto timeoutMsLong = timeoutNs / 10000000;
+        std::uint32_t timeoutMs = timeoutMsLong;
+        if(timeoutMsLong >= 0xFFFFFFFF){
+            timeoutMs = 0xFFFFFFFF;
+        }
+
+        auto res = _fence.WaitOnCPU(timeoutMs);
+
+        return SUCCEEDED(res);
+    }
+
+    
+    sp<Semaphore> DXCVLDSemaphore::Make(const sp<DXCDevice> &dev) {
+
+        ComPtr<ID3D12Fence> fence;
+        D3D12_FENCE_FLAGS fenceFlags {};
+        if(FAILED(dev->GetDevice()->CreateFence(0, fenceFlags, IID_PPV_ARGS(&fence)))){
+            return nullptr;
+        }
+
+
+        auto sem = sp<DXCVLDSemaphore>{new DXCVLDSemaphore(dev)};
+        if(!sem->_fence.Init(std::move(fence))){
+            return nullptr;
+        }
+
+        return sem;
+    }
+
+
 }

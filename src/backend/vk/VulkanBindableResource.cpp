@@ -55,9 +55,9 @@ namespace Veldrid
         {
             bindings[i].binding = i;
             bindings[i].descriptorCount = 1;
-            VkDescriptorType descriptorType = VdToVkDescriptorType(elements[i].kind, elements[i].options);
+            VkDescriptorType descriptorType = VK::priv::VdToVkDescriptorType(elements[i].kind, elements[i].options);
             bindings[i].descriptorType = descriptorType;
-            bindings[i].stageFlags = VdToVkShaderStages(elements[i].stages);
+            bindings[i].stageFlags = VK::priv::VdToVkShaderStages(elements[i].stages);
             if (elements[i].options.dynamicBinding) {
                 dynamicBufferCount += 1;
             }
@@ -90,7 +90,7 @@ namespace Veldrid
             }
         }
 
-        DescriptorResourceCounts drcs {};
+        VK::priv::DescriptorResourceCounts drcs {};
             drcs.uniformBufferCount = uniformBufferCount;
             drcs.uniformBufferDynamicCount = uniformBufferDynamicCount;
             drcs.sampledImageCount = sampledImageCount;

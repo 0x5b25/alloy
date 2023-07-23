@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 
 
 
-#add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
 
 
 #add_executable(VulkanTest 
@@ -38,20 +38,20 @@ set(VLD_BACKEND_DXC_SRCS
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanFramebuffer.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanSwapChain.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanSwapChain.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanShader.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanShader.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCShader.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCShader.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanCommandList.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VulkanCommandList.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanBindableResource.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanBindableResource.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanPipeline.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanPipeline.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCBindableResource.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCBindableResource.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCPipeline.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCPipeline.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkCommon.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkCommon.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VkTypeCvt.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VkTypeCvt.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VkDescriptorPoolMgr.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VkDescriptorPoolMgr.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DTypeCvt.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DTypeCvt.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DDescriptorHeapMgr.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DDescriptorHeapMgr.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.hpp"
 )
@@ -64,6 +64,7 @@ target_sources(Veldrid
 
 target_link_libraries(Veldrid 
     PRIVATE
+        D3D12MemoryAllocator
         d3d12.lib
         dxgi.lib
         dxguid.lib
@@ -78,4 +79,7 @@ target_link_libraries(Veldrid
     #    volk
     #    vma
     #    spdlog
+        spirv_to_dxil
+        vtn
+        dxil_compiler
     )

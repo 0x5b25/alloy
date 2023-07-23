@@ -61,18 +61,30 @@ namespace Veldrid
                     /// mapped with <see cref="MapMode.Write"/>. This flag cannot be combined with <see cref="StructuredBufferReadWrite"/>
                     /// or <see cref="IndirectBuffer"/>.
                     /// </summary>
-                    std::uint8_t dynamic : 1;
+                    //std::uint8_t dynamic : 1;
                     /// <summary>
                     /// Indicates that a <see cref="DeviceBuffer"/> will be used as a staging Buffer. Staging Buffers can be used to transfer data
                     /// to-and-from the CPU using <see cref="GraphicsDevice.Map(MappableResource, MapMode)"/>. Staging Buffers can use all
                     /// <see cref="MapMode"/> values.
                     /// This flag cannot be combined with any other flag.
                     /// </summary>
-                    std::uint8_t staging : 1;
+                    //std::uint8_t staging : 1;
                 };
 
                 std::uint8_t value;
             } usage;
+
+            enum class HostAccess{
+                None,
+
+                //Equivalent to DX12 READ_BACK heap
+                //Typical usage: GPU write once, host read once
+                PreferRead,
+
+                //Equivalent to DX12 UPLOAD heap
+                //Typical usage: Host write once, GPU read once
+                PreferWrite
+            } hostAccess;
 
             bool isRawBuffer;
         };

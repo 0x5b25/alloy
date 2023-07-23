@@ -19,8 +19,8 @@ namespace Veldrid{
     public:
         virtual ~Fence() = default;
 
-        virtual bool WaitForSignal(std::uint64_t timeoutNs) const = 0;
-        bool WaitForSignal() const {
+        virtual bool WaitForSignal(std::uint64_t timeoutNs) = 0;
+        bool WaitForSignal() {
             return WaitForSignal(std::numeric_limits<std::uint64_t>::max());
         }
         virtual bool IsSignaled() const = 0;

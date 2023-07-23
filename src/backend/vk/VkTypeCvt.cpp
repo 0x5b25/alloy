@@ -1,7 +1,7 @@
 #include "VkTypeCvt.hpp"
 
 
-namespace Veldrid {
+namespace Veldrid::VK::priv {
 
     VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode)
     {
@@ -132,7 +132,7 @@ namespace Veldrid {
         }
     }
 
-     VkStencilOp VdToVkStencilOp(DepthStencilStateDescription::StencilBehavior::Operation op)
+    VkStencilOp VdToVkStencilOp(DepthStencilStateDescription::StencilBehavior::Operation op)
     {
         using StencilOperation = typename DepthStencilStateDescription::StencilBehavior::Operation;
         switch (op)
@@ -158,7 +158,7 @@ namespace Veldrid {
         }
     }
 
-     VkPolygonMode VdToVkPolygonMode(RasterizerStateDescription::PolygonFillMode fillMode)
+    VkPolygonMode VdToVkPolygonMode(RasterizerStateDescription::PolygonFillMode fillMode)
     {
         using PolygonFillMode = typename RasterizerStateDescription::PolygonFillMode;
         switch (fillMode)

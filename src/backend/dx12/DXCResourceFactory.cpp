@@ -79,13 +79,11 @@ namespace Veldrid
     }
 
     sp<Fence> DXCResourceFactory::CreateFence(bool initialSignaled) {
-        return nullptr;
-       // return VulkanFence::Make(_CreateNewDevHandle(), initialSignaled);
+       return DXCVLDFence::Make(_CreateNewDevHandle(), initialSignaled);
     }
 
     sp<Semaphore> DXCResourceFactory::CreateDeviceSemaphore() {
-        return nullptr;
-        //return VulkanSemaphore::Make(_CreateNewDevHandle());
+        return DXCVLDSemaphore::Make(_CreateNewDevHandle());
     }
 
 

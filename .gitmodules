@@ -20,3 +20,9 @@
 [submodule "demo/glm"]
 	path = demo/glm
 	url = https://github.com/g-truc/glm.git
+[submodule "src/backend/dx12/3rd-party/D3D12MemoryAllocator"]
+	path = src/backend/dx12/3rd-party/D3D12MemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
+[submodule "src/backend/dx12/3rd-party/Mesa/Mesa"]
+	path = src/backend/dx12/3rd-party/Mesa/Mesa
+	url = https://gitlab.freedesktop.org/mesa/mesa.git
