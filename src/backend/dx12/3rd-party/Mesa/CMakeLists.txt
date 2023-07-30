@@ -495,7 +495,7 @@ target_link_libraries(nir
 )
 
 target_include_directories(nir
-    PRIVATE
+    PUBLIC
         ${inc_include}
         ${inc_src}
         ${inc_mapi}
@@ -504,7 +504,6 @@ target_include_directories(nir
         ${inc_gallium_aux}
         ${inc_compiler}
         ${MESA_NIR_PATH}
-    PUBLIC
         ${NIR_GENFILE_DIR}
 )
 
@@ -592,14 +591,13 @@ target_link_libraries(vtn
 )
 
 target_include_directories(vtn
-    PRIVATE
+    PUBLIC
         ${inc_include}
         ${inc_src}
         ${inc_mapi}
         ${inc_mesa}
         ${inc_gallium}
         ${inc_compiler}
-    PUBLIC
         ${MESA_SPV_PATH}
         ${SPV_GENFILE_DIR}
 )
@@ -659,7 +657,7 @@ target_link_libraries(dxil_compiler
 )
 
 target_include_directories(dxil_compiler
-    PRIVATE
+    PUBLIC
         ${inc_include}
         ${inc_src}
         ${inc_mapi}
@@ -667,7 +665,6 @@ target_include_directories(dxil_compiler
         ${inc_compiler}
         ${inc_gallium}
         ${sha1_h}
-    PUBLIC
         ${MESA_DZN_PATH_compiler}
 )
 
