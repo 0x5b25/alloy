@@ -1,10 +1,10 @@
-# veldridcpp
-## A cross platform C++ low level graphics API library heavily inspired by Veldrid.
+# alloy
+## A cross platform C++ low level graphics API library heavily inspired by Metal/Vulkan API.
 
-My personal take on the [.NET Veldrid](https://github.com/mellinoe/veldrid) library. Loosely follows the original interface, not a strict 1:1 port. Added some personal touches here and there. I view this library as the new foundation to my future personal projects, replacing the make-do vulkan wrapper I currently use, which I found increasingly difficult to maintain or modify.
+Previously inspired by [.NET Veldrid](https://github.com/mellinoe/veldrid) library. The main shader support is DXIL, given Apple now have an official way to transpile DXIL to MSL binary.
 
-Targets modern API, that is Vulkan and Metal(thanks apple). DX12 might be added in the future.
+Target is to support modern APIs as backends, that is Vulkan/Metal/DX12 and cross desktop(Windows/MacOS) and mobile(iOS/Android).
 
-Vulkan API as first citizen, metal support will be added shortly afterwards. DX12 is in the stretch goals.
+Vulkan API as first citizen, with added ease-of-use from metal API.
 
 Currently under construction. A lot of code is borrowed from original Veldrid library.
