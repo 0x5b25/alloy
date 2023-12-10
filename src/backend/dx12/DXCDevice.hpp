@@ -102,9 +102,34 @@ namespace Veldrid{
 
     };
 
+    struct D3D12DevCaps{
+        D3D_FEATURE_LEVEL feature_level;
+        D3D_SHADER_MODEL shader_model;
+        D3D_ROOT_SIGNATURE_VERSION root_sig_version;
+        D3D12_FEATURE_DATA_ARCHITECTURE1 architecture;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS options;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS1 options1;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS2 options2;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS4 options4;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
+        //D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
+
+        float timestamp_period;
+        //bool support_a4b4g4r4;
+
+        void ReadFromDevice(ID3D12Device* pdev);
+    };
+
     class DXCDevice : public  GraphicsDevice {
 
     public:
+
 
 
     private:
@@ -124,6 +149,7 @@ namespace Veldrid{
         AdapterInfo _adpInfo;
 
         GraphicsDevice::Features _commonFeat;
+        D3D12DevCaps _dxcFeat;
 
         DXCDevice();
 
@@ -143,6 +169,8 @@ namespace Veldrid{
         //virtual const GraphicsApiVersion ApiVersion() const override { return _apiVer; }
         virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
+
+        const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }
 
         virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
 
