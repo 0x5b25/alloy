@@ -83,26 +83,26 @@ namespace Veldrid::VK::priv {
      
 
     VkDescriptorType VdToVkDescriptorType(
-        ResourceLayout::Description::ElementDescription::ResourceKind kind, 
+        IBindableResource::ResourceKind kind, 
         ResourceLayout::Description::ElementDescription::Options options)
     {
-        using ResourceKind = typename ResourceLayout::Description::ElementDescription::ResourceKind;
+        using ResourceKind = typename IBindableResource::ResourceKind;
         bool dynamicBinding = (options.dynamicBinding) != 0;
+        bool writable = (options.writable) != 0;
         switch (kind)
         {
         case ResourceKind::UniformBuffer:
             return dynamicBinding 
                 ? VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 
                 : VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case ResourceKind::StructuredBufferReadWrite:
-        case ResourceKind::StructuredBufferReadOnly:
+        case ResourceKind::StorageBuffer:
             return dynamicBinding 
                 ? VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
                 : VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        case ResourceKind::TextureReadOnly:
-            return VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        case ResourceKind::TextureReadWrite:
-            return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case ResourceKind::Texture:
+            return writable
+                ? VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                : VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         case ResourceKind::Sampler:
             return VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLER;
         default:

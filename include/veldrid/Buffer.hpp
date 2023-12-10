@@ -111,7 +111,7 @@ namespace Veldrid
     };
 
 
-    class BufferRange : public BindableResource{
+    class BufferRange : public IBindableResource{
 
         sp<Buffer> _buffer;
         std::uint32_t _offset;
@@ -122,8 +122,7 @@ namespace Veldrid
             std::uint32_t offsetInBytes,
             std::uint32_t sizeInBytes
         )
-            : BindableResource(sp(buffer->dev))
-            , _buffer(buffer)
+            : _buffer(buffer)
             , _offset(offsetInBytes)
             , _size(sizeInBytes)
         {}
@@ -135,7 +134,7 @@ namespace Veldrid
             std::uint32_t offsetInBytes,
             std::uint32_t sizeInBytes
         ){
-            auto range = new BufferRange{buffer, offsetInBytes, sizeInBytes};
+            auto range = new BufferRange{ buffer, offsetInBytes, sizeInBytes};
             return sp{range};
         }
 
@@ -145,6 +144,8 @@ namespace Veldrid
             auto range = new BufferRange{ buffer, 0, buffer->GetDesc().sizeInBytes};
             return sp{ range };
         }
+
+        virtual ResourceKind GetResourceKind() const override { return ResourceKind::UniformBuffer; }
 
         Buffer* GetBufferObject() const {return _buffer.get();}
         std::uint32_t GetSizeInBytes() const { return _size; }

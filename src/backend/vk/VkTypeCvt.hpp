@@ -19,7 +19,7 @@ namespace Veldrid::VK::priv {
         VkSamplerMipmapMode& mipmapMode);
 
     VkDescriptorType VdToVkDescriptorType(
-        ResourceLayout::Description::ElementDescription::ResourceKind kind, 
+        IBindableResource::ResourceKind kind, 
         ResourceLayout::Description::ElementDescription::Options options);
 
     VkSampleCountFlagBits VdToVkSampleCount(Texture::Description::SampleCount sampleCount);

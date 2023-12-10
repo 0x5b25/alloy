@@ -61,6 +61,8 @@ namespace Veldrid::Helpers
         /// <returns>The number of bytes required to store an element in the given format</returns>
         std::uint32_t GetSizeInBytes(const ShaderDataType& format);
 
+        std::uint32_t GetSizeInBytes(ShaderConstantType type);
+
         std::int32_t GetElementCount(ShaderDataType format);
 
         std::uint32_t GetSampleCountUInt32(

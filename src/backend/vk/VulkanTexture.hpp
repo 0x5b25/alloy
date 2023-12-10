@@ -83,11 +83,10 @@ namespace Veldrid
         VkImageView _view;
 
         VulkanTextureView(
-            const sp<GraphicsDevice>& dev,
             const sp<VulkanTexture>& target,
             const TextureView::Description& desc
         ) :
-            TextureView(dev,target,desc)
+            TextureView(target,desc)
         {}
 
     public:
@@ -97,7 +96,6 @@ namespace Veldrid
         const VkImageView& GetHandle() const { return _view; }
 
         static sp<TextureView> Make(
-            const sp<VulkanDevice>& dev,
             const sp<VulkanTexture>& target,
             const TextureView::Description& desc
         );

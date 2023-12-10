@@ -103,7 +103,7 @@ namespace Veldrid
     };
 
 
-    class TextureView : public BindableResource{
+    class TextureView : public IBindableResource{
 
 
     public:
@@ -122,11 +122,9 @@ namespace Veldrid
 
     protected:
         TextureView(
-            const sp<GraphicsDevice>& dev,
             sp<Texture>&& target,
             const TextureView::Description& desc
         ) :
-            BindableResource(std::move(dev)),
             description(desc),
             target(std::move(target))
         {}
@@ -135,6 +133,8 @@ namespace Veldrid
         const Description& GetDesc() const {
             return description;
         }
+
+        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Sampler; }
 
         const sp<Texture>& GetTarget() const { return target; }
 
