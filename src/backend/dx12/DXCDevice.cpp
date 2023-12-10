@@ -88,9 +88,83 @@ HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAda
     
     return S_OK;
 }
- 
 
 namespace Veldrid {
+
+    
+    void D3D12DevCaps::ReadFromDevice(ID3D12Device* pdev)
+    {
+        D3D_FEATURE_LEVEL checklist[] = {
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_12_0,
+            D3D_FEATURE_LEVEL_12_1,
+            D3D_FEATURE_LEVEL_12_2,
+        };
+
+        D3D12_FEATURE_DATA_FEATURE_LEVELS levels = {
+            _countof(checklist),
+            checklist
+        };
+
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &levels, sizeof(levels)))){
+            feature_level = levels.MaxSupportedFeatureLevel;
+        }
+
+        D3D12_FEATURE_DATA_SHADER_MODEL shader_model{};
+        shader_model.HighestShaderModel = D3D_SHADER_MODEL_6_7;
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))){
+            this->shader_model = shader_model.HighestShaderModel;
+        }
+
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE root_sig{};
+        root_sig.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &root_sig, sizeof(root_sig)))){
+            root_sig_version = root_sig.HighestVersion;
+        }
+
+
+        pdev->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE1, &architecture, sizeof(architecture));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &options1, sizeof(options1));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options2, sizeof(options2));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &options4, sizeof(options4));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &pdev->options12, sizeof(pdev->options12));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13, &pdev->options13, sizeof(pdev->options13));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS14, &pdev->options14, sizeof(pdev->options14));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS15, &pdev->options15, sizeof(pdev->options15));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS16, &pdev->options16, sizeof(pdev->options16));
+        //pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS17, &pdev->options17, sizeof(pdev->options17));
+        //if (FAILED(pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS19, &pdev->options19, sizeof(pdev->options19)))) {
+        //    pdev->options19.MaxSamplerDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
+        //    pdev->options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = pdev->options19.MaxSamplerDescriptorHeapSize;
+        //    pdev->options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
+        //}
+        //{
+        //    D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
+        //        DXGI_FORMAT_A4B4G4R4_UNORM
+        //    };
+        //    support_a4b4g4r4 =
+        //     SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
+        //}
+        D3D12_COMMAND_QUEUE_DESC queue_desc = {
+           /*.Type =*/ D3D12_COMMAND_LIST_TYPE_DIRECT,
+           /*.Priority =*/ D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
+           /*.Flags =*/ D3D12_COMMAND_QUEUE_FLAG_NONE,
+           /*.NodeMask =*/ 0,
+        };
+ 
+        ID3D12CommandQueue *cmdqueue;
+        pdev->CreateCommandQueue(&queue_desc,
+                                 IID_ID3D12CommandQueue,
+                                 (void **)&cmdqueue);
+ 
+        uint64_t ts_freq;
+        cmdqueue->GetTimestampFrequency(&ts_freq);
+        timestamp_period = 1000000000.0f / ts_freq;
+        cmdqueue->Release();
+    }
 
 
     sp<GraphicsDevice> CreateDX12GraphicsDevice(
@@ -388,6 +462,8 @@ namespace Veldrid {
         dev->_alloc = std::move(allocator);
 
         dev->_adpInfo = {};
+        dev->_dxcFeat = {};
+        dev->_dxcFeat.ReadFromDevice(dev->_dev.Get());
 
         //Fill driver and api info
         {//Get device ID & driver version
@@ -403,49 +479,24 @@ namespace Veldrid {
         }
 
         {//Get api version
-            dev->_adpInfo.apiVersion = GraphicsApiVersion::Unknown;
-            static const D3D_FEATURE_LEVEL s_featureLevels[] =
+            
+            auto& apiVer = dev->_adpInfo.apiVersion;
+            switch (dev->_dxcFeat.feature_level)
             {
-                D3D_FEATURE_LEVEL_12_2,
-                D3D_FEATURE_LEVEL_12_1,
-                D3D_FEATURE_LEVEL_12_0,
-                D3D_FEATURE_LEVEL_11_1,
-                D3D_FEATURE_LEVEL_11_0,
-            };
-
-            D3D12_FEATURE_DATA_FEATURE_LEVELS featLevels =
-            {
-                _countof(s_featureLevels), s_featureLevels, D3D_FEATURE_LEVEL_11_0
-            };
-
-            if (SUCCEEDED(dev->_dev->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS,
-                 &featLevels, sizeof(featLevels))))
-            {
-                auto& apiVer = dev->_adpInfo.apiVersion;
-                switch (featLevels.MaxSupportedFeatureLevel)
-                {
-                case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
-                case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
-                case D3D_FEATURE_LEVEL_12_0:apiVer.major = 12; apiVer.minor = 0;break;
-                case D3D_FEATURE_LEVEL_11_1:apiVer.major = 11; apiVer.minor = 1;break;
-                case D3D_FEATURE_LEVEL_11_0:
-                default: apiVer.major = 11; apiVer.minor = 0;
-                    break;
-                }
-
-                dev->_commonFeat.commandListDebugMarkers = featLevels.MaxSupportedFeatureLevel >= D3D_FEATURE_LEVEL_11_1;
-                dev->_commonFeat.bufferRangeBinding = featLevels.MaxSupportedFeatureLevel >= D3D_FEATURE_LEVEL_11_1;
+            case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
+            case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
+            case D3D_FEATURE_LEVEL_12_0:apiVer.major = 12; apiVer.minor = 0;break;
+            case D3D_FEATURE_LEVEL_11_1:apiVer.major = 11; apiVer.minor = 1;break;
+            case D3D_FEATURE_LEVEL_11_0:
+            default: apiVer.major = 11; apiVer.minor = 0;
+                break;
             }
+
+            dev->_commonFeat.commandListDebugMarkers = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
+            dev->_commonFeat.bufferRangeBinding = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
+            
         }
 
-        {
-            D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
-            if (SUCCEEDED(dev->_dev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,
-                 &options, sizeof(options))))
-            {
-                dev->_commonFeat.shaderFloat64 = options.DoublePrecisionFloatShaderOps;
-            }
-        }
 
         {//get device name
             DXGI_ADAPTER_DESC1 desc{};
@@ -482,7 +533,7 @@ namespace Veldrid {
         dev->_commonFeat.independentBlend = true;
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
-        
+        dev->_commonFeat.shaderFloat64 = dev->_dxcFeat.options.DoublePrecisionFloatShaderOps;   
         return dev;
     }
 
