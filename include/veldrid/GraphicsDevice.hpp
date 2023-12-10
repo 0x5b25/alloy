@@ -2,7 +2,7 @@
 
 #include <string>
 #include <sstream>
-#include <vector>`
+#include <vector>
 
 #include "veldrid/common/Macros.h"
 #include "veldrid/common/RefCnt.hpp"
@@ -37,6 +37,28 @@ namespace Veldrid
         DISABLE_COPY_AND_ASSIGN(GraphicsDevice);
 
     public:
+        struct AdapterInfo{
+            /*
+            // Provided by VK_VERSION_1_0
+typedef struct VkPhysicalDeviceProperties {
+    uint32_t                            apiVersion;
+    uint32_t                            driverVersion;
+    uint32_t                            vendorID;
+    uint32_t                            deviceID;
+    VkPhysicalDeviceType                deviceType;
+    char                                deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
+    uint8_t                             pipelineCacheUUID[VK_UUID_SIZE];
+    VkPhysicalDeviceLimits              limits;
+    VkPhysicalDeviceSparseProperties    sparseProperties;
+} VkPhysicalDeviceProperties;
+*/
+            GraphicsApiVersion apiVersion;
+            std::uint64_t driverVersion;
+            std::uint32_t vendorID;
+            std::uint32_t deviceID;
+            std::string deviceName;
+        };
+
         struct Features{
             union{
                 struct {
@@ -79,21 +101,26 @@ namespace Veldrid
 
         enum class UVOrigin{ TopLeft, TopRight, BottomLeft, BottomRight };
 
+        struct SubmitBatch{
+            const std::vector<CommandList*>& cmd;
+            const std::vector<Semaphore*>& waitSemaphores;
+            const std::vector<Semaphore*>& signalSemaphores;
+        };
+
     protected:
         GraphicsDevice() = default;
 
     public:
+        virtual const AdapterInfo& GetAdapterInfo() const = 0;
 
-        virtual const std::string& DeviceName() const = 0;
-        virtual const std::string& VendorName() const = 0;
-        virtual const GraphicsApiVersion ApiVersion() const = 0;
+        //virtual const std::string& DeviceName() const = 0;
+        //virtual const std::string& VendorName() const = 0;
+        //virtual const GraphicsApiVersion ApiVersion() const = 0;
         virtual const Features& GetFeatures() const = 0;
 
         virtual ResourceFactory* GetResourceFactory() = 0;
         virtual void SubmitCommand(
-            const std::vector<CommandList*>& cmd,
-            const std::vector<Semaphore*>& waitSemaphores,
-            const std::vector<Semaphore*>& signalSemaphores,
+            const std::vector<SubmitBatch>& batch,
             Fence* fence) = 0;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,

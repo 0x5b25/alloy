@@ -128,7 +128,7 @@ class UniformApp : public AppBase {
             cmd->End();
 
             //submit and wait
-            dev->SubmitCommand({ cmd.get() }, {}, {}, fence.get());
+            dev->SubmitCommand({{{ cmd.get() }, {}, {}}}, fence.get());
             fence->WaitForSignal();
             fence->Reset();
 
@@ -406,9 +406,13 @@ class UniformApp : public AppBase {
         //Update uniformbuffer
         memcpy(ubMapped, &ubo, sizeof(ubo));
         dev->SubmitCommand(
-            { _commandList.get() },
-            {},
-            { renderFinishSemaphore.get() },
+            {
+                {
+                    { _commandList.get() },
+                    {},
+                    { renderFinishSemaphore.get() },
+                }
+            },
             renderFinishFence.get());
         cmd = _commandList;
 

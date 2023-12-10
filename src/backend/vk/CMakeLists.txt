@@ -62,7 +62,7 @@ target_sources(Veldrid
     PRIVATE
         ${VLD_BACKEND_VK_SRCS})
 
-target_link_libraries(Veldrid 
+target_link_libraries(Veldrid
     PRIVATE
     #    common
     #    glm

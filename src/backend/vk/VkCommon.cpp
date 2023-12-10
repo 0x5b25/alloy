@@ -40,6 +40,7 @@ const char* VkDevExtNames::VK_KHR_MAINTENANCE1 = "VK_KHR_maintenance1";
 const char* VkDevExtNames::VK_KHR_GET_MEMORY_REQ2 = "VK_KHR_get_memory_requirements2";
 const char* VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION = "VK_KHR_dedicated_allocation";
 const char* VkDevExtNames::VK_KHR_DRIVER_PROPS = "VK_KHR_driver_properties";
+const char* VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE = "VK_EXT_depth_clip_enable";
 
 const char* VkCommonStrings::StandardValidationLayerName = "VK_LAYER_LUNARG_standard_validation";
 const char* VkCommonStrings::KhronosValidationLayerName = "VK_LAYER_KHRONOS_validation";

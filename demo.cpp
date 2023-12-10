@@ -6,7 +6,7 @@ int main(void){
     {
         Veldrid::GraphicsDevice::Options opt{};
 
-        auto dev = Veldrid::CreateVulkanGraphicsDevice(opt, nullptr);
+        auto dev = Veldrid::CreateDX12GraphicsDevice(opt, nullptr);
     }
 
     return 0;

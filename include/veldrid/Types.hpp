@@ -135,7 +135,7 @@ namespace Veldrid
         Half4,
     };
 
-    enum class ShaderConstantType
+    enum class ShaderConstantType : std::uint8_t
     {
         /// <summary>
         /// A boolean.

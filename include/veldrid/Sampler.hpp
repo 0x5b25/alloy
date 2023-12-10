@@ -12,7 +12,7 @@ namespace Veldrid
 {
     
 
-    class Sampler : public BindableResource
+    class Sampler : public IBindableResource, public DeviceResource
     {
 
     public:       
@@ -87,7 +87,7 @@ namespace Veldrid
     protected:
         Sampler(
             const sp<GraphicsDevice>& dev
-        ) : BindableResource(dev){}
+        ) : DeviceResource(dev){}
 
     };
 } // namespace Veldrid

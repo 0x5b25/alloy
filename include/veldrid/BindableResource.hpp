@@ -10,14 +10,36 @@
 
 namespace Veldrid
 {
-    class BindableResource : public DeviceResource{
-
-    protected:
-        BindableResource(const sp<GraphicsDevice>& dev)
-            : DeviceResource(dev)
-        {}
+    class IBindableResource : public RefCntBase{
 
     public:
+        enum class ResourceKind {
+            /// <summary>
+            /// A <see cref="DeviceBuffer"/> accessed as a uniform buffer. A subset of a buffer can be bound using a
+            /// <see cref="DeviceBufferRange"/>.
+            /// </summary>
+            UniformBuffer,
+            /// <summary>
+            /// A <see cref="DeviceBuffer"/> accessed as a storage buffer. A subset of a buffer can be bound using a
+            /// <see cref="DeviceBufferRange"/>.
+            /// </summary>
+            StorageBuffer,
+            /// <summary>
+            /// A <see cref="Texture"/>, accessed through a Texture or <see cref="TextureView"/>.
+            /// <remarks>Binding a <see cref="Texture"/> to a resource slot expecting a TextureReadWrite is equivalent to binding a
+            /// <see cref="TextureView"/> that covers the full mip and array layer range, with the original Texture's
+            /// <see cref="PixelFormat"/>.</remarks>
+            /// </summary>
+            Texture,
+            /// <summary>
+            /// A <see cref="Veldrid.Sampler"/>.
+            /// </summary>
+            Sampler,
+        };
+
+        virtual ~IBindableResource() = default;
+
+        virtual ResourceKind GetResourceKind() const = 0;
         
     };
 
@@ -27,43 +49,9 @@ namespace Veldrid
         struct Description{
 
             struct ElementDescription{
+                uint32_t  bindingSlot;
                 std::string name;
-                enum class ResourceKind
-                {
-                    /// <summary>
-                    /// A <see cref="DeviceBuffer"/> accessed as a uniform buffer. A subset of a buffer can be bound using a
-                    /// <see cref="DeviceBufferRange"/>.
-                    /// </summary>
-                    UniformBuffer,
-                    /// <summary>
-                    /// A <see cref="DeviceBuffer"/> accessed as a read-only storage buffer. A subset of a buffer can be bound using a
-                    /// <see cref="DeviceBufferRange"/>.
-                    /// </summary>
-                    StructuredBufferReadOnly,
-                    /// <summary>
-                    /// A <see cref="DeviceBuffer"/> accessed as a read-write storage buffer. A subset of a buffer can be bound using a
-                    /// <see cref="DeviceBufferRange"/>.
-                    /// </summary>
-                    StructuredBufferReadWrite,
-                    /// <summary>
-                    /// A read-only <see cref="Texture"/>, accessed through a Texture or <see cref="TextureView"/>.
-                    /// <remarks>Binding a <see cref="Texture"/> to a resource slot expecting a TextureReadWrite is equivalent to binding a
-                    /// <see cref="TextureView"/> that covers the full mip and array layer range, with the original Texture's
-                    /// <see cref="PixelFormat"/>.</remarks>
-                    /// </summary>
-                    TextureReadOnly,
-                    /// <summary>
-                    /// A read-write <see cref="Texture"/>, accessed through a Texture or <see cref="TextureView"/>.
-                    /// </summary>
-                    /// <remarks>Binding a <see cref="Texture"/> to a resource slot expecting a TextureReadWrite is equivalent to binding a
-                    /// <see cref="TextureView"/> that covers the full mip and array layer range, with the original Texture's
-                    /// <see cref="PixelFormat"/>.</remarks>
-                    TextureReadWrite,
-                    /// <summary>
-                    /// A <see cref="Veldrid.Sampler"/>.
-                    /// </summary>
-                    Sampler,
-                } kind;
+                IBindableResource::ResourceKind kind;
 
                 Shader::Description::Stage stages;
 
@@ -82,6 +70,10 @@ namespace Veldrid
                         /// <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>.
                         /// </summary>
                         std::uint8_t dynamicBinding : 1;
+                        
+                        //Resource is writable by shader
+                        // can only applied to storage buffers, texture storages
+                        std::uint8_t writable : 1;
                     };
                     std::uint8_t value;
                 } options;
@@ -119,7 +111,7 @@ namespace Veldrid
             
             // An array of <see cref="BindableResource"/> objects.
             // The number and type of resources must match those specified in the <see cref="ResourceLayout"/>.
-            std::vector<sp<BindableResource>> boundResources;
+            std::vector<sp<IBindableResource>> boundResources;
         };
 
     protected:

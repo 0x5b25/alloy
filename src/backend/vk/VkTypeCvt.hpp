@@ -8,7 +8,7 @@
 #include "veldrid/Sampler.hpp"
 #include "veldrid/Texture.hpp"
 
-namespace Veldrid {
+namespace Veldrid::VK::priv {
     
     VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode);
 
@@ -19,7 +19,7 @@ namespace Veldrid {
         VkSamplerMipmapMode& mipmapMode);
 
     VkDescriptorType VdToVkDescriptorType(
-        ResourceLayout::Description::ElementDescription::ResourceKind kind, 
+        IBindableResource::ResourceKind kind, 
         ResourceLayout::Description::ElementDescription::Options options);
 
     VkSampleCountFlagBits VdToVkSampleCount(Texture::Description::SampleCount sampleCount);

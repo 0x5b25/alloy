@@ -35,7 +35,7 @@ namespace Veldrid{
         for (unsigned i = 0; i < outputDesc.colorAttachment.size(); i++)
         {
             VkAttachmentDescription colorAttachmentDesc{};
-            colorAttachmentDesc.format = VdToVkPixelFormat(outputDesc.colorAttachment[i].format);
+            colorAttachmentDesc.format = VK::priv::VdToVkPixelFormat(outputDesc.colorAttachment[i].format);
             colorAttachmentDesc.samples = sampleCnt;
             colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
@@ -55,7 +55,7 @@ namespace Veldrid{
             VkAttachmentDescription depthAttachmentDesc{};
             PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
             bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(depthFormat);
-            depthAttachmentDesc.format = VdToVkPixelFormat(depthFormat, true);
+            depthAttachmentDesc.format = VK::priv::VdToVkPixelFormat(depthFormat, true);
             depthAttachmentDesc.samples = sampleCnt;
             depthAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             depthAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
@@ -267,6 +267,7 @@ namespace Veldrid{
         const GraphicsPipelineDescription& desc
     )
     {
+        std::vector<sp<RefCntBase>> refCnts;
 
         VkGraphicsPipelineCreateInfo pipelineCI{};
         pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -287,13 +288,13 @@ namespace Veldrid{
         {
             auto vdDesc = desc.blendState.attachments[i];
             auto& attachmentState = attachments[i];
-            attachmentState.srcColorBlendFactor = VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
-            attachmentState.dstColorBlendFactor = VdToVkBlendFactor(vdDesc.destinationColorFactor);
-            attachmentState.colorBlendOp = VdToVkBlendOp(vdDesc.colorFunction);
-            attachmentState.srcAlphaBlendFactor = VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
-            attachmentState.dstAlphaBlendFactor = VdToVkBlendFactor(vdDesc.destinationAlphaFactor);
-            attachmentState.alphaBlendOp = VdToVkBlendOp(vdDesc.alphaFunction);
-            attachmentState.colorWriteMask = VdToVkColorWriteMask(vdDesc.colorWriteMask);
+            attachmentState.srcColorBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.sourceColorFactor);
+            attachmentState.dstColorBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.destinationColorFactor);
+            attachmentState.colorBlendOp = VK::priv::VdToVkBlendOp(vdDesc.colorFunction);
+            attachmentState.srcAlphaBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
+            attachmentState.dstAlphaBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.destinationAlphaFactor);
+            attachmentState.alphaBlendOp = VK::priv::VdToVkBlendOp(vdDesc.alphaFunction);
+            attachmentState.colorWriteMask = VK::priv::VdToVkColorWriteMask(vdDesc.colorWriteMask);
             attachmentState.blendEnable = vdDesc.blendEnabled;
         }
         
@@ -312,9 +313,37 @@ namespace Veldrid{
         auto& rsDesc = desc.rasterizerState;
         VkPipelineRasterizationStateCreateInfo rsCI{};
         rsCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rsCI.cullMode = VdToVkCullMode(rsDesc.cullMode);
-        rsCI.polygonMode = VdToVkPolygonMode(rsDesc.fillMode);
-        rsCI.depthClampEnable = !rsDesc.depthClipEnabled;
+        rsCI.cullMode = VK::priv::VdToVkCullMode(rsDesc.cullMode);
+        rsCI.polygonMode = VK::priv::VdToVkPolygonMode(rsDesc.fillMode);
+
+        //depthClampEnable controls whether to clamp the fragment’s depth values
+        // as described in Depth Test. If the pipeline is not created with
+        //VkPipelineRasterizationDepthClipStateCreateInfoEXT present then enabling
+        //depth clamp will also disable clipping primitives to the z planes of
+        //the frustrum as described in Primitive Clipping. Otherwise depth clipping
+        //is controlled by the state set in VkPipelineRasterizationDepthClipStateCreateInfoEXT.
+
+        rsCI.depthClampEnable = false;
+        VkPipelineRasterizationDepthClipStateCreateInfoEXT rsDepthClipCI{};
+        if(dev->GetVkFeatures().supportsDepthClip) {            
+
+            //If the pNext chain of VkPipelineRasterizationStateCreateInfo includes
+            // a VkPipelineRasterizationDepthClipStateCreateInfoEXT structure, then 
+            //that structure controls whether depth clipping is enabled or disabled.
+
+            // Provided by VK_EXT_depth_clip_enable
+            //typedef struct VkPipelineRasterizationDepthClipStateCreateInfoEXT {
+            //    VkStructureType                                        sType;
+            //    const void*                                            pNext;
+            //    VkPipelineRasterizationDepthClipStateCreateFlagsEXT    flags;
+            //    VkBool32                                               depthClipEnable;
+            //} VkPipelineRasterizationDepthClipStateCreateInfoEXT;
+            rsDepthClipCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT;
+            rsDepthClipCI.pNext = rsCI.pNext;
+            rsCI.pNext = &rsDepthClipCI;
+            rsDepthClipCI.depthClipEnable = rsDesc.depthClipEnabled;
+        }
+
         rsCI.frontFace = rsDesc.frontFace == RasterizerStateDescription::FrontFace::Clockwise
             ? VkFrontFace::VK_FRONT_FACE_CLOCKWISE 
             : VkFrontFace::VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -338,21 +367,21 @@ namespace Veldrid{
         dssCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         dssCI.depthWriteEnable = vdDssDesc.depthWriteEnabled;
         dssCI.depthTestEnable = vdDssDesc.depthTestEnabled;
-        dssCI.depthCompareOp = VdToVkCompareOp(vdDssDesc.depthComparison);
+        dssCI.depthCompareOp = VK::priv::VdToVkCompareOp(vdDssDesc.depthComparison);
         dssCI.stencilTestEnable = vdDssDesc.stencilTestEnabled;
 
-        dssCI.front.failOp = VdToVkStencilOp(vdDssDesc.stencilFront.fail);
-        dssCI.front.passOp = VdToVkStencilOp(vdDssDesc.stencilFront.pass);
-        dssCI.front.depthFailOp = VdToVkStencilOp(vdDssDesc.stencilFront.depthFail);
-        dssCI.front.compareOp = VdToVkCompareOp(vdDssDesc.stencilFront.comparison);
+        dssCI.front.failOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.fail);
+        dssCI.front.passOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.pass);
+        dssCI.front.depthFailOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.depthFail);
+        dssCI.front.compareOp = VK::priv::VdToVkCompareOp(vdDssDesc.stencilFront.comparison);
         dssCI.front.compareMask = vdDssDesc.stencilReadMask;
         dssCI.front.writeMask = vdDssDesc.stencilWriteMask;
         dssCI.front.reference = vdDssDesc.stencilReference;
 
-        dssCI.back.failOp = VdToVkStencilOp(vdDssDesc.stencilBack.fail);
-        dssCI.back.passOp = VdToVkStencilOp(vdDssDesc.stencilBack.pass);
-        dssCI.back.depthFailOp = VdToVkStencilOp(vdDssDesc.stencilBack.depthFail);
-        dssCI.back.compareOp = VdToVkCompareOp(vdDssDesc.stencilBack.comparison);
+        dssCI.back.failOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.fail);
+        dssCI.back.passOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.pass);
+        dssCI.back.depthFailOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.depthFail);
+        dssCI.back.compareOp = VK::priv::VdToVkCompareOp(vdDssDesc.stencilBack.comparison);
         dssCI.back.compareMask = vdDssDesc.stencilReadMask;
         dssCI.back.writeMask = vdDssDesc.stencilWriteMask;
         dssCI.back.reference = vdDssDesc.stencilReference;
@@ -362,7 +391,7 @@ namespace Veldrid{
         // Multisample
         VkPipelineMultisampleStateCreateInfo multisampleCI{};
         multisampleCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.outputs.sampleCount);
+        VkSampleCountFlagBits vkSampleCount = VK::priv::VdToVkSampleCount(desc.outputs.sampleCount);
         multisampleCI.rasterizationSamples = vkSampleCount;
         multisampleCI.alphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
         pipelineCI.pMultisampleState = &multisampleCI;
@@ -370,7 +399,7 @@ namespace Veldrid{
         // Input Assembly
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI{};
         inputAssemblyCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssemblyCI.topology = VdToVkPrimitiveTopology(desc.primitiveTopology);
+        inputAssemblyCI.topology = VK::priv::VdToVkPrimitiveTopology(desc.primitiveTopology);
         inputAssemblyCI.primitiveRestartEnable = VK_FALSE;
         pipelineCI.pInputAssemblyState = &inputAssemblyCI;
 
@@ -404,7 +433,7 @@ namespace Veldrid{
             {
                 auto& inputElement = inputDesc.elements[location];
 
-                attributeDescs[targetIndex].format = VdToVkShaderDataType(inputElement.format);
+                attributeDescs[targetIndex].format = VK::priv::VdToVkShaderDataType(inputElement.format);
                 attributeDescs[targetIndex].binding = binding;
                 attributeDescs[targetIndex].location = targetLocation + location;
                 attributeDescs[targetIndex].offset = inputElement.offset != 0 
@@ -433,7 +462,7 @@ namespace Veldrid{
         {
             unsigned specDataSize = 0;
             for (auto& spec : specDescs) {
-                specDataSize += GetSpecializationConstantSize(spec.type);
+                specDataSize += VK::priv::GetSpecializationConstantSize(spec.type);
             }
             std::vector<std::uint8_t> fullSpecData(specDataSize);
             int specializationCount = specDescs.size();
@@ -443,7 +472,7 @@ namespace Veldrid{
             {
                 auto data = specDescs[i].data;
                 auto srcData = (byte*)&data;
-                auto dataSize = GetSpecializationConstantSize(specDescs[i].type);
+                auto dataSize = VK::priv::GetSpecializationConstantSize(specDescs[i].type);
                 //Unsafe.CopyBlock(fullSpecData + specOffset, srcData, dataSize);
                 memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
                 mapEntries[i].constantID = specDescs[i].id;
@@ -465,10 +494,12 @@ namespace Veldrid{
             auto& stageCI = stageCIs[i];
             stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stageCI.module = vkShader->GetHandle();
-            stageCI.stage = VdToVkShaderStageSingle(shader->GetDesc().stage);
+            stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
             // stageCI.pName = CommonStrings.main; // Meh
             stageCI.pName = shader->GetDesc().entryPoint.c_str(); // TODO: DONT ALLOCATE HERE
             stageCI.pSpecializationInfo = &specializationInfo;
+
+            refCnts.push_back(shader);
         }
 
         pipelineCI.stageCount = stageCIs.size();
@@ -493,6 +524,8 @@ namespace Veldrid{
         for (int i = 0; i < resourceLayouts.size(); i++)
         {
             dsls[i] = PtrCast<VulkanResourceLayout>(resourceLayouts[i].get())->GetHandle();
+
+            refCnts.push_back(resourceLayouts[i]);            
         }
         pipelineLayoutCI.pSetLayouts = dsls.data();
         
@@ -535,6 +568,7 @@ namespace Veldrid{
         rawPipe->scissorTestEnabled = rsDesc.scissorTestEnabled;
         rawPipe->resourceSetCount = resourceSetCount;
         rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
+        rawPipe->_refCnts = std::move(refCnts);
 
         return sp(rawPipe);
     }
@@ -570,7 +604,7 @@ namespace Veldrid{
             unsigned specDataSize = 0;
             for(auto& spec : specDescs)
             {
-                specDataSize += GetSpecializationConstantSize(spec->type);
+                specDataSize += VK::priv::GetSpecializationConstantSize(spec->type);
             }
             std::vector<std::uint8_t> fullSpecData(specDataSize);
             unsigned specializationCount = specDescs.size();
@@ -580,7 +614,7 @@ namespace Veldrid{
             {
                 auto data = specDescs[i]->data;
                 byte* srcData = (byte*)&data;
-                unsigned dataSize = GetSpecializationConstantSize(specDescs[i]->type);
+                unsigned dataSize = VK::priv::GetSpecializationConstantSize(specDescs[i]->type);
                 memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
                 mapEntries[i].constantID = specDescs[i]->id;
                 mapEntries[i].offset = specOffset;
@@ -597,7 +631,7 @@ namespace Veldrid{
         auto* vkShader = PtrCast<VulkanShader>(shader.get());
         VkPipelineShaderStageCreateInfo stageCI{};
         stageCI.module = vkShader->GetHandle();
-        stageCI.stage = VdToVkShaderStageSingle(shader->GetDesc().stage);
+        stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
         stageCI.pName = "main"; // Meh
         stageCI.pSpecializationInfo = &specializationInfo;
         pipelineCI.stage = stageCI;

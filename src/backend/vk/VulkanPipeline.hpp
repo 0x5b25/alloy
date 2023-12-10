@@ -3,6 +3,7 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
+#include "veldrid/common/RefCnt.hpp"
 #include "veldrid/Pipeline.hpp"
 
 #include <vector>
@@ -32,6 +33,9 @@ namespace Veldrid
 
         //public ResourceRefCount RefCount { get; }
 
+        //For bookkeeping, prevent resources used in pipeline from
+        //being destroyed if no other references.
+        std::vector<sp<RefCntBase>> _refCnts;
 
     protected:
         VulkanPipelineBase(const sp<GraphicsDevice>& dev) : Pipeline(dev){}

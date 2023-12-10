@@ -105,6 +105,8 @@ namespace Veldrid
                 std::uint32_t supportsMaintenance1 : 1;
                 std::uint32_t supportsDrvPropQuery : 1;
 
+                std::uint32_t supportsDepthClip : 1;
+
             };
             std::uint32_t value;
         };
@@ -117,7 +119,7 @@ namespace Veldrid
         VkDevice _dev;
         VmaAllocator _allocator;
         _CmdPoolMgr _cmdPoolMgr;
-        _DescriptorPoolMgr _descPoolMgr;
+        VK::priv::_DescriptorPoolMgr _descPoolMgr;
 
         VkQueue _queueGraphics, _queueCopy, _queueCompute;
 
@@ -125,11 +127,13 @@ namespace Veldrid
         bool _isOwnSurface;
         VulkanResourceFactory _resFactory;
 
+        AdapterInfo _adpInfo;
+
         Features _features;
         GraphicsApiVersion _apiVer;
 
-        std::string _devName, _devVendor;
-        std::string _drvName, _drvInfo;
+        //std::string _devName, _devVendor;
+        //std::string _drvName, _drvInfo;
         GraphicsDevice::Features _commonFeat;
 
         VulkanDevice();
@@ -145,9 +149,7 @@ namespace Veldrid
 
 
     public:
-        virtual const std::string& DeviceName() const override { return _devName; }
-        virtual const std::string& VendorName() const override { return ""; }
-        virtual const GraphicsApiVersion ApiVersion() const override { return _apiVer; }
+        virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
         virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
@@ -165,19 +167,19 @@ namespace Veldrid
         //TODO: temporary querier
         bool SupportsFlippedYDirection() const {return _features.supportsMaintenance1;}
 
+        const Features& GetVkFeatures() const {return _features; }
+
     private:
 
 
     public:
         sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-        _DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
+        VK::priv::_DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
     //Interface
     public:
 
         virtual void SubmitCommand(
-            const std::vector<CommandList*>& cmd,
-            const std::vector<Semaphore*>& waitSemaphores,
-            const std::vector<Semaphore*>& signalSemaphores,
+            const std::vector<SubmitBatch>& batch,
             Fence* fence) override;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,
@@ -235,7 +237,7 @@ namespace Veldrid
         VkFence _fence;
 
         VulkanDevice* _Dev() const {
-            return reinterpret_cast<VulkanDevice*>(dev.get());
+            return static_cast<VulkanDevice*>(dev.get());
         }
 
         VulkanFence(const sp<GraphicsDevice>& dev) : Fence(dev) {}
@@ -251,7 +253,7 @@ namespace Veldrid
 
         const VkFence& GetHandle() const { return _fence; }
 
-        bool WaitForSignal(std::uint64_t timeoutNs) const override {
+        bool WaitForSignal(std::uint64_t timeoutNs) override {
             auto res = vkWaitForFences(_Dev()->LogicalDev(), 1, &_fence, 0, timeoutNs);
             return res == VK_SUCCESS;
         }

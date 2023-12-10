@@ -11,15 +11,23 @@
 
 namespace Veldrid
 {
-    VkDescriptorType VdToVkResourceKind(ResourceLayout::Description::ElementDescription::ResourceKind kind){
-        using _ResKind = ResourceLayout::Description::ElementDescription::ResourceKind;
+    using _ResKind = IBindableResource::ResourceKind;
+    VkDescriptorType VdToVkResourceKind(IBindableResource::ResourceKind kind, bool dynamic, bool writable){
         switch (kind)
         {
-        case _ResKind::UniformBuffer: return VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case _ResKind::StructuredBufferReadOnly: return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        case _ResKind::StructuredBufferReadWrite: return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-        case _ResKind::TextureReadOnly: return VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        case _ResKind::TextureReadWrite: return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case _ResKind::UniformBuffer: {
+            if(dynamic) return VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            else        return VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        }
+        case _ResKind::StorageBuffer:{
+            if(dynamic) return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            else        return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        }
+
+        case _ResKind::Texture: {
+            if(dynamic) return VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            else        return VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        }
         case _ResKind::Sampler: return VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLER;
         default:return VkDescriptorType::VK_DESCRIPTOR_TYPE_MAX_ENUM;
         }
@@ -55,9 +63,9 @@ namespace Veldrid
         {
             bindings[i].binding = i;
             bindings[i].descriptorCount = 1;
-            VkDescriptorType descriptorType = VdToVkDescriptorType(elements[i].kind, elements[i].options);
+            VkDescriptorType descriptorType = VK::priv::VdToVkDescriptorType(elements[i].kind, elements[i].options);
             bindings[i].descriptorType = descriptorType;
-            bindings[i].stageFlags = VdToVkShaderStages(elements[i].stages);
+            bindings[i].stageFlags = VK::priv::VdToVkShaderStages(elements[i].stages);
             if (elements[i].options.dynamicBinding) {
                 dynamicBufferCount += 1;
             }
@@ -90,7 +98,7 @@ namespace Veldrid
             }
         }
 
-        DescriptorResourceCounts drcs {};
+        VK::priv::DescriptorResourceCounts drcs {};
             drcs.uniformBufferCount = uniformBufferCount;
             drcs.uniformBufferDynamicCount = uniformBufferDynamicCount;
             drcs.sampledImageCount = sampledImageCount;
@@ -122,7 +130,7 @@ namespace Veldrid
             const sp<VulkanDevice>& dev,
             const Description& desc
     ){
-        VulkanResourceLayout* vkLayout = reinterpret_cast<VulkanResourceLayout*>(desc.layout.get());
+        VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(desc.layout.get());
 
         VkDescriptorSetLayout dsl = vkLayout->GetHandle();
         //_descriptorCounts = vkLayout.DescriptorResourceCounts;
@@ -145,17 +153,16 @@ namespace Veldrid
 
             descriptorWrites[i].sType = VkStructureType::VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[i].descriptorCount = 1;
-            descriptorWrites[i].descriptorType = VdToVkResourceKind(type);
+            descriptorWrites[i].descriptorType = VdToVkResourceKind(type, elem.options.dynamicBinding, elem.options.writable);
             descriptorWrites[i].dstBinding = i;
             descriptorWrites[i].dstSet = descriptorAllocationToken.GetHandle();
 
-            using _ResKind = ResourceLayout::Description::ElementDescription::ResourceKind;
+            using _ResKind = IBindableResource::ResourceKind;
             switch(type){
                 case _ResKind::UniformBuffer:
-                case _ResKind::StructuredBufferReadOnly:
-                case _ResKind::StructuredBufferReadWrite:{
+                case _ResKind::StorageBuffer: {
                     auto* range = PtrCast<BufferRange>(boundResources[i].get());
-                    auto* rangedVkBuffer = reinterpret_cast<const VulkanBuffer*>(range->GetBufferObject());
+                    auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
                     bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
                     bufferInfos[i].offset = range->GetOffsetInBytes();
                     bufferInfos[i].range = range->GetSizeInBytes();
@@ -163,10 +170,14 @@ namespace Veldrid
                     //_refCounts.push_back(boundResources[i]);
                 } break;
 
-                case _ResKind::TextureReadOnly:{
+                case _ResKind::Texture:{
                     auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[i].get());
                     imageInfos[i].imageView = vkTexView->GetHandle();
-                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    if(elem.options.writable){
+                        imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+                    } else {
+                        imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    }
                     descriptorWrites[i].pImageInfo = &imageInfos[i];
 
                     auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
@@ -175,17 +186,6 @@ namespace Veldrid
                     //_refCounts.push_back(boundResources[i]);
                 }break;
 
-                case _ResKind::TextureReadWrite:{
-                    auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[i].get());
-                    imageInfos[i].imageView = vkTexView->GetHandle();
-                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
-                    descriptorWrites[i].pImageInfo = &imageInfos[i];
-
-                    auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-                    texRW.insert(vkTex);
-                    //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
-                    //_refCounts.push_back(boundResources[i]);
-                }break;
 
                 case _ResKind::Sampler:{
                     auto* sampler = PtrCast<VulkanSampler>(boundResources[i].get());
@@ -207,7 +207,7 @@ namespace Veldrid
     }
 
     void VulkanResourceSet::VisitElements(ElementVisitor visitor) {
-        VulkanResourceLayout* vkLayout = reinterpret_cast<VulkanResourceLayout*>(description.layout.get());
+        VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(description.layout.get());
 
         auto& boundResources = description.boundResources;
         auto descriptorWriteCount = boundResources.size();

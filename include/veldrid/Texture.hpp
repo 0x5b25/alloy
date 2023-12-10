@@ -71,12 +71,17 @@ namespace Veldrid
 
             //std::uint32_t usage;
 
-            enum class Type{
+            enum class Type: uint8_t{
                 Texture1D, Texture2D, Texture3D
             } type;
 
-            enum class SampleCount{
-                x1, x2, x4, x8, x16, x32
+            enum class SampleCount : uint8_t{
+                x1 = 1,
+                x2 = 2,
+                x4 = 4,
+                x8 = 8,
+                x16 = 16,
+                x32 = 32
             } sampleCount;
         };
         
@@ -98,7 +103,7 @@ namespace Veldrid
     };
 
 
-    class TextureView : public BindableResource{
+    class TextureView : public IBindableResource{
 
 
     public:
@@ -117,11 +122,9 @@ namespace Veldrid
 
     protected:
         TextureView(
-            const sp<GraphicsDevice>& dev,
             sp<Texture>&& target,
             const TextureView::Description& desc
         ) :
-            BindableResource(std::move(dev)),
             description(desc),
             target(std::move(target))
         {}
@@ -130,6 +133,8 @@ namespace Veldrid
         const Description& GetDesc() const {
             return description;
         }
+
+        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Sampler; }
 
         const sp<Texture>& GetTarget() const { return target; }
 

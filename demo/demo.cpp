@@ -217,7 +217,7 @@ class DemoApp : public AppBase{
     ) override{
         Veldrid::GraphicsDevice::Options opt{};
         opt.preferStandardClipSpaceYDirection = true;
-        dev = Veldrid::CreateVulkanGraphicsDevice(opt, swapChainSrc);
+        dev = Veldrid::CreateDefaultGraphicsDevice(opt, swapChainSrc);
 
         CreateSwapChain(surfaceWidth, surfaceHeight);
         CreateShaders();
@@ -286,11 +286,14 @@ class DemoApp : public AppBase{
         //Wait for previous render to complete
         renderFinishFence->WaitForSignal();
         renderFinishFence->Reset();
-
         dev->SubmitCommand(
-            { _commandList.get() },
-            {},
-            { renderFinishSemaphore.get()},
+            {
+                {
+                    { _commandList.get() },
+                    {},
+                    { renderFinishSemaphore.get()},
+                }
+            },
             renderFinishFence.get());
         cmd = _commandList;
         

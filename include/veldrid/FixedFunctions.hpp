@@ -274,12 +274,15 @@ namespace Veldrid
         // Controls how stencil tests are handled for pixels whose surface faces away from the camera.
         StencilBehavior stencilBack;
         
+        //TODO: [VK] Convert to dynamic state and exclude from PSO
         // Controls the portion of the stencil buffer used for reading.
         std::uint8_t stencilReadMask;
         
+        //TODO: [VK] Convert to dynamic state and exclude from PSO
         // Controls the portion of the stencil buffer used for writing.
         std::uint8_t stencilWriteMask;
         
+        //TODO: [VK] Convert to dynamic state and exclude from PSO
         // The reference value to use when doing a stencil test.
         std::uint32_t stencilReference;
     };

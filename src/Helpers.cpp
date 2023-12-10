@@ -292,6 +292,28 @@ namespace Veldrid::Helpers
             }
         }
 
+        std::uint32_t GetSizeInBytes(ShaderConstantType type){
+            switch (type)
+            {
+                //[Backend:VK]
+                //For a constantID specialization constant declared in a shader, 
+                //size must match the byte size of the constantID. If the specialization 
+                //constant is of type boolean, size must be the byte size of VkBool32
+            case ShaderConstantType::Bool:   return 4;
+            case ShaderConstantType::UInt16: return 2;
+            case ShaderConstantType::Int16:  return 2;
+            case ShaderConstantType::UInt32: return 4;
+            case ShaderConstantType::Int32:  return 4;
+            case ShaderConstantType::UInt64: return 8;
+            case ShaderConstantType::Int64:  return 8;
+            case ShaderConstantType::Float:  return 4;
+            case ShaderConstantType::Double: return 8;
+            default:
+                assert(false);
+                return 0;
+            }
+        }
+
         std::int32_t GetElementCount(ShaderDataType format)
         {
             switch (format)

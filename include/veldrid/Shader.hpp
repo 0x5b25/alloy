@@ -73,7 +73,7 @@ namespace Veldrid
             DeviceResource(dev){}
 
     public: 
-        const Description& GetDesc() {return description;}
+        const Description& GetDesc() const {return description;}
     };
 
   

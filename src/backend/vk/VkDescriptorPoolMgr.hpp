@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <mutex>
 
-namespace Veldrid {
+namespace Veldrid::VK::priv {
 
 	class _DescriptorSet;
 
