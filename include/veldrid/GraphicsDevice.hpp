@@ -118,6 +118,8 @@ typedef struct VkPhysicalDeviceProperties {
         //virtual const GraphicsApiVersion ApiVersion() const = 0;
         virtual const Features& GetFeatures() const = 0;
 
+        virtual void* GetNativeHandle() const = 0;
+
         virtual ResourceFactory* GetResourceFactory() = 0;
         virtual void SubmitCommand(
             const std::vector<SubmitBatch>& batch,

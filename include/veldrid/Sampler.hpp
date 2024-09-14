@@ -12,7 +12,7 @@ namespace Veldrid
 {
     
 
-    class Sampler : public IBindableResource, public DeviceResource
+    class Sampler : public IBindableResource
     {
 
     public:       
@@ -84,11 +84,11 @@ namespace Veldrid
             
         };
 
-    protected:
-        Sampler(
-            const sp<GraphicsDevice>& dev
-        ) : DeviceResource(dev){}
+        
+        virtual ResourceKind GetResourceKind() const override {return ResourceKind::Sampler;}
 
+    protected:
+       
     };
 } // namespace Veldrid
 

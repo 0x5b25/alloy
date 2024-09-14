@@ -79,7 +79,7 @@ namespace Veldrid
             imageViewCI.image = colorTarget->GetHandle();
 
             auto format =  colorTarget->GetDesc().format;
-            imageViewCI.format = VdToVkPixelFormat(format, false); //not a depth format
+            imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(format, false); //not a depth format
             imageViewCI.viewType = colorTarget->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
@@ -97,7 +97,7 @@ namespace Veldrid
             VkImageViewCreateInfo depthViewCI{};
             depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             depthViewCI.image = depthTarget->GetHandle();
-            depthViewCI.format = VdToVkPixelFormat(depthTarget->GetDesc().format);
+            depthViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(depthTarget->GetDesc().format);
             depthViewCI.viewType = depthTarget->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
@@ -218,7 +218,7 @@ namespace Veldrid
             texDesc.arrayLayers = 1;
             texDesc.usage.renderTarget = true;
             texDesc.sampleCount = Texture::Description::SampleCount::x1;
-            texDesc.format = VkToVdPixelFormat(_surfaceFormat.format);
+            texDesc.format = Veldrid::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
 
             auto firstColorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,
                 VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, firstTex

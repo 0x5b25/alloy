@@ -1,6 +1,7 @@
 #pragma once
 
 //3rd-party headers
+#include <directx/d3d12.h>
 #include <D3D12MemAlloc.h>
 
 //veldrid public headers
@@ -18,7 +19,6 @@
 //backend specific headers
 
 //platform specific headers
-#include <d3d12.h>
 #include <dxgi1_4.h> //Guaranteed by DX12
 #include <wrl/client.h> // for ComPtr
 
@@ -112,21 +112,22 @@ namespace Veldrid{
         D3D12_FEATURE_DATA_D3D12_OPTIONS2 options2;
         D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
         D3D12_FEATURE_DATA_D3D12_OPTIONS4 options4;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
 
         float timestamp_period;
-        //bool support_a4b4g4r4;
+        bool support_a4b4g4r4;
 
         void ReadFromDevice(ID3D12Device* pdev);
     };
 
-    class DXCDevice : public  GraphicsDevice {
+    class DXCDevice : public  GraphicsDevice, public DXCResourceFactory {
 
     public:
 
@@ -143,7 +144,7 @@ namespace Veldrid{
         Microsoft::WRL::ComPtr<D3D12MA::Allocator> _alloc;
 
 
-        DXCResourceFactory _resFactory;
+        //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
         AdapterInfo _adpInfo;
@@ -157,7 +158,9 @@ namespace Veldrid{
 
         ~DXCDevice();
 
-        ID3D12Device* GetDevice() {return _dev.Get();}
+        ID3D12Device* GetDevice() const {return _dev.Get();}
+
+        virtual void* GetNativeHandle() const override { return GetDevice(); }
 
         static sp<GraphicsDevice> Make(
             const GraphicsDevice::Options& options,
@@ -172,7 +175,7 @@ namespace Veldrid{
 
         const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }
 
-        virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
+        virtual ResourceFactory* GetResourceFactory() override { return this; };
 
         ID3D12CommandQueue* GraphicsQueue() const {return _q.Get();}
 

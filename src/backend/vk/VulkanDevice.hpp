@@ -149,6 +149,9 @@ namespace Veldrid
 
 
     public:
+        
+        virtual void* GetNativeHandle() const override { return _dev; }
+
         virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 

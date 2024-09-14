@@ -65,9 +65,10 @@ target_sources(Veldrid
 target_link_libraries(Veldrid 
     PRIVATE
         D3D12MemoryAllocator
+        DirectX-Headers
         d3d12.lib
         dxgi.lib
-        dxguid.lib
+    #    dxguid.lib
     #    common
     #    glm
     #    vulkan
@@ -79,7 +80,7 @@ target_link_libraries(Veldrid
     #    volk
     #    vma
     #    spdlog
-        spirv_to_dxil
-        vtn
-        dxil_compiler
+    #    spirv_to_dxil
+    #    vtn
+    #    dxil_compiler
     )

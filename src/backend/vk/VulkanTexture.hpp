@@ -37,6 +37,7 @@ namespace Veldrid
 
         const VkImage& GetHandle() const { return _img; }
         bool IsOwnTexture() const {return _allocation != VK_NULL_HANDLE; }
+        VulkanDevice* GetDevice() const;
 
         static sp<Texture> Make(
             const sp<VulkanDevice>& dev,
@@ -106,10 +107,12 @@ namespace Veldrid
 
         VkSampler _sampler;
 
+        sp<VulkanDevice> _dev;
+
         VulkanSampler(
-            const sp<GraphicsDevice>& dev
+            const sp<VulkanDevice>& dev
         ) :
-            Sampler(dev)
+            _dev(dev)
         {}
 
     public:

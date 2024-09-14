@@ -24,9 +24,10 @@ namespace Veldrid
     }
 
     sp<DXCDevice> DXCResourceFactory::_CreateNewDevHandle(){
-        assert(_dev != nullptr);
-        _dev->ref();
-        return sp(_dev);
+        //assert(_dev != nullptr);
+        auto dev = GetBase();
+        dev->ref();
+        return sp<DXCDevice>(dev);
     }
 
     VLD_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)

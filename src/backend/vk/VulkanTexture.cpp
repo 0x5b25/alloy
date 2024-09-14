@@ -20,6 +20,9 @@ namespace Veldrid {
         }
     }
 
+    
+    VulkanDevice* VulkanTexture::GetDevice() const { return static_cast<VulkanDevice*>(dev.get()); }
+
 	sp<Texture> VulkanTexture::Make(const sp<VulkanDevice>& dev, const Texture::Description& desc)
 	{
         //_gd = gd;
@@ -53,10 +56,10 @@ namespace Veldrid {
             imageCI.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
             imageCI.usage = VdToVkTextureUsage(desc.usage);
             imageCI.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL; //isStaging ? VkImageTiling.Linear : VkImageTiling.Optimal;
-            imageCI.format = VdToVkPixelFormat(desc.format, desc.usage.depthStencil);
+            imageCI.format = Veldrid::VK::priv::VdToVkPixelFormat(desc.format, desc.usage.depthStencil);
             imageCI.flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
-            imageCI.samples = VdToVkSampleCount(desc.sampleCount);
+            imageCI.samples = Veldrid::VK::priv::VdToVkSampleCount(desc.sampleCount);
             if (isCubemap)
             {
                 imageCI.flags |= VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -286,15 +289,16 @@ namespace Veldrid {
     }
     
     VulkanTextureView::~VulkanTextureView() {
-        auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
+        auto vkTex = static_cast<VulkanTexture*>(target.get());
+        auto _dev = vkTex->GetDevice();
         vkDestroyImageView(_dev->LogicalDev(), _view, nullptr);
     }
 
 	sp<TextureView> VulkanTextureView::Make(
-		const sp<VulkanDevice>& dev,
 		const sp<VulkanTexture>& target,
 		const TextureView::Description& desc
 	){
+        VulkanDevice* dev = target->GetDevice();
         auto format = desc.format == PixelFormat::Unknown ? target->GetDesc().format : desc.format;
         auto& targetDesc = target->GetDesc();
 
@@ -302,7 +306,7 @@ namespace Veldrid {
         imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         //VkTexture tex = Util.AssertSubtype<Texture, VkTexture>(description.Target);
         imageViewCI.image = target->GetHandle();
-        imageViewCI.format = VdToVkPixelFormat(format, targetDesc.usage.depthStencil);
+        imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(format, targetDesc.usage.depthStencil);
 
         VkImageAspectFlags aspectFlags;
         if (targetDesc.usage.depthStencil)
@@ -351,7 +355,7 @@ namespace Veldrid {
         VkImageView vkImgView;
         vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &vkImgView);
 
-        auto imgView = new VulkanTextureView(dev, target, desc);
+        auto imgView = new VulkanTextureView(target, desc);
         imgView->_view = vkImgView;
 
         return sp(imgView);
@@ -399,8 +403,6 @@ namespace Veldrid {
 
 
     VulkanSampler::~VulkanSampler(){
-        auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
-
         vkDestroySampler(_dev->LogicalDev(), _sampler, nullptr);
     }
 
@@ -411,29 +413,29 @@ namespace Veldrid {
     ){
         VkFilter minFilter, magFilter;
         VkSamplerMipmapMode mipmapMode;
-        GetFilterParams(desc.filter, minFilter, magFilter, mipmapMode);
+        Veldrid::VK::priv::GetFilterParams(desc.filter, minFilter, magFilter, mipmapMode);
 
         VkSamplerCreateInfo samplerCI{};
 
         bool compareEnable = desc.comparisonKind != nullptr;
         
         samplerCI.sType = VkStructureType::VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerCI.addressModeU = VdToVkSamplerAddressMode(desc.addressModeU);
-        samplerCI.addressModeV = VdToVkSamplerAddressMode(desc.addressModeV);
-        samplerCI.addressModeW = VdToVkSamplerAddressMode(desc.addressModeW);
+        samplerCI.addressModeU =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeU);
+        samplerCI.addressModeV =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeV);
+        samplerCI.addressModeW =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeW);
         samplerCI.minFilter = minFilter;
         samplerCI.magFilter = magFilter;
         samplerCI.mipmapMode = mipmapMode;
         samplerCI.compareEnable = compareEnable,
         samplerCI.compareOp = compareEnable
-            ? VdToVkCompareOp(*desc.comparisonKind)
+            ? Veldrid::VK::priv::VdToVkCompareOp(*desc.comparisonKind)
             : VkCompareOp::VK_COMPARE_OP_NEVER,
         samplerCI.anisotropyEnable = desc.filter == Sampler::Description::SamplerFilter::Anisotropic;
         samplerCI.maxAnisotropy = desc.maximumAnisotropy;
         samplerCI.minLod = desc.minimumLod;
         samplerCI.maxLod = desc.maximumLod;
         samplerCI.mipLodBias = desc.lodBias;
-        samplerCI.borderColor = VdToVkSamplerBorderColor(desc.borderColor);
+        samplerCI.borderColor = Veldrid::VK::priv::VdToVkSamplerBorderColor(desc.borderColor);
 
         VkSampler rawSampler;
         vkCreateSampler(dev->LogicalDev(), &samplerCI, nullptr, &rawSampler);

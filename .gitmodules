@@ -23,6 +23,6 @@
 [submodule "src/backend/dx12/3rd-party/D3D12MemoryAllocator"]
 	path = src/backend/dx12/3rd-party/D3D12MemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
-[submodule "src/backend/dx12/3rd-party/Mesa/Mesa"]
-	path = src/backend/dx12/3rd-party/Mesa/Mesa
-	url = https://gitlab.freedesktop.org/mesa/mesa.git
+[submodule "src/backend/dx12/3rd-party/DirectX-Headers"]
+	path = src/backend/dx12/3rd-party/DirectX-Headers
+	url = https://github.com/microsoft/DirectX-Headers.git

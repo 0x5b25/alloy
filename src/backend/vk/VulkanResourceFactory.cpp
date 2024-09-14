@@ -65,7 +65,7 @@ namespace Veldrid
         const TextureView::Description& description
     ){
         auto vkTex = PtrCast<VulkanTexture>(texture.get());
-        return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
+        return VulkanTextureView::Make(RefRawPtr(vkTex), description);
     }
 
     

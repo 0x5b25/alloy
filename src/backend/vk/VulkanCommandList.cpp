@@ -524,7 +524,7 @@ namespace Veldrid{
         );
         _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer.get());
-        vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, VdToVkIndexFormat(format));
+        vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, Veldrid::VK::priv::VdToVkIndexFormat(format));
     }
 
     
@@ -697,7 +697,7 @@ namespace Veldrid{
         auto gd = PtrCast<VulkanDevice>(dev.get());
         if (index == 0 || gd->GetFeatures().multipleViewports) {
 
-            VkRect2D scissor{(int)x, (int)y, (int)width, (int)height};
+            VkRect2D scissor{(int)x, (int)y, width, height};
             //if (_scissorRects[index] != scissor)
             //{
             //    _scissorRects[index] = scissor;
@@ -749,39 +749,41 @@ namespace Veldrid{
                 auto& elem = vkLayout->GetDesc().elements[i];
                 auto& res = desc.boundResources[i];
                 auto type = elem.kind;
-                using _ResKind = ResourceLayout::Description::ElementDescription::ResourceKind;
+                bool writable = elem.options.writable;
+                using _ResKind = IBindableResource::ResourceKind;
                 switch (type) {
-                case _ResKind::UniformBuffer:
-                case _ResKind::StructuredBufferReadOnly: {
+                case _ResKind::UniformBuffer: {
                     auto* range = PtrCast<BufferRange>(res.get());
                     auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
                     _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, VK_ACCESS_SHADER_READ_BIT);
                 } break;
-                case _ResKind::StructuredBufferReadWrite: {
+                case _ResKind::StorageBuffer: {
+                    VkAccessFlags accessFlags = VK_ACCESS_SHADER_READ_BIT;
+                    if(writable) {
+                        accessFlags |= VK_ACCESS_SHADER_WRITE_BIT;
+                    }
                     auto* range = PtrCast<BufferRange>(res.get());
                     auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
-                    _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage,
-                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                    _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, accessFlags);
                 } break;
 
-                case _ResKind::TextureReadOnly: {
+                case _ResKind::Texture: {
                     auto* vkTexView = PtrCast<VulkanTextureView>(res.get());
                     auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-                    _resReg.RegisterTexUsage(
-                        RefRawPtr(vkTex),
-                        VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        accessStage, VK_ACCESS_SHADER_READ_BIT);
-                }break;
+                    if(writable) {
+                        _resReg.RegisterTexUsage(
+                            RefRawPtr(vkTex),
+                            VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
+                            accessStage,
+                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
+                        );
 
-                case _ResKind::TextureReadWrite: {
-                    auto* vkTexView = PtrCast<VulkanTextureView>(res.get());
-                    auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-                    _resReg.RegisterTexUsage(
-                        RefRawPtr(vkTex),
-                        VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
-                        accessStage,
-                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
-                    );
+                    } else {
+                        _resReg.RegisterTexUsage(
+                            RefRawPtr(vkTex),
+                            VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            accessStage, VK_ACCESS_SHADER_READ_BIT);
+                    }
                 }break;
                 default:break;
                 }
@@ -1500,7 +1502,7 @@ namespace Veldrid{
 
         VkFormatProperties vkFormatProps;
         vkGetPhysicalDeviceFormatProperties(
-            vkDev->PhysicalDev(), VdToVkPixelFormat(vkTex->GetDesc().format), &vkFormatProps);
+            vkDev->PhysicalDev(), Veldrid::VK::priv::VdToVkPixelFormat(vkTex->GetDesc().format), &vkFormatProps);
         
         VkFilter filter 
             = (vkFormatProps.optimalTilingFeatures 

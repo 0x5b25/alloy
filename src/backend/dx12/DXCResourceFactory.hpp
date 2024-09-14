@@ -12,16 +12,26 @@ namespace Veldrid{
         virtual sp<ResType> Create##ResType ( \
             const ResType ::Description& description);
 
-    class DXCResourceFactory : public ResourceFactory{
+    template<class Base>
+    class DXCResourceFactoryThunk : public ResourceFactory{
+
+    protected:
+        Base* GetBase() { return static_cast<Base*>(this); }
+
+    };
+
+
+    class DXCResourceFactory : public DXCResourceFactoryThunk<DXCDevice>{
 
         DISABLE_COPY_AND_ASSIGN(DXCResourceFactory);
 
-        DXCDevice* _dev;
+        //DXCDevice* _dev;
 
         sp<DXCDevice> _CreateNewDevHandle();
 
     public:
-        DXCResourceFactory(DXCDevice* dev) : _dev(dev){}
+        //DXCResourceFactory(DXCDevice* dev) : _dev(dev){}
+        DXCResourceFactory() = default;
         ~DXCResourceFactory() = default;
 
         

@@ -36,8 +36,8 @@ namespace Veldrid
             auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
             auto& texDesc = vkColorTex->GetDesc();
             VkAttachmentDescription colorAttachmentDesc{};
-            colorAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
-            colorAttachmentDesc.samples = VdToVkSampleCount(texDesc.sampleCount);
+            colorAttachmentDesc.format = Veldrid::VK::priv::VdToVkPixelFormat(texDesc.format);
+            colorAttachmentDesc.samples = Veldrid::VK::priv::VdToVkSampleCount(texDesc.sampleCount);
             colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
             colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
             colorAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -63,8 +63,8 @@ namespace Veldrid
             auto vkDepthTex = PtrCast<VulkanTexture>(desc.depthTarget.target.get());
             auto& texDesc = vkDepthTex->GetDesc();
             bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(texDesc.format);
-            depthAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
-            depthAttachmentDesc.samples = VdToVkSampleCount(texDesc.sampleCount);
+            depthAttachmentDesc.format = Veldrid::VK::priv::VdToVkPixelFormat(texDesc.format);
+            depthAttachmentDesc.samples = Veldrid::VK::priv::VdToVkSampleCount(texDesc.sampleCount);
             depthAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
             depthAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
             depthAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -199,7 +199,7 @@ namespace Veldrid
             VkImageViewCreateInfo imageViewCI{};
             imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             imageViewCI.image = vkColorTarget->GetHandle();
-            imageViewCI.format = VdToVkPixelFormat(vkColorTarget->GetDesc().format);
+            imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(vkColorTarget->GetDesc().format);
             imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
             imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
             imageViewCI.subresourceRange.baseMipLevel = desc.colorTargets[i].mipLevel;
@@ -220,7 +220,7 @@ namespace Veldrid
             VkImageViewCreateInfo depthViewCI{};
             depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             depthViewCI.image = vkDepthTarget->GetHandle();
-            depthViewCI.format = VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
+            depthViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
             depthViewCI.viewType = desc.depthTarget.target->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;

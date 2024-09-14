@@ -5,7 +5,7 @@
 
 #include "VkCommon.hpp"
 
-namespace Veldrid {
+namespace Veldrid::VK::priv {
 
 	_DescriptorPoolMgr::~_DescriptorPoolMgr(){
 		////All dirty pools should be recycled by now.
