@@ -110,9 +110,8 @@ namespace Veldrid::VK::priv {
         }
     }
 
-     VkSampleCountFlagBits VdToVkSampleCount(Texture::Description::SampleCount sampleCount)
+     VkSampleCountFlagBits VdToVkSampleCount(SampleCount sampleCount)
     {
-        using SampleCount = typename Texture::Description::SampleCount;
         switch (sampleCount)
         {
         case SampleCount::x1:
@@ -339,26 +338,28 @@ namespace Veldrid::VK::priv {
         }
     }
 
-    VkShaderStageFlags VdToVkShaderStages(Shader::Description::Stage stage){
+    VkShaderStageFlags VdToVkShaderStages(Shader::Stages stages){
         VkShaderStageFlags flag = 0;
-        if (stage.vertex)                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
-        if (stage.geometry)               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
-        if (stage.tessellationControl)    flag |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        if (stage.tessellationEvaluation) flag |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        if (stage.fragment)               flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
-        if (stage.compute)                flag |= VK_SHADER_STAGE_COMPUTE_BIT;
+        if (stages[Shader::Stage::Vertex])                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
+        if (stages[Shader::Stage::Geometry])               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
+        if (stages[Shader::Stage::TessellationControl])    flag |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        if (stages[Shader::Stage::TessellationEvaluation]) flag |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        if (stages[Shader::Stage::Fragment])               flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (stages[Shader::Stage::Compute])                flag |= VK_SHADER_STAGE_COMPUTE_BIT;
         return flag;
 
     }
 
-    VkShaderStageFlagBits VdToVkShaderStageSingle(Shader::Description::Stage stage) {
-        if (stage.vertex)                 return VK_SHADER_STAGE_VERTEX_BIT;
-        if (stage.geometry)               return VK_SHADER_STAGE_GEOMETRY_BIT;
-        if (stage.tessellationControl)    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        if (stage.tessellationEvaluation) return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        if (stage.fragment)               return VK_SHADER_STAGE_FRAGMENT_BIT;
-        if (stage.compute)                return VK_SHADER_STAGE_COMPUTE_BIT;
-        return VkShaderStageFlagBits::VK_SHADER_STAGE_ALL;
+    VkShaderStageFlagBits VdToVkShaderStageSingle(Shader::Stage stage) {
+        switch(stage) {
+        case Shader::Stage::Vertex:                 return VK_SHADER_STAGE_VERTEX_BIT;
+        case Shader::Stage::Geometry:               return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case Shader::Stage::TessellationControl:    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case Shader::Stage::TessellationEvaluation: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case Shader::Stage::Fragment:               return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case Shader::Stage::Compute:                return VK_SHADER_STAGE_COMPUTE_BIT;
+        default: return VkShaderStageFlagBits::VK_SHADER_STAGE_ALL;
+        }
     }
 
      

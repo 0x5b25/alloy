@@ -46,23 +46,28 @@ namespace Veldrid
         //std::string _name;
 
         //VkShaderModule ShaderModule => _shaderModule;
+        std::vector<uint8_t> _bytes;
 
         DXCShader(
-            const sp<GraphicsDevice>& dev,
+            const sp<DXCDevice> &dev,
             const Description& desc
-        ) : Shader(dev, desc){}
+        );
        
 
     public:
         //const VkShaderModule& GetHandle() const { return _shaderModule; }
 
-        ~DXCShader();
+        ~DXCShader() = default;
 
         static sp<Shader> Make(
             const sp<DXCDevice>& dev,
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spvBinary
+            const std::span<std::uint8_t>& il
         );
+        
+        const void* GetData() const {return _bytes.data();}
+
+        std::size_t GetDataSizeInBytes() const {return _bytes.size();}
 
     };
 

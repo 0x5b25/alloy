@@ -227,6 +227,9 @@ namespace Veldrid{
             const Buffer::Description& desc
         );
 
+        
+        virtual uint64_t GetNativeHandle() const {return GetHandle()->GetGPUVirtualAddress();}
+
         ID3D12Resource* GetHandle() const {return _buffer->GetResource();}
 
         virtual void* MapToCPU();

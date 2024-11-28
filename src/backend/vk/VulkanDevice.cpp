@@ -857,19 +857,19 @@ namespace Veldrid {
 
         switch (desc.hostAccess)
         {        
-        case Description::HostAccess::PreferRead:
+        case HostAccess::PreferRead:
             //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
             break;
-        case Description::HostAccess::PreferWrite:
+        case HostAccess::PreferWrite:
             //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
             break;
-        case Description::HostAccess::None:
+        case HostAccess::None:
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         default:
             break;

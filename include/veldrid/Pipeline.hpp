@@ -153,7 +153,9 @@ namespace Veldrid
         
     public:
 
-        virtual bool IsComputePipeline() const = 0;        
+        virtual bool IsComputePipeline() const = 0;
+
+        virtual void* GetNativeHandle() const {return nullptr;}
 
     };
 } // namespace Veldrid

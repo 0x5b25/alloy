@@ -74,17 +74,7 @@ namespace Veldrid
                 std::uint8_t value;
             } usage;
 
-            enum class HostAccess{
-                None,
-
-                //Equivalent to DX12 READ_BACK heap
-                //Typical usage: GPU write once, host read once
-                PreferRead,
-
-                //Equivalent to DX12 UPLOAD heap
-                //Typical usage: Host write once, GPU read once
-                PreferWrite
-            } hostAccess;
+            HostAccess hostAccess;
 
             bool isRawBuffer;
         };
@@ -108,48 +98,79 @@ namespace Veldrid
         virtual void* MapToCPU() = 0;
 
         virtual void UnMap() = 0;
+
+        virtual uint64_t GetNativeHandle() const {return 0;}
     };
 
 
     class BufferRange : public IBindableResource{
 
+    public:
+        struct Shape {
+            std::uint64_t offsetInElements;
+            std::uint64_t elementCount;
+            std::uint32_t elementSizeInBytes;
+        };
+    private:
+
         sp<Buffer> _buffer;
-        std::uint32_t _offset;
-        std::uint32_t _size;
+        Shape _shape;
+        ResourceKind _kind;
 
         BufferRange(
             const sp<Buffer>& buffer,
-            std::uint32_t offsetInBytes,
-            std::uint32_t sizeInBytes
+            const Shape& shape,
+            ResourceKind kind
         )
             : _buffer(buffer)
-            , _offset(offsetInBytes)
-            , _size(sizeInBytes)
+            , _shape(shape)
+            , _kind(kind)
         {}
     public:
         ~BufferRange() override {}
 
-        static sp<BufferRange> Make(
+        static sp<BufferRange> MakeByteBuffer(
             const sp<Buffer>& buffer,
             std::uint32_t offsetInBytes,
             std::uint32_t sizeInBytes
         ){
-            auto range = new BufferRange{ buffer, offsetInBytes, sizeInBytes};
+            Shape shape {
+                .offsetInElements = offsetInBytes,
+                .elementCount = sizeInBytes,
+                .elementSizeInBytes = 1,
+            };
+            auto range = new BufferRange{ 
+                buffer, shape, ResourceKind::UniformBuffer
+            };
             return sp{range};
         }
 
-        static sp<BufferRange> Make(
+        static sp<BufferRange> MakeByteBuffer(
             const sp<Buffer>& buffer
         ) {
-            auto range = new BufferRange{ buffer, 0, buffer->GetDesc().sizeInBytes};
-            return sp{ range };
+            return MakeByteBuffer(buffer, 0, buffer->GetDesc().sizeInBytes);
         }
 
-        virtual ResourceKind GetResourceKind() const override { return ResourceKind::UniformBuffer; }
+        static sp<BufferRange> MakeStructuredBuffer(
+            const sp<Buffer>& buffer,
+            const Shape& shape
+        ){
+            auto range = new BufferRange{ buffer, shape, ResourceKind::StorageBuffer};
+            return sp{range};
+        }
+
+        template<typename T>
+        static sp<BufferRange> MakeStructuredBuffer(
+            const sp<Buffer>& buffer,
+            std::uint32_t offsetInElements,
+            std::uint32_t sizeInElements
+        ) { return MakeStructuredBuffer(sizeof(T), offsetInElements, sizeInElements); }
+
+        virtual ResourceKind GetResourceKind() const override { return _kind; }
 
         Buffer* GetBufferObject() const {return _buffer.get();}
-        std::uint32_t GetSizeInBytes() const { return _size; }
-        std::uint32_t GetOffsetInBytes() const { return _offset; }
+        
+        const Shape& GetShape() const {return _shape;}
 
     };
 

@@ -5,6 +5,7 @@
 #include "veldrid/Shader.hpp"
 
 #include <string>
+#include <span>
 
 namespace Veldrid
 {
@@ -35,7 +36,7 @@ namespace Veldrid
         static sp<Shader> Make(
             const sp<VulkanDevice>& dev,
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spvBinary
+            const std::span<std::uint8_t>& il
         );
 
     };

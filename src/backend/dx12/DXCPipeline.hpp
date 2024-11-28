@@ -11,7 +11,7 @@
 #include "veldrid/SwapChain.hpp"
 
 //standard library headers
-#include <vector>
+#include <unordered_set>
 
 //backend specific headers
 
@@ -29,7 +29,7 @@ namespace Veldrid
     class DXCPipelineBase : public Pipeline{
 
     protected:
-        std::vector<sp<RefCntBase>> _refCnts;
+        std::unordered_set<sp<RefCntBase>> _refCnts;
 
         DXCDevice* _Dev();
 
@@ -45,6 +45,8 @@ namespace Veldrid
         ID3D12PipelineState* GetHandle() const {return _pso.Get();}
 
         
+        virtual void* GetNativeHandle() const override {return GetHandle();}
+
 
     };
 

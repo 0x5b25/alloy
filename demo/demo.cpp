@@ -88,7 +88,7 @@ class DemoApp : public AppBase{
         std::cout << "Compiling vertex shader...\n";
         std::vector<std::uint32_t> vertexSpv;
 
-        Veldrid::Shader::Description::Stage stage{};
+        Veldrid::Shader::Stage stage{};
         stage.vertex = 1;
         if(!spvCompiler->CompileToSPIRV(
             stage,

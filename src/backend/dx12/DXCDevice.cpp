@@ -192,7 +192,7 @@ namespace Veldrid {
             return nullptr;
         }
 
-        HANDLE fenceEventHandle = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
+        HANDLE fenceEventHandle = CreateEvent(nullptr, false, false, nullptr);
         if(fenceEventHandle == INVALID_HANDLE_VALUE){
             return nullptr;
         }
@@ -280,7 +280,7 @@ namespace Veldrid {
         _fence = fence;
         _expectedVal = 0;
 
-        HANDLE fenceEventHandle = CreateEventEx(NULL, false, false, EVENT_ALL_ACCESS);
+        HANDLE fenceEventHandle = CreateEvent(nullptr, false, false, nullptr);
         if(fenceEventHandle == INVALID_HANDLE_VALUE){
             return false;
         }
@@ -585,22 +585,20 @@ namespace Veldrid {
 
         switch (desc.hostAccess)
         {        
-        case Description::HostAccess::PreferRead:
+        case HostAccess::PreferRead:
             allocationDesc.HeapType = D3D12_HEAP_TYPE_READBACK;
             resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
             break;
-        case Description::HostAccess::PreferWrite:
+        case HostAccess::PreferWrite:
             allocationDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
             resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
             break;
-        case Description::HostAccess::None:
+        case HostAccess::None:
         default:
             allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             resourceState = D3D12_RESOURCE_STATE_COMMON;
             break;
         }
-
-        allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
 
         D3D12MA::Allocation* allocation;
         HRESULT hr = dev->Allocator()->CreateResource(

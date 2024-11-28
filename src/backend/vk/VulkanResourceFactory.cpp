@@ -34,9 +34,9 @@ namespace Veldrid
 
     sp<Shader> VulkanResourceFactory::CreateShader(
         const Shader::Description& desc,
-        const std::vector<std::uint32_t>& spv
+        const std::span<std::uint8_t>& il
     ){
-        return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
+        return VulkanShader::Make(_CreateNewDevHandle(), desc, il);
     }
 
     sp<Pipeline> VulkanResourceFactory::CreateGraphicsPipeline(

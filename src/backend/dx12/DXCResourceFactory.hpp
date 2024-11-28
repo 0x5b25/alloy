@@ -45,7 +45,7 @@ namespace Veldrid{
 
         sp<Shader> CreateShader(
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spv
+            const std::span<std::uint8_t>& spv
         ) override;
 
         sp<Texture> WrapNativeTexture(

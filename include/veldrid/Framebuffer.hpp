@@ -18,7 +18,7 @@ namespace Veldrid
 
         std::optional<Attachment> depthAttachment;
         std::vector<Attachment> colorAttachment;
-        Texture::Description::SampleCount sampleCount;
+        SampleCount sampleCount;
 
     };
 
@@ -88,7 +88,7 @@ namespace Veldrid
             auto& sampleCount = odesc.sampleCount;
             auto& description = GetDesc();
 
-            sampleCount = Texture::Description::SampleCount::x1;
+            sampleCount = SampleCount::x1;
             //OutputAttachmentDescription? depthAttachment = null;
             if (description.depthTarget.target != nullptr)
             {

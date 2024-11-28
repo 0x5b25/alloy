@@ -119,7 +119,7 @@ namespace Veldrid{
                 
             }
             else {
-                auto&[ entryIt, _insertRes] = _texRefs.insert({ 
+                const auto&[ entryIt, _insertRes] = _texRefs.insert({ 
                     vkTex, 
                     {
                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 

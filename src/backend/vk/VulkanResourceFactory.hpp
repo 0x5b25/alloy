@@ -33,9 +33,9 @@ namespace Veldrid{
         sp<Pipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) override;
 
-        sp<Shader> VulkanResourceFactory::CreateShader(
+        sp<Shader> CreateShader(
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spv
+            const std::span<std::uint8_t>& il
         ) override;
 
         sp<Texture> WrapNativeTexture(

@@ -110,9 +110,10 @@ namespace Veldrid
         sp<VulkanDevice> _dev;
 
         VulkanSampler(
-            const sp<VulkanDevice>& dev
-        ) :
-            _dev(dev)
+            const sp<VulkanDevice>& dev,
+            const Description& desc
+        ) : Sampler(desc)
+          , _dev(dev)
         {}
 
     public:

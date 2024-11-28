@@ -49,7 +49,6 @@ add_subdirectory("3rd-party")
 
 #platform detection
 if(WIN32)
-    add_definitions(-DNOMINMAX)
     set(VLD_BACKEND_DXC true)
     set(VLD_BACKEND_VK  true)
     set(VLD_BACKEND_MTL false)
@@ -129,9 +128,13 @@ target_link_libraries(Veldrid
     #    spdlog
     )
 
+if(WIN32)
+    target_compile_definitions(Veldrid PUBLIC NOMINMAX)
+    #add_definitions(-DNOMINMAX)
+endif()
 
 target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
-target_compile_features(Veldrid PUBLIC cxx_std_17)
+target_compile_features(Veldrid PUBLIC cxx_std_20)
 
 #add_subdirectory("demo")
 

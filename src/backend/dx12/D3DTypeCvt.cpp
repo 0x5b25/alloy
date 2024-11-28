@@ -2,85 +2,61 @@
 
 namespace Veldrid {
 
-    /*VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode)
+    D3D12_TEXTURE_ADDRESS_MODE VdToD3DSamplerAddressMode(Sampler::Description::AddressMode mode)
     {
         using SamplerAddressMode = typename Sampler::Description::AddressMode;
         switch (mode)
         {
         case SamplerAddressMode::Wrap:
-            return VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         case SamplerAddressMode::Mirror:
-            return VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+            return D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
         case SamplerAddressMode::Clamp:
-            return VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         case SamplerAddressMode::Border:
-            return VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+            return D3D12_TEXTURE_ADDRESS_MODE_BORDER;
         default:
-            return VkSamplerAddressMode::VK_SAMPLER_ADDRESS_MODE_MAX_ENUM;
+            return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         }
     }
 
-    void GetFilterParams(
-        Sampler::Description::SamplerFilter filter,
-        VkFilter& minFilter,
-        VkFilter& magFilter,
-        VkSamplerMipmapMode& mipmapMode)
+    
+    D3D12_FILTER VdToD3DFilter(Sampler::Description::SamplerFilter filter, bool enableComparison)
     {
         using SamplerFilter = typename Sampler::Description::SamplerFilter;
         switch (filter)
         {
-        case SamplerFilter::Anisotropic:
-            minFilter = VkFilter::VK_FILTER_LINEAR;
-            magFilter = VkFilter::VK_FILTER_LINEAR;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            break;
-        case SamplerFilter::MinPoint_MagPoint_MipPoint:
-            minFilter = VkFilter::VK_FILTER_NEAREST;
-            magFilter = VkFilter::VK_FILTER_NEAREST;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            break;
-        case SamplerFilter::MinPoint_MagPoint_MipLinear:
-            minFilter = VkFilter::VK_FILTER_NEAREST;
-            magFilter = VkFilter::VK_FILTER_NEAREST;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            break;
-        case SamplerFilter::MinPoint_MagLinear_MipPoint:
-            minFilter = VkFilter::VK_FILTER_NEAREST;
-            magFilter = VkFilter::VK_FILTER_LINEAR;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            break;
-        case SamplerFilter::MinPoint_MagLinear_MipLinear:
-            minFilter = VkFilter::VK_FILTER_NEAREST;
-            magFilter = VkFilter::VK_FILTER_LINEAR;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            break;
-        case SamplerFilter::MinLinear_MagPoint_MipPoint:
-            minFilter = VkFilter::VK_FILTER_LINEAR;
-            magFilter = VkFilter::VK_FILTER_NEAREST;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            break;
-        case SamplerFilter::MinLinear_MagPoint_MipLinear:
-            minFilter = VkFilter::VK_FILTER_LINEAR;
-            magFilter = VkFilter::VK_FILTER_NEAREST;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            break;
-        case SamplerFilter::MinLinear_MagLinear_MipPoint:
-            minFilter = VkFilter::VK_FILTER_LINEAR;
-            magFilter = VkFilter::VK_FILTER_LINEAR;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            break;
-        case SamplerFilter::MinLinear_MagLinear_MipLinear:
-            minFilter = VkFilter::VK_FILTER_LINEAR;
-            magFilter = VkFilter::VK_FILTER_LINEAR;
-            mipmapMode = VkSamplerMipmapMode::VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            break;
-        default:
-            break;
+        case SamplerFilter::Anisotropic: return D3D12_FILTER_ANISOTROPIC;
+        case SamplerFilter::MinPoint_MagPoint_MipPoint: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT
+                                    : D3D12_FILTER_MIN_MAG_MIP_POINT;
+        case SamplerFilter::MinPoint_MagPoint_MipLinear: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_MAG_POINT_MIP_LINEAR
+                                    : D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR;
+        case SamplerFilter::MinPoint_MagLinear_MipPoint: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_POINT_MAG_LINEAR_MIP_POINT
+                                    : D3D12_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT;
+        case SamplerFilter::MinPoint_MagLinear_MipLinear: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_POINT_MAG_MIP_LINEAR
+                                    : D3D12_FILTER_MIN_POINT_MAG_MIP_LINEAR;
+        case SamplerFilter::MinLinear_MagPoint_MipPoint: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_LINEAR_MAG_MIP_POINT
+                                    : D3D12_FILTER_MIN_LINEAR_MAG_MIP_POINT;
+        case SamplerFilter::MinLinear_MagPoint_MipLinear: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_LINEAR_MAG_POINT_MIP_LINEAR
+                                    : D3D12_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR;
+        case SamplerFilter::MinLinear_MagLinear_MipPoint: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT
+                                    : D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+        case SamplerFilter::MinLinear_MagLinear_MipLinear: 
+            return enableComparison ? D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR
+                                    : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        default : return D3D12_FILTER_MIN_MAG_MIP_POINT;
         }
     }
 
      
-
+/*
     VkDescriptorType VdToVkDescriptorType(
         ResourceLayout::Description::ElementDescription::ResourceKind kind, 
         ResourceLayout::Description::ElementDescription::Options options)
@@ -466,7 +442,7 @@ namespace Veldrid {
         }
     }/*
 
-    VkShaderStageFlags VdToVkShaderStages(Shader::Description::Stage stage){
+    VkShaderStageFlags VdToVkShaderStages(Shader::Stage stage){
         VkShaderStageFlags flag = 0;
         if (stage.vertex)                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
         if (stage.geometry)               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
@@ -478,7 +454,7 @@ namespace Veldrid {
 
     }
 
-    VkShaderStageFlagBits VdToVkShaderStageSingle(Shader::Description::Stage stage) {
+    VkShaderStageFlagBits VdToVkShaderStageSingle(Shader::Stage stage) {
         if (stage.vertex)                 return VK_SHADER_STAGE_VERTEX_BIT;
         if (stage.geometry)               return VK_SHADER_STAGE_GEOMETRY_BIT;
         if (stage.tessellationControl)    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;

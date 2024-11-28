@@ -7,7 +7,7 @@ namespace Veldrid
 {
     template<typename T, typename U>
     T* PtrCast(U* ptr){
-    #if 0 //VLD_DEBUG
+    #ifdef VLD_DEBUG
         T* res = dynamic_cast<T*>(ptr);
         //Actually is the target type
         assert(res != nullptr);

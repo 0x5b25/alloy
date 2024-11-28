@@ -77,6 +77,8 @@ void main()
 //}
 )";
 
+using namespace alloy;
+
 class UniformApp : public AppBase {
 
     Veldrid::sp<Veldrid::GraphicsDevice> dev;
@@ -156,8 +158,7 @@ class UniformApp : public AppBase {
         std::cout << "Compiling vertex shader...\n";
         std::vector<std::uint32_t> vertexSpv;
 
-        Veldrid::Shader::Description::Stage stage{};
-        stage.vertex = 1;
+        Veldrid::Shader::Stage stage = Veldrid::Shader::Stage::Vertex;
         if (!spvCompiler->CompileToSPIRV(
             stage,
             VertexCode,
@@ -172,8 +173,7 @@ class UniformApp : public AppBase {
         std::cout << "Compiling fragment shader...\n";
         std::vector<std::uint32_t> fragSpv;
 
-        stage = {};
-        stage.fragment = 1;
+        stage = Veldrid::Shader::Stage::Fragment;
         if (!spvCompiler->CompileToSPIRV(
             stage,
             FragmentCode,
@@ -187,14 +187,14 @@ class UniformApp : public AppBase {
 
         auto factory = dev->GetResourceFactory();
         Veldrid::Shader::Description vertexShaderDesc{};
-        vertexShaderDesc.stage.vertex = 1;
+        vertexShaderDesc.stage = Veldrid::Shader::Stage::Vertex;
         vertexShaderDesc.entryPoint = "main";
         Veldrid::Shader::Description fragmentShaderDesc{};
-        fragmentShaderDesc.stage.fragment = 1;
+        fragmentShaderDesc.stage = Veldrid::Shader::Stage::Fragment;
         fragmentShaderDesc.entryPoint = "main";
 
-        fragmentShader = factory->CreateShader(fragmentShaderDesc, fragSpv);
-        vertexShader = factory->CreateShader(vertexShaderDesc, vertexSpv);
+        fragmentShader = factory->CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size() * 4});
+        vertexShader = factory->CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size() * 4});
 
     }
 
@@ -228,7 +228,7 @@ class UniformApp : public AppBase {
         Veldrid::Buffer::Description _ubDesc{};
         _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
         _ubDesc.usage.uniformBuffer = 1;
-        _ubDesc.usage.staging = 1;
+        //_ubDesc.usage.staging = 1;
         uniformBuffer = factory->CreateBuffer(_ubDesc);
 
         Veldrid::Buffer::Description _tbDesc{};
@@ -242,20 +242,18 @@ class UniformApp : public AppBase {
         auto factory = dev->GetResourceFactory();
 
         Veldrid::ResourceLayout::Description resLayoutDesc{};
-        using ElemKind = Veldrid::ResourceLayout::Description::ElementDescription::ResourceKind;
+        using ElemKind = Veldrid::IBindableResource::ResourceKind;
         resLayoutDesc.elements.resize(2, {});
         {
             resLayoutDesc.elements[0].name = "ObjectUniform";
             resLayoutDesc.elements[0].kind = ElemKind::UniformBuffer;
-            resLayoutDesc.elements[0].stages.vertex = 1;
-            resLayoutDesc.elements[0].stages.fragment = 1;
+            resLayoutDesc.elements[1].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
         }
 
         {
             resLayoutDesc.elements[1].name = "Struct";
-            resLayoutDesc.elements[1].kind = ElemKind::StructuredBufferReadOnly;
-            resLayoutDesc.elements[1].stages.vertex = 1;
-            resLayoutDesc.elements[1].stages.fragment = 1;
+            resLayoutDesc.elements[1].kind = ElemKind::StorageBuffer;
+            resLayoutDesc.elements[1].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
         }
 
         auto _layout = factory->CreateResourceLayout(resLayoutDesc);

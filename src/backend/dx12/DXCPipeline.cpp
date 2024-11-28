@@ -3,12 +3,16 @@
 //3rd-party headers
 
 //veldrid public headers
+#include "veldrid/common/Common.hpp"
 
 //standard library headers
 #include <string>
 #include <cassert>
+#include <unordered_set>
 
 //backend specific headers
+#include "DXCShader.hpp"
+#include "DXCBindableResource.hpp"
 
 //platform specific headers
 
@@ -39,15 +43,26 @@ namespace Veldrid::VK::priv
 
 namespace Veldrid
 {
+
+    
+    DXCPipelineBase:: ~DXCPipelineBase() {
+
+    }
+    
+    DXCGraphicsPipeline::~DXCGraphicsPipeline() {
+
+    }
+
+
     DXCDevice* DXCPipelineBase::_Dev() {return static_cast<DXCDevice*>(dev.get());}
 
     sp<Pipeline> DXCGraphicsPipeline::Make(const sp<DXCDevice> &dev, const GraphicsPipelineDescription &desc) {
         // Define the vertex input layout.
-        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-        {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-        };
+        //D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+        //{
+        //    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        //    { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        //};
 
         /*
         typedef struct D3D12_GRAPHICS_PIPELINE_STATE_DESC
@@ -77,7 +92,7 @@ namespace Veldrid
         */
 
         // Describe and create the graphics pipeline state object (PSO).
-        std::vector<sp<RefCntBase>> refCnts;
+        std::unordered_set<sp<RefCntBase>> refCnts;
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc {};
         //psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
@@ -93,6 +108,35 @@ namespace Veldrid
         //psoDesc.NumRenderTargets = 1;
         //psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         //psoDesc.SampleDesc.Count = 1;
+
+        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayouts.front().get());
+
+        psoDesc.pRootSignature = dxcResLayout->GetHandle();
+
+        auto _FillShaderDesc = [&](sp<Veldrid::Shader> shader, D3D12_SHADER_BYTECODE& desc){
+            auto dxcShader = static_cast<DXCShader*>(shader.get());
+            desc.BytecodeLength = dxcShader->GetDataSizeInBytes();
+            desc.pShaderBytecode = dxcShader->GetData();
+            refCnts.insert(shader);
+        };
+
+        for(auto& shader : desc.shaderSet.shaders) {
+            auto& desc = shader->GetDesc();
+
+            switch (desc.stage)
+            {
+            case Veldrid::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
+            case Veldrid::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
+            case Veldrid::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
+            case Veldrid::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
+            case Veldrid::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
+            
+            default: {
+                //TODO: report unsupported shader stages
+            } break;
+            }
+
+        }
         
 
         /*
@@ -261,7 +305,7 @@ namespace Veldrid
             rsCI.CullMode = VdToD3DCullMode(rsDesc.cullMode);
             rsCI.FillMode = VdToD3DPolygonMode(rsDesc.fillMode);
             rsCI.DepthClipEnable = rsDesc.depthClipEnabled;
-            rsCI.FrontCounterClockwise = rsDesc.frontFace == RasterizerStateDescription::FrontFace::Clockwise;
+            rsCI.FrontCounterClockwise = rsDesc.frontFace != RasterizerStateDescription::FrontFace::Clockwise;
 
         }
             /*
@@ -344,7 +388,7 @@ namespace Veldrid
             psoDesc.SampleMask = 0xffffffff; //This has to do with multi-sampling. 0xffffffff means point sampling is used. 
             auto& msState = psoDesc.SampleDesc;
             msState.Count = (std::uint8_t)desc.outputs.sampleCount;
-            msState.Quality = 1;//TODO: Query quality support for device:
+            msState.Quality = 0;//TODO: Query quality support for device:
             //D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msLevels;
             //msLevels.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Replace with your render target format.
             //msLevels.SampleCount = 4; // Replace with your sample count.
@@ -414,7 +458,7 @@ namespace Veldrid
             {
                 auto& inputElement = inputDesc.elements[location];
 
-                iaDescs[targetIndex]./*LPCSTR*/ SemanticName;
+                iaDescs[targetIndex]./*LPCSTR*/ SemanticName = inputElement.name.c_str();
                 iaDescs[targetIndex]./*UINT*/ SemanticIndex = 0;
                 iaDescs[targetIndex]./*DXGI_FORMAT*/ Format = VdToD3DShaderDataType(inputElement.format);
                 iaDescs[targetIndex]./*UINT*/ InputSlot = binding;
@@ -621,6 +665,19 @@ namespace Veldrid
         rawPipe->_refCnts = std::move(refCnts);
 
         return sp(rawPipe);
+    }
+
+
+    DXCComputePipeline::~DXCComputePipeline() {
+
+    }
+
+    sp<Pipeline> DXCComputePipeline::Make(
+        const sp<DXCDevice>& dev,
+        const ComputePipelineDescription& desc
+    ) {
+        assert(false);
+        return nullptr;
     }
 
 } // namespace Veldrid

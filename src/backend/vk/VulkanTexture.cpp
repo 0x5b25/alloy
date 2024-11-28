@@ -440,7 +440,7 @@ namespace Veldrid {
         VkSampler rawSampler;
         vkCreateSampler(dev->LogicalDev(), &samplerCI, nullptr, &rawSampler);
 
-        auto* sampler = new VulkanSampler(dev);
+        auto* sampler = new VulkanSampler(dev, desc);
         sampler->_sampler = rawSampler;
         return sp<VulkanSampler>(sampler);
     }

@@ -75,14 +75,10 @@ namespace Veldrid
                 Texture1D, Texture2D, Texture3D
             } type;
 
-            enum class SampleCount : uint8_t{
-                x1 = 1,
-                x2 = 2,
-                x4 = 4,
-                x8 = 8,
-                x16 = 16,
-                x32 = 32
-            } sampleCount;
+            SampleCount sampleCount;
+
+            
+            HostAccess hostAccess;
         };
         
     protected:
@@ -134,7 +130,7 @@ namespace Veldrid
             return description;
         }
 
-        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Sampler; }
+        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Texture; }
 
         const sp<Texture>& GetTarget() const { return target; }
 

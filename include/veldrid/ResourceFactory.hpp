@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "veldrid/common/RefCnt.hpp"
 #include "veldrid/Shader.hpp"
 #include "veldrid/Texture.hpp"
@@ -39,7 +41,7 @@ namespace Veldrid
 
         virtual sp<Shader> CreateShader(
             const Shader::Description& description,
-            const std::vector<std::uint32_t>& spvBinary) = 0;
+            const std::span<std::uint8_t>& il) = 0;
 
         virtual sp<Pipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) = 0;
