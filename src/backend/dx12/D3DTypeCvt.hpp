@@ -58,7 +58,7 @@ namespace Veldrid {
      
     //VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor);
 
-    //VkIndexType VdToVkIndexFormat(IndexFormat format);
+    DXGI_FORMAT VdToD3DIndexFormat(IndexFormat format);
 
     D3D12_BLEND VdToD3DBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor);
 

@@ -77,7 +77,7 @@ namespace Veldrid{
     //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 //
         
-        std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> _descHeap;
+        std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
             const sp<GraphicsDevice>& dev,
@@ -87,7 +87,7 @@ namespace Veldrid{
         {}
 
     public:
-        virtual ~DXCResourceSet() override {}
+        virtual ~DXCResourceSet() override;
 
         static sp<ResourceSet> Make(
             const sp<DXCDevice>& dev,
@@ -99,5 +99,7 @@ namespace Veldrid{
 //
     //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
     //    void VisitElements(ElementVisitor visitor);
+        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const {return _descHeap;}
+        virtual void* GetNativeHandle() const override {return (void*)_descHeap.data(); }
     };
 }

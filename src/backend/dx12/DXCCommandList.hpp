@@ -1,7 +1,5 @@
 #pragma once
 
-#include <volk.h>
-
 #include "veldrid/common/RefCnt.hpp"
 #include "veldrid/CommandList.hpp"
 
@@ -9,9 +7,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "VulkanPipeline.hpp"
-#include "VulkanBindableResource.hpp"
-#include "VulkanFramebuffer.hpp"
+#include "DXCPipeline.hpp"
+#include "DXCBindableResource.hpp"
+#include "DXCFrameBuffer.hpp"
+
+
+//platform specific headers
+#include <dxgi1_4.h> //Guaranteed by DX12
+#include <directx/d3d12.h>
 
 //TODO: a system to track image layouts inside a command buffer and
 //insert image layout transition commands when necessary. also each
@@ -23,99 +26,35 @@
 
 namespace Veldrid
 {
-    class VulkanDevice;
-    class VulkanBuffer;
-    class VulkanTexture;
-    struct _CmdPoolContainer;
+    class DXCDevice;
+    class DXCBuffer;
+    class DXCTexture;
 
-    //Register data access and insert pipeline where necessary
-    class _DevResRegistry {
-
-        //VkMemoryBarrier{};
-        //VkBufferMemoryBarrier{};
-        //VkImageMemoryBarrier{};
-
-        struct BufRef {
-            VkPipelineStageFlags stage;
-            VkAccessFlags access;
-        };
-
-        struct TexRef {
-            VkPipelineStageFlags stage;
-            VkAccessFlags access;
-            VkImageLayout layout;
-        };
-
-
-        std::unordered_set<sp<DeviceResource>> _res;
-        std::unordered_map<VulkanBuffer*, BufRef> _bufRefs;
-        std::unordered_map<VulkanTexture*, TexRef> _texRefs;
-
-        struct BufSyncInfo{
-            VulkanBuffer* resource;
-            BufRef prevUsage, currUsage;
-        };
-
-        struct TexSyncInfo {
-            VulkanTexture* resource;
-            TexRef prevUsage, currUsage;
-        };
-
-        std::vector<BufSyncInfo> _bufSyncs;
-        std::vector<TexSyncInfo> _texSyncs;
-
-    public:
-
-        void RegisterBufferUsage(
-            const sp<Buffer>& buffer,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        void RegisterTexUsage(
-            const sp<Texture>& tex,
-            VkImageLayout requiredLayout,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        void ModifyTexUsage(
-            const sp<Texture>& tex,
-            VkImageLayout layout,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        bool InsertPipelineBarrierIfNecessary(
-            VkCommandBuffer cb
-        );
-
-    };
 
     //class VulkanPipeline;
 
-    class VulkanCommandList : public CommandList{
+    class DXCCommandList : public CommandList{
 
-        VkCommandBuffer _cmdBuf;
-        sp<_CmdPoolContainer> _cmdPool;
+        ID3D12CommandAllocator* _cmdPool;
+        ID3D12GraphicsCommandList* _cmdList;
 
         struct _ResSetHolder{
             bool isNewlyChanged;
-            sp<VulkanResourceSet> resSet;
+            sp<DXCResourceSet> resSet;
             std::vector<std::uint32_t> offsets;
 
 
             bool IsValid() const {return resSet != nullptr;}
         };
         std::vector<_ResSetHolder> _resourceSets;
-        VulkanPipelineBase* _currentPipeline;
+        DXCPipelineBase* _currentPipeline;
 
         struct _RenderPassInfo{
             //Pipeline resources
-            sp<VulkanFramebufferBase> fb;
+            sp<DXCFrameBuffer> fb;
             //sp<VulkanPipelineBase> pipeline;
-            std::vector<std::optional<VkClearColorValue>> clearColorTargets;
-            std::optional<VkClearDepthStencilValue> clearDSTarget;
+            //std::vector<std::optional<VkClearColorValue>> clearColorTargets;
+            //std::optional<VkClearDepthStencilValue> clearDSTarget;
 
             //bool IsComputePass() const {
             //    return pipeline->IsComputePipeline();
@@ -129,7 +68,7 @@ namespace Veldrid
         //Resources used
         std::unordered_set<sp<DeviceResource>> _devRes;
 
-        _DevResRegistry _resReg;
+        //_DevResRegistry _resReg;
         std::unordered_set<sp<DeviceResource>> _miscResReg;
 
         //sp<VulkanPipelineBase> _currentPipeline;
@@ -138,13 +77,21 @@ namespace Veldrid
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
-        VulkanCommandList(const sp<GraphicsDevice>& dev) : CommandList(dev){}
+        DXCCommandList(
+            const sp<GraphicsDevice>& dev,
+            ID3D12CommandAllocator* pAllocator,
+            ID3D12GraphicsCommandList* pList
+        ) 
+            : CommandList(dev)
+            , _cmdPool(pAllocator)
+            , _cmdList(pList)
+        {}
 
     public:
-        ~VulkanCommandList();
+        ~DXCCommandList();
 
-        static sp<CommandList> Make(const sp<VulkanDevice>& dev);
-        const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
+        static sp<CommandList> Make(const sp<DXCDevice>& dev);
+        const ID3D12CommandList* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
         virtual void End() override;
@@ -189,8 +136,8 @@ namespace Veldrid
         virtual void SetFullScissorRect(std::uint32_t index) override;
         virtual void SetFullScissorRects() override;
 
-        void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
-        void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
+        //void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
+        //void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
         void PreDrawCommand();
         virtual void Draw(
             std::uint32_t vertexCount, std::uint32_t instanceCount,

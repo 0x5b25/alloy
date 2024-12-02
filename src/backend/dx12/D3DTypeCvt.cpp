@@ -482,19 +482,20 @@ namespace Veldrid {
     }
 
 
-    VkIndexType VdToVkIndexFormat(IndexFormat format)
+*/
+    DXGI_FORMAT VdToD3DIndexFormat(IndexFormat format)
     {
         switch (format)
         {
         case IndexFormat::UInt16:
-            return VkIndexType::VK_INDEX_TYPE_UINT16;
+            return DXGI_FORMAT::DXGI_FORMAT_R16_UINT;
         case IndexFormat::UInt32:
-            return VkIndexType::VK_INDEX_TYPE_UINT32;
+            return DXGI_FORMAT::DXGI_FORMAT_R32_UINT;
         default:
-            return VkIndexType::VK_INDEX_TYPE_MAX_ENUM;
+            return DXGI_FORMAT::DXGI_FORMAT_UNKNOWN;
         }
     }
-*/
+
     D3D12_BLEND VdToD3DBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor)
     {
         using BlendFactor = typename Veldrid::BlendStateDescription::BlendFactor;

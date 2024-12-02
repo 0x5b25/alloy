@@ -192,14 +192,14 @@ private:
     bitset[static_cast<utype>(val)] = 1;
   }
 
+public:
 };
-
 /**
  * Provide a free operator allowing to combine two enumeration
  * member into a BitFlags.
  */
 template<typename T>
-std::enable_if_t<std::is_enum<T>::value, BitFlags<T>>
+std::enable_if_t<std::is_enum<T>::value, alloy::BitFlags<T>>
 operator|(const T &lhs, const T &rhs)
 {
   BitFlags<T> bs;

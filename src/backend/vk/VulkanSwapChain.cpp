@@ -196,7 +196,7 @@ namespace Veldrid
             texDesc.mipLevels = 1;
             texDesc.arrayLayers = 1;
             texDesc.usage.depthStencil = true;
-            texDesc.sampleCount = Texture::Description::SampleCount::x1;
+            texDesc.sampleCount = SampleCount::x1;
             texDesc.format = description.depthFormat.value();
 
             auto dTgt = _gd->GetResourceFactory()->CreateTexture(texDesc);
@@ -217,7 +217,7 @@ namespace Veldrid
             texDesc.mipLevels = 1;
             texDesc.arrayLayers = 1;
             texDesc.usage.renderTarget = true;
-            texDesc.sampleCount = Texture::Description::SampleCount::x1;
+            texDesc.sampleCount = SampleCount::x1;
             texDesc.format = Veldrid::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
 
             auto firstColorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,

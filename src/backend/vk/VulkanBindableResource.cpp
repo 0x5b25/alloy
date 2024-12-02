@@ -164,8 +164,8 @@ namespace Veldrid
                     auto* range = PtrCast<BufferRange>(boundResources[i].get());
                     auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
                     bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
-                    bufferInfos[i].offset = range->GetOffsetInBytes();
-                    bufferInfos[i].range = range->GetSizeInBytes();
+                    bufferInfos[i].offset = range->GetShape().offsetInElements;
+                    bufferInfos[i].range = range->GetShape().elementCount;
                     descriptorWrites[i].pBufferInfo = &bufferInfos[i];
                     //_refCounts.push_back(boundResources[i]);
                 } break;

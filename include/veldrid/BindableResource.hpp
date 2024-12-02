@@ -134,6 +134,7 @@ namespace Veldrid
     public:
         const Description& GetDesc() const {return description;}
 
+        virtual void* GetNativeHandle() const {return nullptr; }
     };
  
 } // namespace Veldrid

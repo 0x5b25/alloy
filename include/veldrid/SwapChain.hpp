@@ -33,6 +33,9 @@ namespace Veldrid
             // This is a window-system-specific object which differs by platform.
             // Currently surface is bound to the acutal device, this source has no effect.
             SwapChainSource* source;
+
+            //#TODO: add surface format selection. Currently default to RGBA8_UNORM as it's supported
+            //on most devices.
             
             std::uint32_t initialWidth, initialHeight;
             

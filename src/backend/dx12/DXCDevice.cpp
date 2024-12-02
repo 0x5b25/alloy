@@ -371,8 +371,10 @@ namespace Veldrid {
         return _expectedVal.load(std::memory_order_acquire) <= GetCurrentValue();
     }
 
-    DXCDevice::DXCDevice() 
-        //: _resFactory(this)
+    DXCDevice::DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev) 
+        : _dev(dev)
+        , _rtvHeap(dev.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64)
+        , _dsvHeap(dev.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64)
     {}
 
     DXCDevice::~DXCDevice() {
@@ -451,11 +453,11 @@ namespace Veldrid {
         }
 
         
-        auto dev = sp<DXCDevice>(new DXCDevice());
+        auto dev = sp<DXCDevice>(new DXCDevice(device));
         
 
         dev->_adp = std::move(adp);
-        dev->_dev = std::move(device);
+        //dev->_dev = std::move(device);
         dev->_q = std::move(queue);
         dev->_cmdAlloc = std::move(cmdAlloc);
         dev->_waitIdleFence.Init(std::move(waitIdleFence));

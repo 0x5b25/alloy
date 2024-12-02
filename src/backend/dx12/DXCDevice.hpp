@@ -24,6 +24,7 @@
 
 //Local headers
 #include "DXCResourceFactory.hpp"
+#include "D3DDescriptorHeapMgr.hpp"
 
 namespace Veldrid{
 
@@ -143,6 +144,7 @@ namespace Veldrid{
 
         Microsoft::WRL::ComPtr<D3D12MA::Allocator> _alloc;
 
+        Veldrid::DXC::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
         //DXCResourceFactory _resFactory;
 
@@ -152,7 +154,7 @@ namespace Veldrid{
         GraphicsDevice::Features _commonFeat;
         D3D12DevCaps _dxcFeat;
 
-        DXCDevice();
+        DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev);
 
     public:
 
@@ -177,7 +179,7 @@ namespace Veldrid{
 
         virtual ResourceFactory* GetResourceFactory() override { return this; };
 
-        ID3D12CommandQueue* GraphicsQueue() const {return _q.Get();}
+        ID3D12CommandQueue* GetImplicitQueue() const {return _q.Get();}
 
         D3D12MA::Allocator* Allocator() const {return _alloc.Get();}
 

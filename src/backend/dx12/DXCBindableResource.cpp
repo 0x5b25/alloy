@@ -119,8 +119,8 @@ namespace Veldrid
         Shader::Stages combinedShaderResAccess;
         Shader::Stages samplerAccess;
 
-        std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
-        std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
+        //std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
+        //std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
 
         std::vector<IBindableResource*> combinedBindables;
         std::vector<IBindableResource*> samplerBindables;
@@ -143,16 +143,16 @@ namespace Veldrid
             }
         }
 
-        std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> descHeap;
+        std::vector<ID3D12DescriptorHeap*> descHeap;
         //Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> samplerHeap;
         //std::vector<D3D12_ROOT_PARAMETER> rootParams;
 
-        if(!combinedShaderResDescTableRanges.empty()) {
+        if(!combinedBindables.empty()) {
             descHeap.emplace_back();
             auto& combinedShaderResHeap = descHeap.back();
 
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-            heapDesc.NumDescriptors = combinedShaderResDescTableRanges.size();
+            heapDesc.NumDescriptors = combinedBindables.size();
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
             auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&combinedShaderResHeap));
@@ -162,12 +162,12 @@ namespace Veldrid
             }
         }
 
-        if(!samplerDescTableRanges.empty()) {
+        if(!samplerBindables.empty()) {
             descHeap.emplace_back();
             auto& samplerHeap = descHeap.back();
 
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-            heapDesc.NumDescriptors = samplerDescTableRanges.size();
+            heapDesc.NumDescriptors = samplerBindables.size();
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
             auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&samplerHeap));
@@ -356,6 +356,13 @@ namespace Veldrid
         resSet->_descHeap = std::move(descHeap);
 
         return resSet;
+    }
+
+    
+    DXCResourceSet::~DXCResourceSet() {
+        for(auto* pHeap : _descHeap) {
+            pHeap->Release();
+        }
     }
 
 } // namespace Veldrid

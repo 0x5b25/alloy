@@ -664,7 +664,21 @@ namespace Veldrid
         
         rawPipe->_refCnts = std::move(refCnts);
 
+        dxcResLayout->ref();
+        rawPipe->_rootSig = sp(dxcResLayout);
+
         return sp(rawPipe);
+    }
+
+    
+    void DXCGraphicsPipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
+
+        pCmdList->SetPipelineState(_pso.Get());
+
+        pCmdList->SetGraphicsRootSignature(_rootSig->GetHandle());
+
+        pCmdList->IASetPrimitiveTopology(_primTopo);
+        pCmdList->OMSetBlendFactor(_blendConstants);
     }
 
 
@@ -678,6 +692,16 @@ namespace Veldrid
     ) {
         assert(false);
         return nullptr;
+    }
+
+    void DXCComputePipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
+
+        //pCmdList->SetPipelineState(_pso.Get());
+        //
+        //pCmdList->SetGraphicsRootSignature(_rootSig->GetHandle());
+        //
+        //pCmdList->IASetPrimitiveTopology(_primTopo);
+        //pCmdList->OMSetBlendFactor(_blendConstants);
     }
 
 } // namespace Veldrid

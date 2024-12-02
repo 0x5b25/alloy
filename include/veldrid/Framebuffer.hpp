@@ -22,6 +22,7 @@ namespace Veldrid
 
     };
 
+    //#TODO: Rename framebuffer to rendertarget to more accurately reflect its usage
     class Framebuffer : public DeviceResource{
 
     public:

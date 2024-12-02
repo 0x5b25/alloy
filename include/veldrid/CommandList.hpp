@@ -183,32 +183,32 @@ namespace Veldrid
         /// which new data will be uploaded.</param>
         /// <param name="source">A pointer to the start of the data to upload.</param>
         /// <param name="sizeInBytes">The total size of the uploaded data, in bytes.</param>
-        virtual void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            void* source,
-            std::uint32_t sizeInBytes) = 0;
-
-        template<typename T>
-        void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            const T& source
-        ){
-            UpdateBuffer(buffer, bufferOffsetInBytes,
-                &source, sizeof(source));
-        }
-
-        template<typename T>
-        void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            const std::vector<T>& source
-        ){
-            auto totalSize = sizeof(T) * source.size();
-            UpdateBuffer(buffer, bufferOffsetInBytes,
-                source.data(), totalSize);
-        }
+        //virtual void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    void* source,
+        //    std::uint32_t sizeInBytes) = 0;
+        //
+        //template<typename T>
+        //void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    const T& source
+        //){
+        //    UpdateBuffer(buffer, bufferOffsetInBytes,
+        //        &source, sizeof(source));
+        //}
+        //
+        //template<typename T>
+        //void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    const std::vector<T>& source
+        //){
+        //    auto totalSize = sizeof(T) * source.size();
+        //    UpdateBuffer(buffer, bufferOffsetInBytes,
+        //        source.data(), totalSize);
+        //}
 
         /// <summary>
         /// Copies a region from the source <see cref="DeviceBuffer"/> to another region in the destination <see cref="DeviceBuffer"/>.

@@ -4,7 +4,7 @@
 
 #include "DXCDevice.hpp"
 #include "DXCPipeline.hpp"
-//#include "VulkanCommandList.hpp"
+#include "DXCCommandList.hpp"
 #include "DXCTexture.hpp"
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
@@ -105,8 +105,7 @@ namespace Veldrid
 
     
     sp<CommandList> DXCResourceFactory::CreateCommandList(){
-        return nullptr;
-        //return VulkanCommandList::Make(_CreateNewDevHandle());
+        return DXCCommandList::Make(_CreateNewDevHandle());
     }
 
     sp<Fence> DXCResourceFactory::CreateFence(bool initialSignaled) {

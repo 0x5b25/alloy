@@ -1094,20 +1094,6 @@ namespace Veldrid{
         }
     }
 
-    void VulkanCommandList::UpdateBuffer(
-        const sp<Buffer>& buffer,
-        std::uint32_t bufferOffsetInBytes,
-        void* source,
-        std::uint32_t sizeInBytes
-    ) {
-        //VkBuffer stagingBuffer = GetStagingBuffer(sizeInBytes);
-        //    _gd.UpdateBuffer(stagingBuffer, 0, source, sizeInBytes);
-        //    CopyBuffer(stagingBuffer, 0, buffer, bufferOffsetInBytes, sizeInBytes);
-        
-    }
-
-
-
     void VulkanCommandList::CopyBufferToTexture(
         const sp<Buffer>& source,
         const Texture::Description& srcDesc,
