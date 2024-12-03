@@ -15,6 +15,7 @@
 
 //backend specific headers
 #include "DXCTexture.hpp"
+#include "DXCFrameBuffer.hpp"
 
 //platform specific headers
 #include <directx/d3d12.h>
@@ -41,7 +42,7 @@ namespace Veldrid {
         Framebuffer::Description _fbDesc;
     };
 
-    class DXCSwapChainBackBuffer : public Framebuffer {
+    class DXCSwapChainBackBuffer : public DXCFrameBufferBase {
        
         sp<DXCSwapChain> _sc;
         const BackBufferContainer& _bb;
@@ -57,6 +58,14 @@ namespace Veldrid {
 
         
         virtual const Description& GetDesc() const override {return _bb._fbDesc;}
+
+
+        virtual uint32_t GetRTVCount() const override;
+        virtual bool HasDSV() const override;
+        virtual bool DSVHasStencil() const override;
+        
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetRTV(uint32_t slot) const override;
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override;
 
     };
     

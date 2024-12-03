@@ -13,7 +13,7 @@ namespace Veldrid {
         sp<DXCSwapChain>&& sc,
         const BackBufferContainer& bb
     )
-        : Framebuffer(dev)
+        : DXCFrameBufferBase(dev)
         , _sc(std::move(sc))
         , _bb(bb)
     {}
@@ -21,6 +21,29 @@ namespace Veldrid {
     
     DXCSwapChainBackBuffer::~DXCSwapChainBackBuffer() {
 
+    }
+
+    uint32_t DXCSwapChainBackBuffer::GetRTVCount() const { return 1; }
+
+    bool DXCSwapChainBackBuffer::HasDSV() const { return _bb._depthBuffer != nullptr; }
+
+    
+    bool DXCSwapChainBackBuffer::DSVHasStencil() const {
+        if(_bb._depthBuffer) {
+            if(Helpers::FormatHelpers::IsStencilFormat(
+                _bb._depthBuffer->GetDesc().format
+            )) return true;
+        }
+        
+        return false;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE DXCSwapChainBackBuffer::GetRTV(uint32_t slot) const {
+        return _bb._rtv;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE DXCSwapChainBackBuffer::GetDSV() const {
+        return _bb._dsv;
     }
     
     sp<SwapChain> DXCSwapChain::Make(

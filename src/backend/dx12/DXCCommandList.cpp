@@ -9,6 +9,7 @@
 #include "D3DCommon.hpp"
 #include "DXCTexture.hpp"
 #include "DXCPipeline.hpp"
+#include "DXCFrameBuffer.hpp"
 
 namespace Veldrid
 {
@@ -326,12 +327,13 @@ namespace Veldrid
     }
 
     void DXCCommandList::BeginRenderPass(const sp<Framebuffer>& fb){
-        //CHK_RENDERPASS_ENDED();
+        CHK_RENDERPASS_ENDED();
         ////Record render pass
-        //_rndPasses.emplace_back();
-        //_currentRenderPass = &_rndPasses.back();
+        //#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
+        _rndPasses.emplace_back();
+        _currentRenderPass = &_rndPasses.back();
         //
-        //VulkanFramebufferBase* vkfb = PtrCast<VulkanFramebufferBase>(fb.get());
+        auto dxcfb = PtrCast<DXCFrameBufferBase>(fb.get());
         //_currentRenderPass->fb = RefRawPtr(vkfb);
         //
         //_currentRenderPass->clearColorTargets.resize(
@@ -602,7 +604,7 @@ namespace Veldrid
         assert(slot < _resourceSets.size());
         assert(_currentPipeline->IsComputePipeline());
 
-       _devRes.insert(rs);
+        _devRes.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
@@ -623,15 +625,16 @@ namespace Veldrid
     ){
         CHK_RENDERPASS_BEGUN();
 
-        auto& clearValue = _currentRenderPass->clearColorTargets[slot];
-        VkClearColorValue clearColor{};
+        if(_currentRenderPass->fb->GetRTVCount() >= slot) {
+            assert(false);
+        } else {
 
-        clearColor.float32[0] = r;
-        clearColor.float32[1] = g;
-        clearColor.float32[2] = b;
-        clearColor.float32[3] = a;
+            auto rtv = _currentRenderPass->fb->GetRTV(slot);
 
-        clearValue = clearColor;
+            float clearColor[4] = {r, g, b, a};
+
+            _cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+        }
 
         //VkClearAttachment clearAttachment{};
         //clearAttachment.clearValue.color.float32[0] = r;
@@ -664,10 +667,23 @@ namespace Veldrid
     void DXCCommandList::ClearDepthStencil(float depth, std::uint8_t stencil){
         CHK_RENDERPASS_BEGUN();
 
-        VkClearDepthStencilValue clearDS{};
-        clearDS.depth = depth;
-        clearDS.stencil = stencil;
-        _currentRenderPass->clearDSTarget = clearDS;
+        if(!_currentRenderPass->fb->HasDSV()) {
+            assert(false);
+        } else {
+            D3D12_CLEAR_FLAGS clearFlags = D3D12_CLEAR_FLAG_DEPTH;
+            if(_currentRenderPass->fb->DSVHasStencil()) {
+                clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
+            }
+
+            auto dsv = _currentRenderPass->fb->GetDSV();
+
+            _cmdList->ClearDepthStencilView(
+                dsv,
+                clearFlags,
+                depth, stencil,
+                0, nullptr
+            );
+        }
 
         //VkClearAttachment clearAttachment{};
         //clearAttachment.clearValue.depthStencil.depth = depth;
@@ -1116,48 +1132,28 @@ namespace Veldrid
         //vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
     };
 
+    static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
+    {
+        return ((arrayLayer * mipLevelCount) + mipLevel);
+    };
+
     void DXCCommandList::ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) {
         
-        VulkanTexture* vkSource = PtrCast<VulkanTexture>(source.get());
+        auto* dxcSource = PtrCast<DXCTexture>(source.get());
         _devRes.insert(source);
-        VulkanTexture* vkDestination = PtrCast<VulkanTexture>(destination.get());
+        auto* dxcDestination = PtrCast<DXCTexture>(destination.get());
         _devRes.insert(destination);
-
-        VkImageAspectFlags aspectFlags = (source->GetDesc().usage.depthStencil)
-            ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
-            : VK_IMAGE_ASPECT_COLOR_BIT;
-        VkImageResolve region{};
-        
-        region.extent = { source->GetDesc().width, source->GetDesc().height, source->GetDesc().depth };
-        region.srcSubresource.layerCount = 1;
-        region.srcSubresource.baseArrayLayer = 0;
-        region.srcSubresource.mipLevel = 0;
-        region.srcSubresource.aspectMask = aspectFlags;
-        
-        region.dstSubresource.layerCount = 1;
-        region.dstSubresource.baseArrayLayer = 0;
-        region.dstSubresource.mipLevel = 0;
-        region.dstSubresource.aspectMask = aspectFlags;
         
         //TODO:Implement full image layout tracking and transition systems
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
         //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferDstOptimal);
 
-        _cmdList->ResolveSubresource();
-
-        vkCmdResolveImage(
-            _cmdBuf,
-            vkSource->GetHandle(),
-            VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            vkDestination->GetHandle(),
-            VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &region);
-
-        if (vkDestination->GetDesc().usage.sampled)
-        {
-            //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.ShaderReadOnlyOptimal);
-        }
+        _cmdList->ResolveSubresource(
+            dxcSource->GetHandle(),
+            0,
+            dxcDestination->GetHandle(),
+            0,
+            dxcDestination->GetHandle()->GetDesc().Format);
     }
 
     void DXCCommandList::CopyBufferToTexture(
@@ -1175,21 +1171,8 @@ namespace Veldrid
     ){
         CHK_RENDERPASS_ENDED();
 
-        _resReg.RegisterBufferUsage(source,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_TRANSFER_READ_BIT
-        );
-
-        _resReg.RegisterTexUsage(destination,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_TRANSFER_WRITE_BIT
-        );
-
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-
-        auto* srcBuffer = PtrCast<VulkanBuffer>(source.get());
-        auto* dstImg = PtrCast<VulkanTexture>(destination.get());
+        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source.get());
+        auto* dstDxcTexture = PtrCast<DXCTexture>(destination.get());
 
         //auto GetDimension = [](std::uint32_t largestLevelDimension, std::uint32_t mipLevel)->std::uint32_t{
         //    std::uint32_t ret = largestLevelDimension;
@@ -1254,26 +1237,62 @@ namespace Veldrid
         std::uint32_t copyWidth = std::min(width, mipWidth);
         std::uint32_t copyheight = std::min(height, mipHeight);
 
-        VkBufferImageCopy regions{};
-            regions.bufferOffset = Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer)
+        //VkBufferImageCopy regions{};
+        //    regions.bufferOffset = Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer)
+        //        + (srcZ * depthPitch)
+        //        + (compressedY * rowPitch)
+        //        + (compressedX * blockSizeInBytes);
+        //    regions.bufferRowLength = bufferRowLength;
+        //    regions.bufferImageHeight = bufferImageHeight;
+        //    regions.imageExtent = {copyWidth, copyheight, depth};
+        //    regions.imageOffset = {(int)dstX, (int)dstY, (int)dstZ};
+        //
+        //VkImageSubresourceLayers &dstSubresource = regions.imageSubresource;
+        //
+        //dstSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+        //dstSubresource.layerCount = layerCount;
+        //dstSubresource.mipLevel = dstMipLevel;
+        //dstSubresource.baseArrayLayer = dstBaseArrayLayer;
+        //
+        //vkCmdCopyBufferToImage(
+        //    _cmdBuf, srcBuffer->GetHandle(), 
+        //    dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions);
+
+        D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
+        dstSubresource.pResource = dstDxcTexture->GetHandle();
+        dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dstSubresource.SubresourceIndex = _ComputeSubresource(
+            srcMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+   
+
+        D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
+        srcSubresource.pResource = srcDxcBuffer->GetHandle();
+        srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        srcSubresource.PlacedFootprint.Offset = 
+            Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer)
                 + (srcZ * depthPitch)
                 + (compressedY * rowPitch)
                 + (compressedX * blockSizeInBytes);
-            regions.bufferRowLength = bufferRowLength;
-            regions.bufferImageHeight = bufferImageHeight;
-            regions.imageExtent = {copyWidth, copyheight, depth};
-            regions.imageOffset = {(int)dstX, (int)dstY, (int)dstZ};
+        srcSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(srcDesc.format);
+        srcSubresource.PlacedFootprint.Footprint.Width = srcDesc.width;
+        srcSubresource.PlacedFootprint.Footprint.Height = srcDesc.height;
+        srcSubresource.PlacedFootprint.Footprint.Depth = srcDesc.depth;
+        srcSubresource.PlacedFootprint.Footprint.RowPitch = rowPitch;
 
-        VkImageSubresourceLayers &dstSubresource = regions.imageSubresource;
-        
-        dstSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-        dstSubresource.layerCount = layerCount;
-        dstSubresource.mipLevel = dstMipLevel;
-        dstSubresource.baseArrayLayer = dstBaseArrayLayer;
+        D3D12_BOX srcRegion {};
+        srcRegion.left = srcX;
+        srcRegion.top = srcY;
+        srcRegion.front = srcZ;
+        srcRegion.right = srcX + width;
+        srcRegion.bottom = srcY + height;
+        srcRegion.back = srcZ + depth;
 
-        vkCmdCopyBufferToImage(
-            _cmdBuf, srcBuffer->GetHandle(), 
-            dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions);
+        //vkCmdCopyImageToBuffer(
+        //    _cmdBuf,
+        //    srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        //    dstBuffer->GetHandle(), layerCount, layers.data());
+
+        _cmdList->CopyTextureRegion(&dstSubresource, dstX, dstY, dstZ, &srcSubresource, &srcRegion);
 
         //if ((dstVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -1304,20 +1323,14 @@ namespace Veldrid
     ) {
         CHK_RENDERPASS_ENDED();
 
-        _resReg.RegisterTexUsage(source,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_TRANSFER_READ_BIT
-        );
-        _resReg.RegisterBufferUsage(destination,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_TRANSFER_WRITE_BIT
-        );
-        
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        _devRes.insert(source);
+        _devRes.insert(destination);
 
-        auto srcVkTexture = PtrCast<VulkanTexture>(source.get());
-        VkImage srcImage = srcVkTexture->GetHandle();
+        auto srcDxcTexture = PtrCast<DXCTexture>(source.get());
+        auto dstDxcTexture = PtrCast<DXCTexture>(destination.get());
+
+        auto srcTexture = PtrCast<DXCTexture>(source.get());
+        auto srcImage = srcTexture->GetHandle();
 
         //TODO: Transition layout if necessary
         //srcVkTexture.TransitionImageLayout(
@@ -1328,15 +1341,15 @@ namespace Veldrid
         //    layerCount,
         //    VkImageLayout.TransferSrcOptimal);
 
-        VulkanBuffer* dstBuffer = PtrCast<VulkanBuffer>(destination.get());
+        auto dstBuffer = PtrCast<DXCBuffer>(destination.get());
 
-        VkImageAspectFlags aspect = (srcVkTexture->GetDesc().usage.depthStencil)
-            ? VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
-            : VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+        //VkImageAspectFlags aspect = (srcVkTexture->GetDesc().usage.depthStencil)
+        //    ? VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
+        //    : VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
         
         std::uint32_t mipWidth, mipHeight, mipDepth;
         Helpers::GetMipDimensions(dstDesc, dstMipLevel, mipWidth, mipHeight, mipDepth);
-        std::uint32_t blockSize = Helpers::FormatHelpers::IsCompressedFormat(srcVkTexture->GetDesc().format) ? 4u : 1u;
+        std::uint32_t blockSize = Helpers::FormatHelpers::IsCompressedFormat(srcTexture->GetDesc().format) ? 4u : 1u;
         std::uint32_t bufferRowLength = std::max(mipWidth, blockSize);
         std::uint32_t bufferImageHeight = std::max(mipHeight, blockSize);
         std::uint32_t compressedDstX = dstX / blockSize;
@@ -1348,35 +1361,67 @@ namespace Veldrid
         std::uint32_t depthPitch = Helpers::FormatHelpers::GetDepthPitch(
             rowPitch, bufferImageHeight, dstDesc.format);
 
-        std::vector<VkBufferImageCopy> layers (layerCount);
-        for(unsigned layer = 0; layer < layerCount; layer++)
-        {
-            //VkSubresourceLayout dstLayout = dstVkTexture.GetSubresourceLayout(
-            //    dstVkTexture.CalculateSubresource(dstMipLevel, dstBaseArrayLayer + layer));
+        //std::vector<VkBufferImageCopy> layers (layerCount);
+        //for(unsigned layer = 0; layer < layerCount; layer++)
+        //{
+        //    //VkSubresourceLayout dstLayout = dstVkTexture.GetSubresourceLayout(
+        //    //    dstVkTexture.CalculateSubresource(dstMipLevel, dstBaseArrayLayer + layer));
+        //
+        //    VkBufferImageCopy &region = layers[layer];
+        //    
+        //    region.bufferRowLength = bufferRowLength;
+        //    region.bufferImageHeight = bufferImageHeight;
+        //    region.bufferOffset =  Helpers::ComputeSubresourceOffset(dstDesc, dstMipLevel, dstBaseArrayLayer)//dstLayout.offset
+        //        + (dstZ * depthPitch)
+        //        + (compressedDstY * rowPitch)
+        //        + (compressedDstX * blockSizeInBytes);
+        //    region.imageExtent = { width, height, depth };
+        //    region.imageOffset = { (int)srcX, (int)srcY, (int)srcZ };
+        //
+        //    VkImageSubresourceLayers& srcSubresource = region.imageSubresource;
+        //    srcSubresource.aspectMask = aspect;
+        //    srcSubresource.layerCount = 1;
+        //    srcSubresource.mipLevel = srcMipLevel;
+        //    srcSubresource.baseArrayLayer = srcBaseArrayLayer + layer;            
+        //    
+        //}
 
-            VkBufferImageCopy &region = layers[layer];
-            
-            region.bufferRowLength = bufferRowLength;
-            region.bufferImageHeight = bufferImageHeight;
-            region.bufferOffset =  Helpers::ComputeSubresourceOffset(dstDesc, dstMipLevel, dstBaseArrayLayer)//dstLayout.offset
+        D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
+        srcSubresource.pResource = srcDxcTexture->GetHandle();
+        srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        srcSubresource.SubresourceIndex = _ComputeSubresource(
+            srcMipLevel, srcDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+   
+
+        D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
+        dstSubresource.pResource = dstDxcTexture->GetHandle();
+        dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        dstSubresource.PlacedFootprint.Offset = 
+            Helpers::ComputeSubresourceOffset(dstDesc, dstMipLevel, dstBaseArrayLayer)//dstLayout.offset
                 + (dstZ * depthPitch)
                 + (compressedDstY * rowPitch)
                 + (compressedDstX * blockSizeInBytes);
-            region.imageExtent = { width, height, depth };
-            region.imageOffset = { (int)srcX, (int)srcY, (int)srcZ };
+        dstSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(dstDesc.format);
+        dstSubresource.PlacedFootprint.Footprint.Width = dstDesc.width;
+        dstSubresource.PlacedFootprint.Footprint.Height = dstDesc.height;
+        dstSubresource.PlacedFootprint.Footprint.Depth = dstDesc.depth;
+        dstSubresource.PlacedFootprint.Footprint.RowPitch = rowPitch;
 
-            VkImageSubresourceLayers& srcSubresource = region.imageSubresource;
-            srcSubresource.aspectMask = aspect;
-            srcSubresource.layerCount = 1;
-            srcSubresource.mipLevel = srcMipLevel;
-            srcSubresource.baseArrayLayer = srcBaseArrayLayer + layer;            
-            
-        }
+        D3D12_BOX srcRegion {};
+        srcRegion.left = srcX;
+        srcRegion.top = srcY;
+        srcRegion.front = srcZ;
+        srcRegion.right = srcX + width;
+        srcRegion.bottom = srcY + height;
+        srcRegion.back = srcZ + depth;
 
-        vkCmdCopyImageToBuffer(
-            _cmdBuf,
-            srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            dstBuffer->GetHandle(), layerCount, layers.data());
+        //vkCmdCopyImageToBuffer(
+        //    _cmdBuf,
+        //    srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        //    dstBuffer->GetHandle(), layerCount, layers.data());
+
+        _cmdList->CopyTextureRegion(&dstSubresource, dstX, dstY, dstZ, &srcSubresource, &srcRegion);
+
 
         //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -1445,10 +1490,7 @@ namespace Veldrid
     ){
         CHK_RENDERPASS_ENDED();
 
-        const auto _ComputeSubresource = [](uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
-        {
-            return ((arrayLayer * mipLevelCount) + mipLevel);
-        };
+        
 
         //_resReg.RegisterTexUsage(source,
         //    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1481,7 +1523,7 @@ namespace Veldrid
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
         dstSubresource.SubresourceIndex = _ComputeSubresource(
-            srcMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+            dstMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
 
         D3D12_BOX srcRegion {};
         srcRegion.left = srcX;

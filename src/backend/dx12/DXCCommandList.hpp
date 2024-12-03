@@ -51,7 +51,7 @@ namespace Veldrid
 
         struct _RenderPassInfo{
             //Pipeline resources
-            sp<DXCFrameBuffer> fb;
+            sp<DXCFrameBufferBase> fb;
             //sp<VulkanPipelineBase> pipeline;
             //std::vector<std::optional<VkClearColorValue>> clearColorTargets;
             //std::optional<VkClearDepthStencilValue> clearDSTarget;
