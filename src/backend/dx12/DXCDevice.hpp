@@ -114,6 +114,7 @@ namespace Veldrid{
         D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
         D3D12_FEATURE_DATA_D3D12_OPTIONS4 options4;
         D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7;
         D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
         D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
         D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
@@ -126,6 +127,9 @@ namespace Veldrid{
         bool support_a4b4g4r4;
 
         void ReadFromDevice(ID3D12Device* pdev);
+
+        bool SupportEnhancedBarrier() const { return options12.EnhancedBarriersSupported; }
+        bool SupportMeshShader() const {return options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;}
     };
 
     class DXCDevice : public  GraphicsDevice, public DXCResourceFactory {

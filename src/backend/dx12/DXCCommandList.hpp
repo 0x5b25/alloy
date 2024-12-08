@@ -29,14 +29,18 @@ namespace Veldrid
     class DXCDevice;
     class DXCBuffer;
     class DXCTexture;
+    class DXCCommandList;
 
-
+    sp<CommandList> MakeDXCCmdList(const sp<DXCDevice>& dev);
     //class VulkanPipeline;
 
-    class DXCCommandList : public CommandList{
+    class DXCCommandList: public CommandList{
 
-        ID3D12CommandAllocator* _cmdPool;
+    protected:
+        
+        ID3D12CommandAllocator* _cmdAlloc;
         ID3D12GraphicsCommandList* _cmdList;
+        
 
         struct _ResSetHolder{
             bool isNewlyChanged;
@@ -77,20 +81,20 @@ namespace Veldrid
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
+    public:
         DXCCommandList(
             const sp<GraphicsDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList* pList
         ) 
             : CommandList(dev)
-            , _cmdPool(pAllocator)
+            , _cmdAlloc(pAllocator)
             , _cmdList(pList)
         {}
 
-    public:
-        ~DXCCommandList();
+        virtual ~DXCCommandList() override;
 
-        static sp<CommandList> Make(const sp<DXCDevice>& dev);
+        
         const ID3D12CommandList* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
@@ -210,12 +214,49 @@ namespace Veldrid
 
         virtual void GenerateMipmaps(const sp<Texture>& texture) override;
 
+        
+        virtual void Barrier(const std::vector<alloy::BarrierDescriptions>&) override;
+
         virtual void PushDebugGroup(const std::string& name) override;
 
         virtual void PopDebugGroup() override;
 
         virtual void InsertDebugMarker(const std::string& name) override;
 
+    };
+
+    class DXCCommandList6 : public DXCCommandList {
+
+        ID3D12GraphicsCommandList6* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList6*>(_cmdList); }
+
+    public:
+        DXCCommandList6(
+            const sp<GraphicsDevice>& dev,
+            ID3D12CommandAllocator* pAllocator,
+            ID3D12GraphicsCommandList6* pList
+        ) 
+            : DXCCommandList(dev, pAllocator, pList)
+        {}
+
+
+    };
+
+
+    class DXCCommandList7 : public DXCCommandList6 {
+
+        ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
+    public:
+        DXCCommandList7(
+            const sp<GraphicsDevice>& dev,
+            ID3D12CommandAllocator* pAllocator,
+            ID3D12GraphicsCommandList7* pList
+        ) 
+            : DXCCommandList6(dev, pAllocator, pList)
+        {}
+
+        
+        
+        virtual void Barrier(const std::vector<alloy::BarrierDescriptions>&) override;
     };
     
 

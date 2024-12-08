@@ -154,11 +154,7 @@ namespace Veldrid
         std::uint32_t GetCurrentImageIdx() const { return _currentImageIndex; }
 
     public:
-        sp<Framebuffer> GetFramebuffer() override{
-            //Swapchain image may be 0 when app minimized
-            if (_currentImageIndex < _fbs.size()) return _fbs[_currentImageIndex];
-            else                                  return nullptr;
-        }
+        sp<Framebuffer> GetBackBuffer() override;
 
         void Resize(
             std::uint32_t width, 
@@ -177,11 +173,6 @@ namespace Veldrid
         std::uint32_t GetHeight() const override {return _scExtent.height;}
 
         //virtual State SwapBuffers() override;
-
-        virtual State SwitchToNextFrameBuffer(
-            //Semaphore* signalSemaphore,
-            //Fence* fence
-        ) override;
     };
 
 } // namespace Veldrid

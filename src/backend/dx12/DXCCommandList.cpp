@@ -14,8 +14,7 @@
 namespace Veldrid
 {
 
-    
-    sp<CommandList> DXCCommandList::Make(const sp<DXCDevice>& dev) {
+    sp<CommandList> MakeDXCCmdList(const sp<DXCDevice>& dev) {
 
         auto pDev = dev->GetDevice();
 
@@ -28,6 +27,22 @@ namespace Veldrid
         ID3D12GraphicsCommandList* pCmdList;
         // Create the command list.
         ThrowIfFailed(pDev->CreateCommandList(0, cmdListType, pAllocator, nullptr, IID_PPV_ARGS(&pCmdList)));
+        ThrowIfFailed(pCmdList->Close());
+
+        
+
+        if(dev->GetDevCaps().SupportMeshShader()) {
+            ID3D12GraphicsCommandList6* pNewCmdList;
+            pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
+            pCmdList->Release();
+            return sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
+        }
+        else if(dev->GetDevCaps().SupportEnhancedBarrier()) {
+            ID3D12GraphicsCommandList7* pNewCmdList;
+            pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
+            pCmdList->Release();
+            return sp(new DXCCommandList7(dev, pAllocator, pNewCmdList));
+        }
 
         return sp(new DXCCommandList(dev, pAllocator, pCmdList));
 
@@ -286,7 +301,7 @@ namespace Veldrid
 
     DXCCommandList::~DXCCommandList(){
         _cmdList->Release();
-        _cmdPool->Release();
+        _cmdAlloc->Release();
     }
      
     void DXCCommandList::Begin(){
@@ -294,12 +309,12 @@ namespace Veldrid
         // Command list allocators can only be reset when the associated 
         // command lists have finished execution on the GPU; apps should use 
         // fences to determine GPU execution progress.
-        ThrowIfFailed(_cmdPool->Reset());
+        ThrowIfFailed(_cmdAlloc->Reset());
 
         // However, when ExecuteCommandList() is called on a particular command 
         // list, that command list can then be reset at any time and must be before 
         // re-recording.
-        ThrowIfFailed(_cmdList->Reset(_cmdPool, nullptr));
+        ThrowIfFailed(_cmdList->Reset(_cmdAlloc, nullptr));
 
     }
     void DXCCommandList::End(){
@@ -1579,11 +1594,318 @@ namespace Veldrid
         //#TODO: remove this function as mipmap generation needs more flexiblity in infcanvas
     }
 
+    static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
+        const D3D12_BARRIER_SYNC& sync,
+        const D3D12_BARRIER_ACCESS& access
+    ){
+        D3D12_RESOURCE_STATES legacyState{};
+
+        if(sync & D3D12_BARRIER_SYNC_RESOLVE) { 
+            if(access | D3D12_BARRIER_ACCESS_RESOLVE_SOURCE)
+                legacyState |= D3D12_RESOURCE_STATE_RESOLVE_SOURCE; 
+            if(access | D3D12_BARRIER_ACCESS_RESOLVE_DEST)
+                legacyState |= D3D12_RESOURCE_STATE_RESOLVE_DEST; 
+        }
+
+        if(sync & D3D12_BARRIER_SYNC_COPY) { 
+            if(access | D3D12_BARRIER_ACCESS_COPY_SOURCE)
+                legacyState |= D3D12_RESOURCE_STATE_COPY_SOURCE; 
+            if(access | D3D12_BARRIER_ACCESS_COPY_DEST)
+                legacyState |= D3D12_RESOURCE_STATE_COPY_DEST; 
+        }
+
+        if(sync & D3D12_BARRIER_SYNC_RAYTRACING) {
+            legacyState |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+        }
+
+        if(sync & D3D12_BARRIER_SYNC_EXECUTE_INDIRECT) {
+            legacyState |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+        }
+
+        if(sync & D3D12_BARRIER_SYNC_RENDER_TARGET) { 
+            legacyState |= D3D12_RESOURCE_STATE_RENDER_TARGET;
+        }
+
+        if(sync & D3D12_BARRIER_SYNC_DEPTH_STENCIL) {
+            if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE)
+                legacyState |= D3D12_RESOURCE_STATE_DEPTH_WRITE;   
+            if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ)
+                legacyState |= D3D12_RESOURCE_STATE_DEPTH_READ;
+        }
+
+        //Infer from access flags
+        if(access & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) {
+            legacyState |= D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        }
+
+        if(access & D3D12_BARRIER_ACCESS_SHADER_RESOURCE) {
+            legacyState |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            if(sync & D3D12_BARRIER_SYNC_PIXEL_SHADING) {
+                legacyState |= D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            }
+        }
+
+        if(access & D3D12_BARRIER_ACCESS_INDEX_BUFFER) {
+            legacyState |= D3D12_RESOURCE_STATE_INDEX_BUFFER;
+        }
+
+        if(access & (D3D12_BARRIER_ACCESS_VERTEX_BUFFER | D3D12_BARRIER_ACCESS_CONSTANT_BUFFER)) {
+            legacyState |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+        }
+
+        if(access & D3D12_BARRIER_ACCESS_STREAM_OUTPUT) {
+            legacyState |= D3D12_RESOURCE_STATE_STREAM_OUT;
+        }
+
+        return legacyState;
+    };
+
+    static D3D12_BARRIER_SYNC _GetSyncStages(const alloy::PipelineStages& stages, bool isStagesBefore) {
+        D3D12_BARRIER_SYNC flags {};
+        if(stages[alloy::PipelineStage::TopOfPipe]){
+            if(isStagesBefore)
+                flags |= D3D12_BARRIER_SYNC_NONE;
+            else
+                flags |= D3D12_BARRIER_SYNC_ALL;
+        }
+        if(stages[alloy::PipelineStage::BottomOfPipe]) {
+            if(isStagesBefore)
+                flags |= D3D12_BARRIER_SYNC_ALL;
+            else
+                flags |= D3D12_BARRIER_SYNC_NONE;
+        }
+        if(stages[alloy::PipelineStage::INPUT_ASSEMBLER])
+            flags |= D3D12_BARRIER_SYNC_INDEX_INPUT;
+        if(stages[alloy::PipelineStage::VERTEX_SHADING])
+            flags |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+        if(stages[alloy::PipelineStage::PIXEL_SHADING])
+            flags |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
+        if(stages[alloy::PipelineStage::DEPTH_STENCIL])
+            flags |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+        if(stages[alloy::PipelineStage::RENDER_TARGET])
+            flags |= D3D12_BARRIER_SYNC_RENDER_TARGET;
+        if(stages[alloy::PipelineStage::COMPUTE_SHADING])
+            flags |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+        if(stages[alloy::PipelineStage::RAYTRACING])
+            flags |= D3D12_BARRIER_SYNC_RAYTRACING;
+        if(stages[alloy::PipelineStage::COPY])
+            flags |= D3D12_BARRIER_SYNC_COPY;
+        if(stages[alloy::PipelineStage::RESOLVE])
+            flags |= D3D12_BARRIER_SYNC_RESOLVE;
+        if(stages[alloy::PipelineStage::EXECUTE_INDIRECT])
+            flags |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+        //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
+        //if(stages[alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        //if(stages[alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        return flags;
+    };
+
+    static D3D12_BARRIER_ACCESS _GetAccessFlags(const alloy::ResourceAccesses& accesses) {
+        D3D12_BARRIER_ACCESS flags {};
+
+        if(accesses[alloy::ResourceAccess::VERTEX_BUFFER])
+            flags |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+        if(accesses[alloy::ResourceAccess::CONSTANT_BUFFER])
+            flags |= D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+        if(accesses[alloy::ResourceAccess::INDEX_BUFFER])
+            flags |= D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+        if(accesses[alloy::ResourceAccess::RENDER_TARGET])
+            flags |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
+        if(accesses[alloy::ResourceAccess::UNORDERED_ACCESS])
+            flags |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_WRITE])
+            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_READ])
+            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+        if(accesses[alloy::ResourceAccess::SHADER_RESOURCE])
+            flags |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+        if(accesses[alloy::ResourceAccess::STREAM_OUTPUT])
+            flags |= D3D12_BARRIER_ACCESS_STREAM_OUTPUT;
+        if(accesses[alloy::ResourceAccess::INDIRECT_ARGUMENT])
+            flags |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+        if(accesses[alloy::ResourceAccess::PREDICATION])
+            flags |= D3D12_BARRIER_ACCESS_PREDICATION;
+        if(accesses[alloy::ResourceAccess::COPY_DEST])
+            flags |= D3D12_BARRIER_ACCESS_COPY_DEST;
+        if(accesses[alloy::ResourceAccess::COPY_SOURCE])
+            flags |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
+        if(accesses[alloy::ResourceAccess::RESOLVE_DEST])
+            flags |= D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+        if(accesses[alloy::ResourceAccess::RESOLVE_SOURCE])
+            flags |= D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+        if(accesses[alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_READ])
+            flags |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ;
+        if(accesses[alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_WRITE])
+            flags |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
+        if(accesses[alloy::ResourceAccess::SHADING_RATE_SOURCE])
+            flags |= D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE;
+        
+        //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
+        //if(stages[alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        //if(stages[alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        return flags;
+    };
+
+    static void _EnnhancedToLegacyBarrier(
+        const D3D12_GLOBAL_BARRIER& data,
+        D3D12_RESOURCE_BARRIER& barrier
+    ) {
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.StateBefore = _EnnhancedToLegacyBarrierFlags(data.SyncBefore, data.AccessBefore);
+        barrier.Transition.StateAfter= _EnnhancedToLegacyBarrierFlags(data.SyncAfter, data.AccessAfter);
+    }
+    
+    void DXCCommandList::Barrier(const std::vector<alloy::BarrierDescriptions>& descs) {
+
+        std::vector<D3D12_RESOURCE_BARRIER> barriers{};
+
+        for(auto& desc : descs) {
+            barriers.emplace_back();
+            auto& barrier = barriers.back();
+
+            if(std::holds_alternative<alloy::MemoryBarrierDescription>(desc)) {
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = nullptr;
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierDescription>(desc)) {
+                
+                auto& barrierDesc = std::get<alloy::BufferBarrierDescription>(desc);
+                _devRes.insert(barrierDesc.resource);
+                auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
+                
+                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                _PopulateBarrierSyncAndAccess(barrierDesc, dxcBarrierFlags);
+                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                barrier.Transition.pResource = dxcBuffer->GetHandle();
+            }
+            else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+
+                auto& texDesc = std::get<alloy::TextureBarrierDescription>(desc);
+                _devRes.insert(texDesc.resource);
+                auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
+
+                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                _PopulateBarrierSyncAndAccess(texDesc, dxcBarrierFlags);
+                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                barrier.Transition.pResource = dxcTex->GetHandle();
+            }
+        }
+
+
+        _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+
+    }
+
     void DXCCommandList::PushDebugGroup(const std::string& name) {};
 
     void DXCCommandList::PopDebugGroup() {};
 
     void DXCCommandList::InsertDebugMarker(const std::string& name) {};
+
+
+    template<typename T>
+    static void _PopulateBarrierSyncAndAccess(const alloy::MemoryBarrierDescription& desc,
+                                              T& barrier
+    ) {
+        barrier.SyncAfter = _GetSyncStages(desc.stagesAfter);
+        barrier.SyncBefore = _GetSyncStages(desc.stagesBefore);
+        barrier.AccessAfter = _GetAccessFlags(desc.accessAfter);
+        barrier.AccessBefore = _GetAccessFlags(desc.accessBefore);
+    }
+
+
+    static void _PopulateTextureBarrier(const alloy::TextureBarrierDescription& desc,
+                                              D3D12_TEXTURE_BARRIER& barrier
+    ) {
+
+        auto _GetTexLayout = [](const alloy::TextureLayout& layout) -> D3D12_BARRIER_LAYOUT {
+            switch(layout) {
+                case alloy::TextureLayout::COMMON_READ: return D3D12_BARRIER_LAYOUT_GENERIC_READ;
+                case alloy::TextureLayout::RENDER_TARGET: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+                case alloy::TextureLayout::UNORDERED_ACCESS: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+                case alloy::TextureLayout::DEPTH_STENCIL_WRITE: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+                case alloy::TextureLayout::DEPTH_STENCIL_READ: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
+                case alloy::TextureLayout::SHADER_RESOURCE: return D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
+                case alloy::TextureLayout::COPY_SOURCE: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+                case alloy::TextureLayout::COPY_DEST: return D3D12_BARRIER_LAYOUT_COPY_DEST;
+                case alloy::TextureLayout::RESOLVE_SOURCE: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+                case alloy::TextureLayout::RESOLVE_DEST: return D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+                case alloy::TextureLayout::SHADING_RATE_SOURCE: return D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE;
+
+                default: return D3D12_BARRIER_LAYOUT_COMMON;
+            }
+        };
+
+        _PopulateBarrierSyncAndAccess(desc, barrier);
+        barrier.LayoutAfter = _GetTexLayout(desc.toLayout);
+        barrier.LayoutBefore = _GetTexLayout(desc.fromLayout);
+        barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
+        barrier.Subresources.NumMipLevels = 0;
+        barrier.Subresources.FirstArraySlice = 0;
+        barrier.Subresources.NumArraySlices = 0;
+        barrier.Subresources.FirstPlane = 0;
+        barrier.Subresources.NumPlanes = 0;
+    }
+
+    void DXCCommandList7::Barrier(const std::vector<alloy::BarrierDescriptions>& descs) {
+        
+        std::vector<D3D12_GLOBAL_BARRIER> memBarriers;
+        std::vector<D3D12_BUFFER_BARRIER> bufBarriers;
+        std::vector<D3D12_TEXTURE_BARRIER> texBarrier;
+
+        for(auto& desc : descs) {
+            if(std::holds_alternative<alloy::MemoryBarrierDescription>(desc)) {
+                memBarriers.emplace_back();
+                auto& barrier = memBarriers.back();
+                _PopulateBarrierSyncAndAccess(std::get<alloy::MemoryBarrierDescription>(desc), barrier);
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierDescription>(desc)) {
+                bufBarriers.emplace_back();
+                auto& barrier = bufBarriers.back();
+                auto& barrierDesc = std::get<alloy::BufferBarrierDescription>(desc);
+                _devRes.insert(barrierDesc.resource);
+                auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
+                _PopulateBarrierSyncAndAccess(barrierDesc, barrier);
+                barrier.pResource = dxcBuffer->GetHandle();
+            }
+            else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+                texBarrier.emplace_back();
+                auto& barrier = texBarrier.back();
+                auto& texDesc = std::get<alloy::TextureBarrierDescription>(desc);
+                _devRes.insert(texDesc.resource);
+                auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
+                _PopulateTextureBarrier(texDesc, barrier);
+                barrier.pResource = dxcTex->GetHandle();
+            }
+        }
+
+        std::vector<D3D12_BARRIER_GROUP> barrierGrps;
+        if(!memBarriers.empty()) {
+            barrierGrps.emplace_back();
+            auto& grp = barrierGrps.back();
+            grp.Type = D3D12_BARRIER_TYPE_GLOBAL;
+            grp.NumBarriers = memBarriers.size();
+            grp.pGlobalBarriers = memBarriers.data();
+        }
+
+        if(!bufBarriers.empty()) {
+            barrierGrps.emplace_back();
+            auto& grp = barrierGrps.back();
+            grp.Type = D3D12_BARRIER_TYPE_BUFFER;
+            grp.NumBarriers = bufBarriers.size();
+            grp.pBufferBarriers = bufBarriers.data();
+        }
+
+        if(!memBarriers.empty()) {
+            barrierGrps.emplace_back();
+            auto& grp = barrierGrps.back();
+            grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            grp.NumBarriers = texBarrier.size();
+            grp.pTextureBarriers = texBarrier.data();
+        }
+        
+        GetCmdList()->Barrier(barrierGrps.size(), barrierGrps.data());
+    }
 
 
 

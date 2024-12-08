@@ -8,7 +8,9 @@
 
 //standard library headers
 #include <codecvt>
+
 //backend specific headers
+#include "D3DCommon.hpp"
 
 //platform specific headers
 #include <dxgi1_4.h> //Guaranteed by DX12
@@ -18,13 +20,13 @@
 
 // From DXSampleHelper.h 
 // Source: https://github.com/Microsoft/DirectX-Graphics-Samples
-inline void ThrowIfFailed(HRESULT hr)
-{
-    if (FAILED(hr))
-    {
-        throw std::exception();
-    }
-}
+//inline void ThrowIfFailed(HRESULT hr)
+//{
+//    if (FAILED(hr))
+//    {
+//        throw std::exception();
+//    }
+//}
 
 using Microsoft::WRL::ComPtr;
 
@@ -130,6 +132,7 @@ namespace Veldrid {
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options2, sizeof(options2));
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3));
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &options4, sizeof(options4));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7));
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof(options12));
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13, &options13, sizeof(options13));
         pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS14, &options14, sizeof(options14));

@@ -237,7 +237,7 @@ namespace Veldrid{
 
         }
 
-        //VkMemoryBarrier{};
+        VkMemoryBarrier{};
         //VkBufferMemoryBarrier{};
         //VkImageMemoryBarrier{};
         vkCmdPipelineBarrier(

@@ -121,7 +121,7 @@ namespace Veldrid {
         std::uint32_t GetCurrentImageIdx() const { return _sc->GetCurrentBackBufferIndex(); }
 
     public:
-        sp<Framebuffer> GetFramebuffer() override;
+        sp<Framebuffer> GetBackBuffer() override;
 
         void Resize(
             std::uint32_t width, 
@@ -140,11 +140,6 @@ namespace Veldrid {
         std::uint32_t GetHeight() const override ;
 
         //virtual State SwapBuffers() override;
-
-        virtual State SwitchToNextFrameBuffer(
-            //Semaphore* signalSemaphore,
-            //Fence* fence
-        ) override;
     };
 
 

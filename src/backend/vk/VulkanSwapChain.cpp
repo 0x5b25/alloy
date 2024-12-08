@@ -541,29 +541,27 @@ namespace Veldrid
         return sp(sc);
 
     }
-    
 
-    SwapChain::State VulkanSwapChain::SwitchToNextFrameBuffer() {
+    sp<Framebuffer> VulkanSwapChain::GetBackBuffer() {
 
+        //Acquire next frame and wait for ready fence
         auto _gd = PtrCast<VulkanDevice>(dev.get());
         auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
         if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
         {
             vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
             vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
+
+            //Swapchain image may be 0 when app minimized
+            if (_currentImageIndex < _fbs.size()) return _fbs[_currentImageIndex];
+            else                                  return nullptr;
         }
-        switch (res)
-        {
-        case VK_SUCCESS:
-            return SwapChain::State::Optimal;
-        case VK_SUBOPTIMAL_KHR:
-            return SwapChain::State::Suboptimal;
-        case VK_ERROR_OUT_OF_DATE_KHR:
-            return SwapChain::State::OutOfDate;
-        default:
-            return SwapChain::State::Error;
+        else {
+            return nullptr;
         }
+        //#TODO: handle case VK_ERROR_OUT_OF_DATE_KHR
     }
+
 
 
 } // namespace Veldrid

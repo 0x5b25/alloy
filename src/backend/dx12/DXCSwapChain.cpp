@@ -72,7 +72,7 @@ namespace Veldrid {
         swapChainDesc.BufferCount = backBufferCnt; 
         swapChainDesc.Width = desc.initialWidth;
         swapChainDesc.Height = desc.initialHeight;
-        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; //#TODO: add format support
         swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         swapChainDesc.SampleDesc.Count = 1;
@@ -190,7 +190,7 @@ namespace Veldrid {
         _sc->Release();
     }
 
-    sp<Framebuffer> DXCSwapChain::GetFramebuffer() {
+    sp<Framebuffer> DXCSwapChain::GetBackBuffer() {
         //Swapchain image may be 0 when app minimized
         auto nextFrameIdx = GetCurrentImageIdx();
         if (nextFrameIdx >= _fbs.size()) return nullptr;
@@ -198,6 +198,13 @@ namespace Veldrid {
         this->ref();
 
         return sp(new DXCSwapChainBackBuffer(dev, sp(this), _fbs[nextFrameIdx]));
+    }
+
+    void DXCSwapChain::Resize(
+        std::uint32_t width, 
+        std::uint32_t height
+    ) {
+        _sc->ResizeBuffers(0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     }
 
     

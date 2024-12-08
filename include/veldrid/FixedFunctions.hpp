@@ -328,10 +328,7 @@ namespace Veldrid
         
         // A series of isolated points.
         PointList,
-    };
-    
-    
-    
+    };    
     
     // Specifies which model the rendering backend should use for binding resources.
     enum class ResourceBindingModel{

@@ -63,7 +63,7 @@ namespace Veldrid
 
     public:
 
-        virtual sp<Framebuffer> GetFramebuffer() = 0;
+        virtual sp<Framebuffer> GetBackBuffer() = 0;
 
         virtual void Resize(
             std::uint32_t width, 
@@ -76,11 +76,6 @@ namespace Veldrid
         virtual std::uint32_t GetHeight() const = 0;
 
         //virtual State SwapBuffers() = 0;
-
-        virtual State SwitchToNextFrameBuffer(
-            //Semaphore* signalSemaphore,
-            //Fence* fence
-        ) = 0;
 
     };
     

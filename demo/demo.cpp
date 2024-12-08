@@ -199,7 +199,7 @@ class DemoApp : public AppBase{
             });
         pipelineDescription.shaderSet.shaders = { vertexShader, fragmentShader };
 
-        pipelineDescription.outputs = swapChain->GetFramebuffer()->GetOutputDescription();
+        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetOutputDescription();
         //pipelineDescription.outputs = fb->GetOutputDescription();
         pipeline = factory->CreateGraphicsPipeline(pipelineDescription);
     }
@@ -264,7 +264,7 @@ class DemoApp : public AppBase{
         //Record command buffer
         _commandList->Begin();
 
-        _commandList->BeginRenderPass(swapChain->GetFramebuffer());
+        _commandList->BeginRenderPass(swapChain->GetBackBuffer());
         //_commandList->BeginRenderPass(fb);
         _commandList->ClearDepthStencil(0, 0);
         _commandList->ClearColorTarget(0, 0.1, 0.1, 0.3, 1);
