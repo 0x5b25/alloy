@@ -7,6 +7,7 @@
 #include "VkTypeCvt.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
+#include "VulkanResourceBarrier.hpp"
 
 namespace Veldrid{
     const VkAccessFlags READ_MASK =
@@ -1570,6 +1571,24 @@ namespace Veldrid{
     void VulkanCommandList::PopDebugGroup() {};
 
     void VulkanCommandList::InsertDebugMarker(const std::string& name) {};
+
+    
+    void VulkanCommandList::Barrier(const alloy::BarrierDescription& barriers) {
+        for(auto& desc : barriers.barriers) {
+            if(std::holds_alternative<alloy::MemoryBarrierDescription>(desc)) {
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierDescription>(desc)) {
+                auto& barrierDesc = std::get<alloy::BufferBarrierDescription>(desc);
+                _devRes.insert(barrierDesc.resource);
+            }
+            else if(std::holds_alternative<alloy::TextureBarrierDescription>(desc)) {
+                auto& texDesc = std::get<alloy::TextureBarrierDescription>(desc);
+                _devRes.insert(texDesc.resource);
+            }
+        }
+
+        BindBarrier(_cmdBuf, barriers);
+    }
 
 
 }

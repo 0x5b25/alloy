@@ -362,7 +362,7 @@ namespace Veldrid
         virtual void GenerateMipmaps(const sp<Texture>& texture) = 0;
 
         
-        virtual void Barrier(const std::vector<alloy::BarrierDescriptions>&) = 0;
+        virtual void Barrier(const alloy::BarrierDescription&) = 0;
 
         // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
         // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order

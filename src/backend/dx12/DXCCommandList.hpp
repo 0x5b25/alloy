@@ -215,7 +215,7 @@ namespace Veldrid
         virtual void GenerateMipmaps(const sp<Texture>& texture) override;
 
         
-        virtual void Barrier(const std::vector<alloy::BarrierDescriptions>&) override;
+        virtual void Barrier(const alloy::BarrierDescription&) override;
 
         virtual void PushDebugGroup(const std::string& name) override;
 
@@ -256,7 +256,7 @@ namespace Veldrid
 
         
         
-        virtual void Barrier(const std::vector<alloy::BarrierDescriptions>&) override;
+        virtual void Barrier(const alloy::BarrierDescription&) override;
     };
     
 

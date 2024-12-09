@@ -64,8 +64,8 @@ namespace alloy
 
     enum class TextureLayout {
         UNDEFINED	= 0xffffffff,
-        COMMON	= 0,
-        PRESENT	= 0,
+        COMMON = 0,
+        PRESENT,
         COMMON_READ,
         RENDER_TARGET,
         UNORDERED_ACCESS,
@@ -85,8 +85,6 @@ namespace alloy
     using ResourceAccesses = BitFlags<ResourceAccess>;
 
     struct MemoryBarrierDescription {
-        PipelineStages stagesBefore;
-        PipelineStages stagesAfter;
         ResourceAccesses accessBefore;
         ResourceAccesses accessAfter;
     };
@@ -102,10 +100,14 @@ namespace alloy
         Veldrid::sp<Veldrid::Texture> resource;
     };
 
-    using BarrierDescriptions 
-        = std::variant< MemoryBarrierDescription,
-                        BufferBarrierDescription,
-                        TextureBarrierDescription>;
+    struct BarrierDescription {
+        //Sync stages
+        PipelineStages stagesBefore;
+        PipelineStages stagesAfter;
+        std::vector<std::variant< MemoryBarrierDescription,
+                       BufferBarrierDescription,
+                       TextureBarrierDescription>> barriers;
+    };
 
 
 } // namespace alloy

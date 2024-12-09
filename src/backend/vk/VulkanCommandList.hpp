@@ -269,6 +269,9 @@ namespace Veldrid
 
         virtual void InsertDebugMarker(const std::string& name) override;
 
+        
+        virtual void Barrier(const alloy::BarrierDescription&) override;
+
     };
     
 
