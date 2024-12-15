@@ -16,6 +16,7 @@ namespace Veldrid{
     class DXCResourceFactoryThunk : public ResourceFactory{
 
     protected:
+        const Base* GetBase() const { return static_cast<const Base*>(this); }
         Base* GetBase() { return static_cast<Base*>(this); }
 
     };
@@ -34,7 +35,8 @@ namespace Veldrid{
         DXCResourceFactory() = default;
         ~DXCResourceFactory() = default;
 
-        
+        virtual void* GetHandle() const override;
+
         VLD_RF_FOR_EACH_RES(DXC_DECL_RF_CREATE_WITH_DESC)
 
         sp<Pipeline> CreateGraphicsPipeline(
@@ -59,7 +61,7 @@ namespace Veldrid{
        
         virtual sp<CommandList> CreateCommandList() override;
 
-        virtual sp<Fence> CreateFence(bool initialSignaled) override;
+        virtual sp<Fence> CreateFence() override;
         virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };
 

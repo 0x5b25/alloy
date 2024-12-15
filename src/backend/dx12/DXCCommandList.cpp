@@ -14,7 +14,7 @@
 namespace Veldrid
 {
 
-    sp<CommandList> MakeDXCCmdList(const sp<DXCDevice>& dev) {
+    sp<DXCCommandList> DXCCommandList::Make(const sp<DXCDevice>& dev) {
 
         auto pDev = dev->GetDevice();
 
@@ -31,17 +31,17 @@ namespace Veldrid
 
         
 
-        if(dev->GetDevCaps().SupportMeshShader()) {
-            ID3D12GraphicsCommandList6* pNewCmdList;
-            pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
-            pCmdList->Release();
-            return sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
-        }
-        else if(dev->GetDevCaps().SupportEnhancedBarrier()) {
+        if(dev->GetDevCaps().SupportEnhancedBarrier()) {
             ID3D12GraphicsCommandList7* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
             return sp(new DXCCommandList7(dev, pAllocator, pNewCmdList));
+        }
+        else if(dev->GetDevCaps().SupportMeshShader()) {
+            ID3D12GraphicsCommandList6* pNewCmdList;
+            pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
+            pCmdList->Release();
+            return sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
         }
 
         return sp(new DXCCommandList(dev, pAllocator, pCmdList));
@@ -296,8 +296,8 @@ namespace Veldrid
 
 
     #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentRenderPass != nullptr))
-    #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentRenderPass != nullptr))
-    #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentRenderPass != nullptr))
+    #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentRenderPass == nullptr))
+    #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
     DXCCommandList::~DXCCommandList(){
         _cmdList->Release();
@@ -305,7 +305,15 @@ namespace Veldrid
     }
      
     void DXCCommandList::Begin(){
-        
+
+        _currentPipeline = nullptr;
+        _resourceSets.clear();
+
+        _currentRenderPass = nullptr;
+        _rndPasses.clear();
+
+        _devRes.clear();
+        _miscResReg.clear();
         // Command list allocators can only be reset when the associated 
         // command lists have finished execution on the GPU; apps should use 
         // fences to determine GPU execution progress.
@@ -349,7 +357,19 @@ namespace Veldrid
         _currentRenderPass = &_rndPasses.back();
         //
         auto dxcfb = PtrCast<DXCFrameBufferBase>(fb.get());
-        //_currentRenderPass->fb = RefRawPtr(vkfb);
+        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
+        rtvHandles.reserve(dxcfb->GetRTVCount());
+        for(uint32_t i = 0; i < dxcfb->GetRTVCount(); i++) {
+            rtvHandles.push_back(dxcfb->GetRTV(i));
+        }
+        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle;
+        if(dxcfb->HasDSV()) {
+            dsvHandle = dxcfb->GetDSV();
+        }
+        _cmdList->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE, dxcfb->HasDSV()?&dsvHandle : nullptr);
+
+
+        _currentRenderPass->fb = RefRawPtr(dxcfb);
         //
         //_currentRenderPass->clearColorTargets.resize(
         //    vkfb->GetDesc().colorTargets.size(), {}
@@ -505,9 +525,9 @@ namespace Veldrid
         //}
     }
     void DXCCommandList::EndRenderPass(){
-        //CHK_RENDERPASS_BEGUN();
+        CHK_RENDERPASS_BEGUN();
         //vkCmdEndRenderPass(_cmdBuf);
-        //DEBUGCODE(_currentRenderPass = nullptr);
+        DEBUGCODE(_currentRenderPass = nullptr);
 
 
         //_currentFramebuffer.TransitionToIntermediateLayout(_cb);
@@ -587,7 +607,7 @@ namespace Veldrid
         const std::vector<std::uint32_t>& dynamicOffsets
     ){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
+        //assert(slot < _resourceSets.size());
         assert(!_currentPipeline->IsComputePipeline());
 
         
@@ -640,7 +660,7 @@ namespace Veldrid
     ){
         CHK_RENDERPASS_BEGUN();
 
-        if(_currentRenderPass->fb->GetRTVCount() >= slot) {
+        if(_currentRenderPass->fb->GetRTVCount() < slot) {
             assert(false);
         } else {
 
@@ -1802,6 +1822,8 @@ namespace Veldrid
                 auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
 
                 D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                dxcBarrierFlags.SyncAfter = syncAfter;
+                dxcBarrierFlags.SyncBefore = syncBefore;
                 _PopulateBarrierAccess(texDesc, dxcBarrierFlags);
                 _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
                 barrier.Transition.pResource = dxcTex->GetHandle();
@@ -1818,10 +1840,6 @@ namespace Veldrid
     void DXCCommandList::PopDebugGroup() {};
 
     void DXCCommandList::InsertDebugMarker(const std::string& name) {};
-
-
-
-
 
     static void _PopulateTextureBarrier(const alloy::TextureBarrierDescription& desc,
                                               D3D12_TEXTURE_BARRIER& barrier

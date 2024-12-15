@@ -25,6 +25,7 @@
 namespace Veldrid
 {
     class DXCDevice;
+    class DXCResourceLayout;
 
     class DXCPipelineBase : public Pipeline{
 
@@ -93,9 +94,16 @@ namespace Veldrid
     
     class DXCComputePipeline : public DXCPipelineBase{
 
+        
+        ComputePipelineDescription _desc;
+
         DXCComputePipeline(
-            const sp<GraphicsDevice>& dev
-        ) : DXCPipelineBase(dev){}
+            const sp<GraphicsDevice>& dev,
+            const ComputePipelineDescription& desc
+        )   
+            : DXCPipelineBase(dev)
+            , _desc(desc)
+        {}
 
     public:
         ~DXCComputePipeline();

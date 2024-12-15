@@ -11,6 +11,8 @@
 
 //backend specific headers
 #include "D3DCommon.hpp"
+#include "DXCCommandList.hpp"
+#include "DXCSwapChain.hpp"
 
 //platform specific headers
 #include <dxgi1_4.h> //Guaranteed by DX12
@@ -381,6 +383,8 @@ namespace Veldrid {
     {}
 
     DXCDevice::~DXCDevice() {
+        delete _gfxQ;
+        delete _copyQ;
     }
 
     sp<GraphicsDevice> DXCDevice::Make(const GraphicsDevice::Options &options, SwapChainSource *swapChainSource)
@@ -429,15 +433,15 @@ namespace Veldrid {
     D3D12_COMMAND_QUEUE_FLAGS Flags;
     UINT NodeMask;
     } 	D3D12_COMMAND_QUEUE_DESC;*/
-        ComPtr<ID3D12CommandQueue> queue;
-        if(FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&queue)))){
-            return nullptr;
-        }
+        //ComPtr<ID3D12CommandQueue> queue;
+        //if(FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&queue)))){
+        //    return nullptr;
+        //}
 
-        ComPtr<ID3D12CommandAllocator> cmdAlloc;
-        if(FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAlloc)))){
-            return nullptr;
-        }
+        //ComPtr<ID3D12CommandAllocator> cmdAlloc;
+        //if(FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAlloc)))){
+        //    return nullptr;
+        //}
 
         ComPtr<ID3D12Fence> waitIdleFence;
         D3D12_FENCE_FLAGS fenceFlags {};
@@ -461,8 +465,10 @@ namespace Veldrid {
 
         dev->_adp = std::move(adp);
         //dev->_dev = std::move(device);
-        dev->_q = std::move(queue);
-        dev->_cmdAlloc = std::move(cmdAlloc);
+        //dev->_q = std::move(queue);
+        dev->_gfxQ = new DXCCommandQueue(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+        dev->_copyQ = new DXCCommandQueue(device.Get(), D3D12_COMMAND_LIST_TYPE_COPY);
+        //dev->_cmdAlloc = std::move(cmdAlloc);
         dev->_waitIdleFence.Init(std::move(waitIdleFence));
         dev->_alloc = std::move(allocator);
 
@@ -542,20 +548,36 @@ namespace Veldrid {
         return dev;
     }
 
-    void DXCDevice::SubmitCommand(const std::vector<SubmitBatch> &batch, Fence *fence){
-    }
+    //void DXCDevice::SubmitCommand(const CommandList* cmd){
+    //    auto dxcCmdList = PtrCast<DXCCommandList>(cmd);
+//
+    //    ID3D12CommandList* pRawCmdList = dxcCmdList->GetHandle();
+//
+    //    GetImplicitQueue()->ExecuteCommandLists(1, &pRawCmdList);
+    //}
+
     SwapChain::State DXCDevice::PresentToSwapChain(const std::vector<Semaphore *> &waitSemaphores, SwapChain *sc)
     {
         for(auto* sem : waitSemaphores){
             //auto dxcSem = static_cast<DXCVLDFence*>(sem);
         }
-        
+
+        auto rawHandle = PtrCast<DXCSwapChain>(sc)->GetHandle();
+
+        rawHandle->Present(1, 0);
         return SwapChain::State::Optimal;
+    }
+
+    CommandQueue* DXCDevice::GetGfxCommandQueue() {
+        return _gfxQ;
+    }
+    CommandQueue* DXCDevice::GetCopyCommandQueue() {
+        return _copyQ;
     }
 
     void DXCDevice::WaitForIdle()
     {
-        _waitIdleFence.InsertSignalToQueueAutoInc(_q.Get());
+        _waitIdleFence.InsertSignalToQueueAutoInc(_gfxQ->GetHandle());
         _waitIdleFence.WaitOnCPU(INFINITE);
     }
 
@@ -635,41 +657,85 @@ namespace Veldrid {
         return mappedPtr;
     }
 
+    DXCCommandQueue::DXCCommandQueue(ID3D12Device* pDev, D3D12_COMMAND_LIST_TYPE cmdQType) {
+        D3D12_COMMAND_QUEUE_DESC queueDesc {};
+        queueDesc.Type = cmdQType;// ;
+        queueDesc.NodeMask = 0;
+        ThrowIfFailed(pDev->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&_q)));
+    }
+
+    DXCCommandQueue::~DXCCommandQueue() {
+        _q->Release();
+    }
+
+    //virtual bool WaitForSignal(std::uint64_t timeoutNs) = 0;
+    //bool WaitForSignal() {
+    //    return WaitForSignal((std::numeric_limits<std::uint64_t>::max)());
+    //}
+    //virtual bool IsSignaled() const = 0;
+
+    //virtual void Reset() = 0;
+
+    void DXCCommandQueue::EncodeSignalFence(Fence* fence, uint64_t value) {
+        auto dxcFence = PtrCast<DXCFence>(fence);
+        _q->Signal(dxcFence->GetHandle(), value);
+    }
+
+    void DXCCommandQueue::EncodeWaitForFence(Fence* fence, uint64_t value) {
+        auto dxcFence = PtrCast<DXCFence>(fence);
+        _q->Wait(dxcFence->GetHandle(), value);
+    }
+
+    void DXCCommandQueue::SubmitCommand(CommandList* cmd) {
+        auto dxcCmdList = PtrCast<DXCCommandList>(cmd);
+        auto rawCmdList = dxcCmdList->GetHandle();
+        _q->ExecuteCommandLists(1, &rawCmdList);
+    }
+
+
     
     void DXCBuffer::UnMap() {        
         GetHandle()->Unmap(0, NULL);
     }
 
-    sp<Fence> DXCVLDFence::Make(const sp<DXCDevice> &dev, bool signaled) {
+    DXCFence::DXCFence(DXCDevice* dev) 
+        : Fence(sp(dev))
+    {
+        dev->ref();
 
-        ComPtr<ID3D12Fence> fence;
-        D3D12_FENCE_FLAGS fenceFlags {};
-        if(FAILED(dev->GetDevice()->CreateFence(0, fenceFlags, IID_PPV_ARGS(&fence)))){
-            return nullptr;
+        ThrowIfFailed(dev->GetDevice()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_f)));
+        _fenceEventHandle = CreateEvent(nullptr, false, false, nullptr);
+        
+        if (_fenceEventHandle == nullptr)
+        {
+            ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
         }
-
-
-        auto fen = sp<DXCVLDFence>{new DXCVLDFence(dev)};
-        if(!fen->_fence.Init(std::move(fence))){
-            return nullptr;
-        }
-
-        return fen;
     }
 
-    
-    bool DXCVLDFence::WaitForSignal(std::uint64_t timeoutNs) {
-        auto timeoutMsLong = timeoutNs / 10000000;
-        std::uint32_t timeoutMs = timeoutMsLong;
-        if(timeoutMsLong >= 0xFFFFFFFF){
-            timeoutMs = 0xFFFFFFFF;
+    bool DXCFence::WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) {
+
+        ThrowIfFailed(_f->SetEventOnCompletion(expectedValue, _fenceEventHandle));
+
+        auto waitResult = WaitForSingleObjectEx(_fenceEventHandle, timeoutMs, false);
+        switch(waitResult){
+            //The state of the specified object is signaled.
+            case WAIT_OBJECT_0: return true;
+            //The time-out interval elapsed, and the object's state is nonsignaled.
+            case WAIT_TIMEOUT: return false;
+            //Object not released before thread terminate
+            case WAIT_ABANDONED:
+            //The wait was ended by one or more user-mode asynchronous procedure calls (APC) queued to the thread.
+            case WAIT_IO_COMPLETION:
+            //Other generic failures
+            default: ThrowIfFailed(E_FAIL);
         }
-
-        auto res = _fence.WaitOnCPU(timeoutMs);
-
-        return SUCCEEDED(res);
+        return false;
     }
 
+    DXCFence::~DXCFence() {
+        CloseHandle(_fenceEventHandle);
+        _f->Release();
+    }
     
     sp<Semaphore> DXCVLDSemaphore::Make(const sp<DXCDevice> &dev) {
 

@@ -9,6 +9,8 @@
 
 namespace Veldrid
 {
+    //class Texture;
+
     // A description of the output attachments used by the <see cref="Pipeline"/>.
     struct OutputDescription {
 

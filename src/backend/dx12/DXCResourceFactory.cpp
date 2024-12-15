@@ -2,14 +2,14 @@
 
 #include <cassert>
 
-#include "DXCDevice.hpp"
 #include "DXCPipeline.hpp"
 #include "DXCCommandList.hpp"
 #include "DXCTexture.hpp"
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
-//#include "VulkanSwapChain.hpp"
-//#include "VulkanFramebuffer.hpp"
+#include "DXCSwapChain.hpp"
+#include "DXCFramebuffer.hpp"
+#include "DXCDevice.hpp"
 
 namespace Veldrid
 {
@@ -40,6 +40,12 @@ namespace Veldrid
         return sp<DXCDevice>(dev);
     }
 
+    
+    void* DXCResourceFactory::GetHandle() const {
+        auto dev = GetBase();
+        return dev->GetDxgiAdp();
+    }
+
     sp<Sampler> DXCResourceFactory::CreateSampler (
         const Sampler ::Description& description
     ){
@@ -55,7 +61,7 @@ namespace Veldrid
     sp<SwapChain> DXCResourceFactory::CreateSwapChain (
         const SwapChain ::Description& description
     ){
-        return nullptr;
+        return DXCSwapChain::Make(_CreateNewDevHandle(), description);
     }
 
     //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
@@ -108,8 +114,8 @@ namespace Veldrid
         return DXCCommandList::Make(_CreateNewDevHandle());
     }
 
-    sp<Fence> DXCResourceFactory::CreateFence(bool initialSignaled) {
-       return DXCVLDFence::Make(_CreateNewDevHandle(), initialSignaled);
+    sp<Fence> DXCResourceFactory::CreateFence() {
+       return sp(new DXCFence(GetBase()));
     }
 
     sp<Semaphore> DXCResourceFactory::CreateDeviceSemaphore() {

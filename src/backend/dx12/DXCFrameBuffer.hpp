@@ -38,7 +38,7 @@ namespace Veldrid
 
     public:
 
-        virtual ~DXCFrameBufferBase();
+        virtual ~DXCFrameBufferBase() override { }
 
         //virtual const VkFramebuffer& GetHandle() const = 0;
 

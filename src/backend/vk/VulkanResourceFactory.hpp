@@ -25,6 +25,9 @@ namespace Veldrid{
         ~VulkanResourceFactory() = default;
 
         
+        virtual void* GetHandle() const override {return nullptr;}
+
+        
         VLD_RF_FOR_EACH_RES(VK_DECL_RF_CREATE_WITH_DESC)
 
         sp<Pipeline> CreateGraphicsPipeline(
@@ -49,7 +52,7 @@ namespace Veldrid{
        
         virtual sp<CommandList> CreateCommandList() override;
 
-        virtual sp<Fence> CreateFence(bool initialSignaled) override;
+        virtual sp<Fence> CreateFence() override;
         virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };
 

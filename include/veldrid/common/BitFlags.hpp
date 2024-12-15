@@ -5,8 +5,6 @@
 
 namespace alloy
 {
-    
-
 /**
  * BitFlags implements a bitset usable with `enum` and `enum class`.
  *
@@ -29,6 +27,9 @@ struct BitFlags
 {
     BitFlags() = default;
     BitFlags(const BitFlags& o) : bitset(o.bitset) {}
+    BitFlags(const T& val) {
+        set_true(val);
+    }
 
     BitFlags& operator|=(const T& val) {
         set_true(val);
@@ -53,6 +54,11 @@ struct BitFlags
     }
 
     BitFlags& operator=(const BitFlags& o) = default;
+    BitFlags& operator=(const T& val) {
+        bitset.reset();
+        bitset[static_cast<utype>(val)] = 1;
+        return *this;
+    }
 
   /**
    * Return a bitset containing the result of the

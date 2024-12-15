@@ -73,8 +73,8 @@ namespace Veldrid
         return VulkanCommandList::Make(_CreateNewDevHandle());
     }
 
-    sp<Fence> VulkanResourceFactory::CreateFence(bool initialSignaled) {
-        return VulkanFence::Make(_CreateNewDevHandle(), initialSignaled);
+    sp<Fence> VulkanResourceFactory::CreateFence() {
+        return VulkanFence::Make(_CreateNewDevHandle());
     }
 
     sp<Semaphore> VulkanResourceFactory::CreateDeviceSemaphore() {

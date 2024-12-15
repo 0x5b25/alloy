@@ -13,6 +13,7 @@ set(VLD_MISC_HEADERS
 
 set(VLD_IFACE_HEADERS
     "include/veldrid/BindableResource.hpp"
+    "include/veldrid/CommandQueue.hpp"
     "include/veldrid/Buffer.hpp"
     "include/veldrid/CommandList.hpp"
     "include/veldrid/DeviceResource.hpp"

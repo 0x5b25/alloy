@@ -8,10 +8,16 @@
 #include "veldrid/common/RefCnt.hpp"
 
 #include "veldrid/Types.hpp"
-#include "veldrid/ResourceFactory.hpp"
+//#include "veldrid/ResourceFactory.hpp"
+//#include "veldrid/CommandQueue.hpp"
+#include "veldrid/SwapChain.hpp"
 
 namespace Veldrid
 {
+    class ResourceFactory;
+    class CommandQueue;
+    //class SwapChain;
+
     struct GraphicsApiVersion
     {
         static const GraphicsApiVersion Unknown;
@@ -101,11 +107,11 @@ typedef struct VkPhysicalDeviceProperties {
 
         enum class UVOrigin{ TopLeft, TopRight, BottomLeft, BottomRight };
 
-        struct SubmitBatch{
-            const std::vector<CommandList*>& cmd;
-            const std::vector<Semaphore*>& waitSemaphores;
-            const std::vector<Semaphore*>& signalSemaphores;
-        };
+        //struct SubmitBatch{
+        //    const std::vector<CommandList*>& cmd;
+        //    const std::vector<Semaphore*>& waitSemaphores;
+        //    const std::vector<Semaphore*>& signalSemaphores;
+        //};
 
     protected:
         GraphicsDevice() = default;
@@ -120,13 +126,14 @@ typedef struct VkPhysicalDeviceProperties {
 
         virtual void* GetNativeHandle() const = 0;
 
-        virtual ResourceFactory* GetResourceFactory() = 0;
-        virtual void SubmitCommand(
-            const std::vector<SubmitBatch>& batch,
-            Fence* fence) = 0;
+        virtual Veldrid::ResourceFactory* GetResourceFactory() = 0;
+        //virtual void SubmitCommand(const CommandList* cmd) = 0;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,
             SwapChain* sc) = 0;
+
+        virtual CommandQueue* GetGfxCommandQueue() = 0;
+        virtual CommandQueue* GetCopyCommandQueue() = 0;
                
         virtual void WaitForIdle() = 0;
 

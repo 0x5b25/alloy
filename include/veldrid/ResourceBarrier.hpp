@@ -63,7 +63,7 @@ namespace alloy
 
 
     enum class TextureLayout {
-        UNDEFINED	= 0xffffffff,
+        //UNDEFINED	= 0xffffffff,
         COMMON = 0,
         PRESENT,
         COMMON_READ,

@@ -4,6 +4,7 @@
 
 //veldrid public headers
 #include "veldrid/common/Common.hpp"
+#include "veldrid/Helpers.hpp"
 
 //standard library headers
 #include <string>
@@ -11,14 +12,15 @@
 #include <unordered_set>
 
 //backend specific headers
+#include "DXCDevice.hpp"
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
 
 //platform specific headers
 
 //Local headers
-#include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
+#include "D3DCommon.hpp"
 
 //#include "spirv/nir_spirv.h"
 //#include "nir.h"
@@ -628,7 +630,7 @@ namespace Veldrid
             return nullptr;
         }
 
-        auto rawPipe = new DXCGraphicsPipeline(dev);
+        auto rawPipe = new DXCGraphicsPipeline(dev, desc);
         rawPipe->_pso = std::move(pipelineState);
         switch (desc.primitiveTopology)
         {
@@ -691,14 +693,40 @@ namespace Veldrid
         const ComputePipelineDescription& desc
     ) {
         assert(false);
-        return nullptr;
+
+        
+        // Describe and create the graphics pipeline state object (PSO).
+        std::unordered_set<sp<RefCntBase>> refCnts;
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc {};
+
+        auto dxcShader = static_cast<DXCShader*>(desc.computeShader.get());
+        psoDesc.CS.BytecodeLength = dxcShader->GetDataSizeInBytes();
+        psoDesc.CS.pShaderBytecode = dxcShader->GetData();
+        refCnts.insert(desc.computeShader);        
+
+        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayouts.front().get());
+
+        psoDesc.pRootSignature = dxcResLayout->GetHandle();
+
+        ComPtr<ID3D12PipelineState> pipelineState;
+        ThrowIfFailed(dev->GetDevice()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
+
+        
+        auto rawPipe = new DXCComputePipeline(dev, desc);
+        rawPipe->_pso = std::move(pipelineState);
+        rawPipe->_refCnts = std::move(refCnts);
+        
+        dxcResLayout->ref();
+        rawPipe->_rootSig = sp(dxcResLayout);
+        
+        return sp(rawPipe);
     }
 
     void DXCComputePipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
 
-        //pCmdList->SetPipelineState(_pso.Get());
+        pCmdList->SetPipelineState(_pso.Get());
         //
-        //pCmdList->SetGraphicsRootSignature(_rootSig->GetHandle());
+        pCmdList->SetComputeRootSignature(_rootSig->GetHandle());
         //
         //pCmdList->IASetPrimitiveTopology(_primTopo);
         //pCmdList->OMSetBlendFactor(_blendConstants);

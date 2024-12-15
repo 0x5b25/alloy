@@ -19,9 +19,7 @@ namespace Veldrid {
     {}
 
     
-    DXCSwapChainBackBuffer::~DXCSwapChainBackBuffer() {
-
-    }
+    DXCSwapChainBackBuffer::~DXCSwapChainBackBuffer() {  }
 
     uint32_t DXCSwapChainBackBuffer::GetRTVCount() const { return 1; }
 
@@ -50,11 +48,10 @@ namespace Veldrid {
         const sp<DXCDevice>& dev,
         const Description& desc
     ) {
-        IDXGIDevice * pDXGIDevice = nullptr;
-        auto hr = dev->GetDevice()->QueryInterface(__uuidof(IDXGIDevice), (void **)&pDXGIDevice);
+        //IDXGIDevice3 * pDXGIDevice = nullptr;
+        //auto hr = dev->GetDevice()->QueryInterface(__uuidof(IDXGIDevice3), (void **)&pDXGIDevice);
 
-        IDXGIAdapter* pDXGIAdapter = nullptr;
-        hr = pDXGIDevice->GetAdapter( &pDXGIAdapter );
+        IDXGIAdapter1* pDXGIAdapter = dev->GetDxgiAdp();
 
         IDXGIFactory4* pIDXGIFactory = nullptr;
         pDXGIAdapter->GetParent(__uuidof(IDXGIFactory4), (void **)&pIDXGIFactory);
@@ -79,13 +76,15 @@ namespace Veldrid {
 
         IDXGISwapChain1* swapChain;
         pIDXGIFactory->CreateSwapChainForHwnd(
-            dev->GetImplicitQueue(),        // Swap chain needs the queue so that it can force a flush on it.
+            dev->GetImplicitQueue(),   // Swap chain needs the queue so that it can force a flush on it.
             (HWND)swapChainSrc->hWnd,
             &swapChainDesc,
             nullptr,
             nullptr,
             &swapChain
             );
+
+        pIDXGIFactory->Release();
 
         
         IDXGISwapChain3* dxcSwapChain;
@@ -172,7 +171,7 @@ namespace Veldrid {
         
             }
 
-            backBuffers.emplace_back(fbDesc, vldTex, rtvHandle, vldDepthTex, dsvHandle);
+            backBuffers.emplace_back(vldTex, rtvHandle, vldDepthTex, dsvHandle, fbDesc);
 
             rtvHandle.ptr += rtvDescriptorSize;
             dsvHandle.ptr += dsvDescriptorSize;

@@ -95,7 +95,8 @@ namespace Veldrid
         virtual ~DXCCommandList() override;
 
         
-        const ID3D12CommandList* GetHandle() const { return _cmdList; }
+        static sp<DXCCommandList> Make(const sp<DXCDevice>& dev);
+        ID3D12CommandList* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
         virtual void End() override;
@@ -222,7 +223,6 @@ namespace Veldrid
         virtual void PopDebugGroup() override;
 
         virtual void InsertDebugMarker(const std::string& name) override;
-
     };
 
     class DXCCommandList6 : public DXCCommandList {

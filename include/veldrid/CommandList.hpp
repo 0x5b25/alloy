@@ -2,10 +2,10 @@
 
 #include "veldrid/Helpers.hpp"
 #include "veldrid/DeviceResource.hpp"
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/Framebuffer.hpp"
+//#include "veldrid/Pipeline.hpp"
+//#include "veldrid/Buffer.hpp"
+//#include "veldrid/BindableResource.hpp"
+//#include "veldrid/Framebuffer.hpp"
 #include "veldrid/Types.hpp"
 #include "veldrid/ResourceBarrier.hpp"
 
@@ -16,6 +16,11 @@
 
 namespace Veldrid
 {
+    class Buffer;
+    class Pipeline;
+    class FrameBuffer;
+    class ResourceLayout;
+    class ResourceSet;
     
     class CommandList : public DeviceResource{
 
