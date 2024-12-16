@@ -30,7 +30,46 @@ namespace Veldrid
         return sp(_vkDev);
     }
 
-    VLD_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
+    sp<Framebuffer> VulkanResourceFactory::CreateFramebuffer (
+        const Framebuffer ::Description& description 
+    ){ 
+        return VulkanFramebuffer ::Make(_CreateNewDevHandle(), description); 
+    }
+    
+    sp<Texture> VulkanResourceFactory::CreateTexture ( 
+        const Texture ::Description& description 
+    ){ 
+        return VulkanTexture ::Make(_CreateNewDevHandle(), description); 
+    } 
+    sp<Buffer> VulkanResourceFactory::CreateBuffer ( 
+        const Buffer ::Description& description 
+    ){ 
+        return VulkanBuffer ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<Sampler> VulkanResourceFactory::CreateSampler ( 
+        const Sampler ::Description& description 
+    ){ 
+        return VulkanSampler ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<ResourceSet> VulkanResourceFactory::CreateResourceSet ( 
+        const ResourceSet ::Description& description 
+    ){ 
+        return VulkanResourceSet ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<ResourceLayout> VulkanResourceFactory::CreateResourceLayout ( 
+        const ResourceLayout ::Description& description 
+    ){ 
+        return VulkanResourceLayout ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<SwapChain> VulkanResourceFactory::CreateSwapChain (
+        const SwapChain ::Description& description 
+    ){ 
+        return VulkanSwapChain ::Make(_CreateNewDevHandle(), description); 
+    }
 
     sp<Shader> VulkanResourceFactory::CreateShader(
         const Shader::Description& desc,

@@ -137,7 +137,7 @@ endif()
 target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_features(Veldrid PUBLIC cxx_std_20)
 
-#add_subdirectory("demo")
+add_subdirectory("demo")
 
-add_executable("APITest" "demo.cpp")
-target_link_libraries(APITest PRIVATE Veldrid)
+#add_executable("APITest" "demo.cpp")
+#target_link_libraries(APITest PRIVATE Veldrid)

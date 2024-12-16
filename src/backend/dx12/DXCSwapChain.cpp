@@ -185,7 +185,7 @@ namespace Veldrid {
     
     DXCSwapChain::~DXCSwapChain() {
         _rtvHeap->Release();
-        _dsvHeap->Release();
+        if(_dsvHeap != nullptr) _dsvHeap->Release();
         _sc->Release();
     }
 

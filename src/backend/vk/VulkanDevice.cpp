@@ -80,6 +80,8 @@ private:
         std::unordered_set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
         std::unordered_set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
 
+        uint32_t vkAPIVer = 0;
+        vkEnumerateInstanceVersion(&vkAPIVer);
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -524,6 +526,11 @@ namespace Veldrid {
         VkPhysicalDeviceFeatures deviceFeatures{};
         vkGetPhysicalDeviceFeatures(dev->_phyDev.handle, &deviceFeatures);
 
+        VkPhysicalDeviceVulkan12Features features12 { };
+        features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        features12.timelineSemaphore = true;
+        createInfo.pNext = &features12;
+
         //First add pointers to the queue creation info and device features structs:
 
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
@@ -560,6 +567,10 @@ namespace Veldrid {
             }
             return false;
         };
+
+        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE)) {
+            throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
+        }
 
 #if defined VLD_DEBUG
         dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
@@ -708,7 +719,12 @@ namespace Veldrid {
 
         return dev;
 	}
-
+    CommandQueue* VulkanDevice::GetGfxCommandQueue() {
+        return _gfxQ;
+    }
+    CommandQueue* VulkanDevice::GetCopyCommandQueue() {
+        return _copyQ;
+    }
     
 
     //void VulkanDevice::SubmitCommand(const CommandList* cmd ){
@@ -745,6 +761,8 @@ namespace Veldrid {
         presentInfo.pSwapchains = &deviceSwapchain;
         auto imageIndex = vkSC->GetCurrentImageIdx();
         presentInfo.pImageIndices = &imageIndex;
+
+        vkSC->MarkCurrentImageInUse();
 
         //object presentLock = vkSC.PresentQueueIndex == _graphicsQueueIndex ? _graphicsQueueLock : vkSC;
         //lock(presentLock)
@@ -922,7 +940,7 @@ namespace Veldrid {
         signalInfo.semaphore = _timelineSem;
         signalInfo.value = signalValue;
 
-        vkSignalSemaphore(_Dev()->LogicalDev(), &signalInfo);
+        vkSignalSemaphoreKHR(_Dev()->LogicalDev(), &signalInfo);
     }
     bool VulkanFence::WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) {
         VkSemaphoreWaitInfo waitInfo {};
@@ -933,7 +951,7 @@ namespace Veldrid {
         waitInfo.pSemaphores = &_timelineSem;
         waitInfo.pValues = &expectedValue;
 
-        auto res = vkWaitSemaphores(_Dev()->LogicalDev(), &waitInfo, timeoutMs * 1000000);
+        auto res = vkWaitSemaphoresKHR(_Dev()->LogicalDev(), &waitInfo, timeoutMs * 1000000);
 
         switch (res) {
         //On success, this command returns
@@ -1097,6 +1115,7 @@ namespace Veldrid {
         auto rawCmdBuf = vkCmd->GetHandle();
             
         VkSubmitInfo info {};
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         info.commandBufferCount = 1;
         info.pCommandBuffers = &rawCmdBuf;
        

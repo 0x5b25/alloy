@@ -10,7 +10,7 @@ namespace Veldrid{
 
     #define VK_DECL_RF_CREATE_WITH_DESC(ResType) \
         virtual sp<ResType> Create##ResType ( \
-            const ResType ::Description& description);
+            const ResType ::Description& description) override;
 
     class VulkanResourceFactory : public ResourceFactory{
 

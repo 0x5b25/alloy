@@ -117,12 +117,15 @@ namespace Veldrid
 
         VkFence _imageAvailableFence;
         std::uint32_t _currentImageIndex;
+        bool _currentImageInUse;
 
         VulkanSwapChain(
             const sp<GraphicsDevice>& dev,
             const Description& desc
             ) : SwapChain(dev, desc){
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
+            _currentImageIndex = 0;
+            _currentImageInUse = true;
         }
 
         bool CreateSwapchain(std::uint32_t width, std::uint32_t height);
@@ -152,6 +155,8 @@ namespace Veldrid
         const VkSwapchainKHR& GetHandle() const { return _deviceSwapchain; }
 
         std::uint32_t GetCurrentImageIdx() const { return _currentImageIndex; }
+
+        void MarkCurrentImageInUse() { _currentImageInUse = true; }
 
     public:
         sp<Framebuffer> GetBackBuffer() override;

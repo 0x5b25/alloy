@@ -1,7 +1,12 @@
 #include <veldrid/backend/Backends.hpp>
 #include <veldrid/SwapChainSources.hpp>
+#include <veldrid/SwapChain.hpp>
 #include <veldrid/BindableResource.hpp>
 #include <veldrid/GraphicsDevice.hpp>
+#include <veldrid/CommandQueue.hpp>
+#include <veldrid/ResourceFactory.hpp>
+#include <veldrid/Buffer.hpp>
+#include <veldrid/CommandList.hpp>
 #include <veldrid/Pipeline.hpp>
 #include <veldrid/Shader.hpp>
 
@@ -92,10 +97,11 @@ class UniformApp : public AppBase {
 
     Veldrid::sp<Veldrid::Pipeline> pipeline;
 
-    Veldrid::sp<Veldrid::Semaphore> renderFinishSemaphore;
     Veldrid::sp<Veldrid::Fence> renderFinishFence;
 
     Veldrid::sp<Veldrid::CommandList> cmd;
+
+    uint64_t renderFinishFenceValue = 0;
 
     template<typename T>
     void UpdateBuffer(
@@ -107,14 +113,17 @@ class UniformApp : public AppBase {
 
         Veldrid::Buffer::Description desc{};
         desc.sizeInBytes = stagingBufferSizeInBytes;
-        desc.usage.staging = 1;
+        desc.hostAccess = Veldrid::HostAccess::PreferWrite;
+        //desc.usage.staging = 1;
         auto transferBuffer = dev->GetResourceFactory()->CreateBuffer(desc);
 
-        auto fence = dev->GetResourceFactory()->CreateFence(false);
+        auto fence = dev->GetResourceFactory()->CreateFence();
+        uint64_t signalValue = 1;
 
         unsigned remainingSize = transferSizeInBytes;
         auto readPtr = (const std::uint8_t*)data.data();
         auto writePtr = transferBuffer->MapToCPU();
+        assert(writePtr != nullptr);
 
         while (remainingSize > 0)
         {
@@ -130,9 +139,10 @@ class UniformApp : public AppBase {
             cmd->End();
 
             //submit and wait
-            dev->SubmitCommand({{{ cmd.get() }, {}, {}}}, fence.get());
-            fence->WaitForSignal();
-            fence->Reset();
+            dev->GetGfxCommandQueue()->SubmitCommand(cmd.get());
+            dev->GetGfxCommandQueue()->EncodeSignalFence(fence.get(), signalValue);
+            fence->WaitFromCPU(signalValue);
+            signalValue++;
 
             //Advance counters
             remainingSize -= batchSize;
@@ -229,6 +239,7 @@ class UniformApp : public AppBase {
         _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
         _ubDesc.usage.uniformBuffer = 1;
         //_ubDesc.usage.staging = 1;
+        _ubDesc.hostAccess = Veldrid::HostAccess::PreferWrite;
         uniformBuffer = factory->CreateBuffer(_ubDesc);
 
         Veldrid::Buffer::Description _tbDesc{};
@@ -247,7 +258,7 @@ class UniformApp : public AppBase {
         {
             resLayoutDesc.elements[0].name = "ObjectUniform";
             resLayoutDesc.elements[0].kind = ElemKind::UniformBuffer;
-            resLayoutDesc.elements[1].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
+            resLayoutDesc.elements[0].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
         }
 
         {
@@ -261,8 +272,8 @@ class UniformApp : public AppBase {
         Veldrid::ResourceSet::Description resSetDesc{};
         resSetDesc.layout = _layout;
         resSetDesc.boundResources = {
-            Veldrid::BufferRange::Make(uniformBuffer), 
-            Veldrid::BufferRange::Make(structBuffer)
+            Veldrid::BufferRange::MakeByteBuffer(uniformBuffer), 
+            Veldrid::BufferRange::MakeByteBuffer(structBuffer)
         };
         shaderResources = factory->CreateResourceSet(resSetDesc);
         
@@ -301,8 +312,7 @@ class UniformApp : public AppBase {
 
     void CreateSyncObjects() {
         auto factory = dev->GetResourceFactory();
-        renderFinishFence = factory->CreateFence(true);
-        renderFinishSemaphore = factory->CreateDeviceSemaphore();
+        renderFinishFence = factory->CreateFence();
     }
 
     void* ubMapped = nullptr;
@@ -316,10 +326,15 @@ class UniformApp : public AppBase {
         dev = Veldrid::CreateVulkanGraphicsDevice(opt, swapChainSrc);
         
         //CreateResources
+        std::cout << "Creating swapchain...\n";
         CreateSwapChain(surfaceWidth, surfaceHeight);
+        std::cout << "Compiling shaders...\n";
         CreateShaders();
+        std::cout << "Creating buffers...\n";
         CreateBuffers();
+        std::cout << "Creating pipeline...\n";
         CreatePipeline();
+        std::cout << "Creating sync objects...\n";
         CreateSyncObjects();
 
         ubMapped = uniformBuffer->MapToCPU();
@@ -346,32 +361,24 @@ class UniformApp : public AppBase {
             swapChain->GetWidth() / (float)swapChain->GetHeight(),
             0.1f, 10.0f);
 
-        /* Render here */
-        auto factory = dev->GetResourceFactory();
-        //Get one drawable
-        auto res = swapChain->SwitchToNextFrameBuffer();
-        switch (res)
-        {
-        case Veldrid::SwapChain::State::Optimal: {
-
-        } break;
-        case Veldrid::SwapChain::State::Suboptimal:
-        case Veldrid::SwapChain::State::OutOfDate: {
-            int width = 0, height = 0;
-            glfwGetFramebufferSize(window, &width, &height);
-            while (width == 0 || height == 0) {
-                glfwGetFramebufferSize(window, &width, &height);
+        int currWidth, currHeight;
+        GetFramebufferSize(currWidth, currHeight);
+        if( (currWidth != initialWidth) || (currHeight != initialHeight) ) {
+            while (currWidth == 0 || currHeight == 0) {
+                GetFramebufferSize(currWidth, currHeight);
                 glfwWaitEvents();
             }
             dev->WaitForIdle();
-            swapChain->Resize(width, height);
-            swapChain->SwitchToNextFrameBuffer();
-        } break;
-        case Veldrid::SwapChain::State::Error: {
-            return false;
-            //assert(false);
+            swapChain->Resize(currWidth, currHeight);
+            initialWidth = currWidth;
+            initialHeight = currHeight;
         }
-        }
+
+        /* Render here */
+        auto factory = dev->GetResourceFactory();
+        //Get one drawable
+        auto backBuffer = swapChain->GetBackBuffer();
+        
 
 
         auto _commandList = factory->CreateCommandList();
@@ -381,7 +388,7 @@ class UniformApp : public AppBase {
         _commandList->BeginRenderPass(swapChain->GetBackBuffer());
         //_commandList->BeginRenderPass(fb);
         _commandList->ClearDepthStencil(0, 0);
-        _commandList->ClearColorTarget(0, 0.1, 0.1, 0.3, 1);
+        _commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);
         _commandList->SetPipeline(pipeline);
         _commandList->SetVertexBuffer(0, vertexBuffer);
         _commandList->SetIndexBuffer(indexBuffer, Veldrid::IndexFormat::UInt32);
@@ -399,27 +406,24 @@ class UniformApp : public AppBase {
         _commandList->End();
 
         //Wait for previous render to complete
-        renderFinishFence->WaitForSignal();
-        renderFinishFence->Reset();
+        //renderFinishFence->WaitFromCPU(renderFinishFenceValue);
+        //renderFinishFenceValue++;
+        renderFinishFenceValue++;
         //Update uniformbuffer
         memcpy(ubMapped, &ubo, sizeof(ubo));
-        dev->SubmitCommand(
-            {
-                {
-                    { _commandList.get() },
-                    {},
-                    { renderFinishSemaphore.get() },
-                }
-            },
-            renderFinishFence.get());
-        cmd = _commandList;
+        
+        dev->GetGfxCommandQueue()->SubmitCommand(_commandList.get());
+        dev->GetGfxCommandQueue()->EncodeSignalFence(renderFinishFence.get(), renderFinishFenceValue );
+        // /cmd = _commandList;
+        //Wait for render to complete
+        renderFinishFence->WaitFromCPU(renderFinishFenceValue);
 
         //StopCapture();
 
         /* Swap front and back buffers */
         //glfwSwapBuffers(window);
-        res = dev->PresentToSwapChain(
-            { renderFinishSemaphore.get() },
+        dev->PresentToSwapChain(
+            {  },
             swapChain.get());
 
         return true;

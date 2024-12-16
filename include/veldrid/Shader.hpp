@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <span>
 #include <unordered_map>
 
 //#include "common/error.h"

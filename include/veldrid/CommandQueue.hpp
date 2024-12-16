@@ -28,6 +28,9 @@ namespace Veldrid{
 
         virtual void SubmitCommand(CommandList* cmd) = 0;
 
+        //#TODO: Add command buffer creation to here. Both Metal and Vulkan demands
+        //command buffer are allocated from and submitted to the same queue.
+
     };
 
 }

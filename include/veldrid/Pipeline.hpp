@@ -5,7 +5,7 @@
 #include "veldrid/BindableResource.hpp"
 #include "veldrid/FixedFunctions.hpp"
 #include "veldrid/Shader.hpp"
-
+#include "veldrid/Framebuffer.hpp"
 
 #include <cstdint>
 #include <string>

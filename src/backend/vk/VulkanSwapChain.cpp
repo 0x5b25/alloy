@@ -199,7 +199,8 @@ namespace Veldrid
             texDesc.sampleCount = SampleCount::x1;
             texDesc.format = description.depthFormat.value();
 
-            auto dTgt = _gd->GetResourceFactory()->CreateTexture(texDesc);
+            auto dTgt = _gd->GetResourceFactory()
+                ->CreateTexture(texDesc);
             auto vkDTgt = PtrCast<VulkanTexture>(dTgt.get());
             vkDTgt->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
 
@@ -546,17 +547,25 @@ namespace Veldrid
 
         //Acquire next frame and wait for ready fence
         auto _gd = PtrCast<VulkanDevice>(dev.get());
-        auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
-        if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
-        {
-            vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
-            vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
 
+        VkResult res = VK_SUCCESS;
+
+        if(_currentImageInUse) {
+            auto res = AcquireNextImage(VK_NULL_HANDLE, _imageAvailableFence);
+
+            if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
+            {
+                vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
+                vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
+                res = VK_SUCCESS;
+                _currentImageInUse = false;
+            }
+        }
+        if (res == VK_SUCCESS ){
             //Swapchain image may be 0 when app minimized
             if (_currentImageIndex < _fbs.size()) return _fbs[_currentImageIndex];
             else                                  return nullptr;
-        }
-        else {
+        } else {
             return nullptr;
         }
         //#TODO: handle case VK_ERROR_OUT_OF_DATE_KHR
