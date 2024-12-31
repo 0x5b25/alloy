@@ -1,5 +1,5 @@
 #include "veldrid/Shader.hpp"
-
+#if 0
 #include "veldrid/common/RefCnt.hpp"
 
 #include <atomic>
@@ -1047,3 +1047,4 @@ bool SPIRVReflection::reflect_shader_resources(const std::vector<uint32_t> &spir
 	return true;
 }
 }
+#endif

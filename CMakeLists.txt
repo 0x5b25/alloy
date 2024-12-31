@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.18)
 
 project(veldridcpp
     DESCRIPTION "A C++ port of the legendary veldrid library"
@@ -122,10 +122,10 @@ target_link_libraries(Veldrid
     PUBLIC
     #    common
     #    glm
-        glslang
-        OGLCompiler
-        SPIRV
-        spirv-cross-glsl
+    #    glslang
+    #    OGLCompiler
+    #    SPIRV
+    #    spirv-cross-glsl
     #    spdlog
     )
 

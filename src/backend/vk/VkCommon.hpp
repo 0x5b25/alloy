@@ -28,8 +28,6 @@
 
 constexpr const char* GetVkPlatformSurfaceExt();
 
-
-
 struct VkInstExtNames {
     static const char* VK_KHR_SURFACE;
     static const char* VK_KHR_WIN32_SURFACE;

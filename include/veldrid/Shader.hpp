@@ -14,9 +14,9 @@
 //#include "common/macros.h"
 
 //VKBP_DISABLE_WARNINGS()
-#include <glslang/Public/ShaderLang.h>
+//#include <glslang/Public/ShaderLang.h>
 //#include <vulkan/vulkan.h>
-#include <spirv_glsl.hpp>
+//#include <spirv_glsl.hpp>
 //VKBP_ENABLE_WARNINGS()
 
 //#include "common/vk_common.h"
@@ -39,17 +39,17 @@ namespace Veldrid
 
 		enum class Stage {
 			// The vertex shader stage.
-			Vertex = 1,
+			Vertex,
 			// The geometry shader stage.
-			Geometry = 1 << 1,
+			Geometry,
 			// The tessellation control (or hull) shader stage.
-			TessellationControl = 1 << 2,
+			TessellationControl,
 			// The tessellation evaluation (or domain) shader stage.
-			TessellationEvaluation = 1 << 3,
+			TessellationEvaluation,
 			// The fragment (or pixel) shader stage.
-			Fragment = 1 << 4,
+			Fragment,
 			// The compute shader stage.
-			Compute = 1 << 5,
+			Compute,
 
 			MAX_VALUE
 		};
@@ -117,7 +117,7 @@ namespace Veldrid
     		NonWritable = 2,
     	};
     };
-
+#if 0
     /// Store shader resource data.
     /// Used by the shader module.
     struct ShaderResource
@@ -409,7 +409,7 @@ namespace Veldrid
     	//                                    const ShaderVariant &        variant);
     };
 
-
+#endif
 
 
 } // namespace Veldrid

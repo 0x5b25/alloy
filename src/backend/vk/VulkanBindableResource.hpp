@@ -5,6 +5,7 @@
 #include "veldrid/BindableResource.hpp"
 
 #include <unordered_set>
+#include <functional>
 
 #include "VkDescriptorPoolMgr.hpp"
 

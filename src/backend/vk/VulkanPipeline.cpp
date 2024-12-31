@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <set>
+#include <cstring>
 
 #include "VkTypeCvt.hpp"
 #include "VkCommon.hpp"
@@ -12,7 +13,77 @@
 #include "VulkanShader.hpp"
 #include "VulkanBindableResource.hpp"
 
+
+template <>
+struct std::hash<Veldrid::VertexInputSemantic>
+{
+    std::size_t operator()(const Veldrid::VertexInputSemantic& k) const
+    {
+        return std::hash<uint32_t>()((uint32_t)k.name)
+             ^ (std::hash<uint32_t>()(k.slot) << 1);
+    }
+};
+
 namespace Veldrid{
+class VkShaderRAII {
+    VkDevice _dev;
+    VkShaderModule _mod;
+public:
+    VkShaderRAII(VkDevice dev) : _dev(dev), _mod(VK_NULL_HANDLE) {}
+    ~VkShaderRAII() { 
+        if(_mod != VK_NULL_HANDLE)
+        vkDestroyShaderModule(_dev, _mod, nullptr);
+    }
+    VkShaderModule* operator&() {return &_mod;}
+    VkShaderModule operator*() {return _mod;}
+    VkShaderModule Reset() { 
+        auto res = _mod;  _mod = VK_NULL_HANDLE; return res;
+    }
+};
+
+class VkPipelineLayoutRAII {
+    VkDevice _dev;
+    VkPipelineLayout _obj;
+public:
+    VkPipelineLayoutRAII(VkDevice dev) : _dev(dev), _obj(VK_NULL_HANDLE) {}
+    ~VkPipelineLayoutRAII() { 
+        if(_obj != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(_dev, _obj, nullptr);
+    }
+    VkPipelineLayout* operator&() {return &_obj;}
+    VkPipelineLayout operator*() {return _obj;}
+    VkPipelineLayout Reset() { 
+        auto res = _obj;  _obj = VK_NULL_HANDLE; return res;
+    }
+};
+
+    bool Str2Semantic(const char* str, VertexInputSemantic::Name& semantic){
+
+        static const struct {
+            const char* str;
+            VertexInputSemantic::Name enumVal;
+        } lut[] {
+            {"BINORMAL",     VertexInputSemantic::Name::Binormal},
+            {"BLENDINDICES", VertexInputSemantic::Name::BlendIndices},
+            {"BLENDWEIGHT",  VertexInputSemantic::Name::BlendWeight},
+            {"COLOR",        VertexInputSemantic::Name::Color},
+            {"NORMAL",       VertexInputSemantic::Name::Normal},
+            {"POSITION",     VertexInputSemantic::Name::Position},
+            {"PSIZE",        VertexInputSemantic::Name::PointSize},
+            {"TANGENT",      VertexInputSemantic::Name::Tangent},
+            {"TEXCOORD",     VertexInputSemantic::Name::TextureCoordinate},
+        };
+
+        for(auto& entry : lut) {
+            if(std::strcmp(entry.str, str) == 0) {
+                semantic = entry.enumVal;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 
     VkRenderPass CreateFakeRenderPassForCompat(
         VulkanDevice* dev,
@@ -417,6 +488,8 @@ namespace Veldrid{
         std::vector<VkVertexInputBindingDescription> bindingDescs(bindingCount);
         std::vector<VkVertexInputAttributeDescription> attributeDescs(attributeCount);
 
+        std::unordered_map<VertexInputSemantic, uint32_t> iaMappings;
+
         int targetIndex = 0;
         int targetLocation = 0;
         for (int binding = 0; binding < inputDescriptions.size(); binding++)
@@ -432,10 +505,13 @@ namespace Veldrid{
             for (int location = 0; location < inputDesc.elements.size(); location++)
             {
                 auto& inputElement = inputDesc.elements[location];
+                auto thisLocation = targetLocation + location;
+
+                iaMappings.insert({inputElement.semantic, thisLocation});
 
                 attributeDescs[targetIndex].format = VK::priv::VdToVkShaderDataType(inputElement.format);
                 attributeDescs[targetIndex].binding = binding;
-                attributeDescs[targetIndex].location = targetLocation + location;
+                attributeDescs[targetIndex].location = thisLocation;
                 attributeDescs[targetIndex].offset = inputElement.offset != 0 
                     ? inputElement.offset 
                     : currentOffset;
@@ -486,24 +562,88 @@ namespace Veldrid{
             specializationInfo.pMapEntries = mapEntries.data();
         }
 
-        auto& shaders = desc.shaderSet.shaders;
-        std::vector<VkPipelineShaderStageCreateInfo> stageCIs(shaders.size());
-        for (unsigned i = 0; i < shaders.size(); i++){
-            auto& shader = shaders[i];
-            auto vkShader = reinterpret_cast<VulkanShader*>(shader.get());
-            auto& stageCI = stageCIs[i];
-            stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stageCI.module = vkShader->GetHandle();
-            stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
-            // stageCI.pName = CommonStrings.main; // Meh
-            stageCI.pName = shader->GetDesc().entryPoint.c_str(); // TODO: DONT ALLOCATE HERE
-            stageCI.pSpecializationInfo = &specializationInfo;
+        alloy::vk::SPVRemapper remapper{
+            [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
+                VertexInputSemantic d3dSemantic {};
+                VertexInputSemantic::Name d3dSemanticName;
+                if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
+                    return false;
+                
+                d3dSemantic.name = d3dSemanticName;
+                d3dSemantic.slot = d3dIn.semantic_index;
 
-            refCnts.push_back(shader);
+                auto findRes = iaMappings.find(d3dSemantic);
+                if(findRes == iaMappings.end())
+                    return false;
+                vkOut.location = findRes->second;
+
+                return true;
+            }
+        };
+
+        VkShaderRAII vs{dev->LogicalDev()}, fs{dev->LogicalDev()};
+        
+        VkPipelineShaderStageCreateInfo stageCIs[2] = {};
+
+        {
+            auto& shader = desc.shaderSet.vertexShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_VERTEX_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            
+            remapper.SetStage(Veldrid::Shader::Stage::Vertex);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size();
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &vs));
+
+            stageCIs[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCIs[0].module = *vs;
+            stageCIs[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCIs[0].pName = "main";//Don't have a way to convince dxil-spv to change this name
         }
 
-        pipelineCI.stageCount = stageCIs.size();
-        pipelineCI.pStages = stageCIs.data();
+        {
+            auto& shader = desc.shaderSet.fragmentShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            
+            remapper.SetStage(Veldrid::Shader::Stage::Fragment);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size();//Although pCode is uint32_t*, this is byte size
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &fs));
+
+            stageCIs[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCIs[1].module = *fs;
+            stageCIs[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCIs[1].pName = "main";//Don't have a way to convince dxil-spv to change this name
+            
+        }
+
+        pipelineCI.stageCount = 2;
+        pipelineCI.pStages = stageCIs;
 
         // ViewportState
         // Vulkan spec specifies that there must be 1 viewport no matter
@@ -529,9 +669,9 @@ namespace Veldrid{
         }
         pipelineLayoutCI.pSetLayouts = dsls.data();
         
-        VkPipelineLayout pipelineLayout;
+        VkPipelineLayoutRAII pipelineLayout{dev->LogicalDev()};
         VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
-        pipelineCI.layout = pipelineLayout;
+        pipelineCI.layout = *pipelineLayout;
         
         // Create fake RenderPass for compatibility.
         auto& outputDesc = desc.outputs;
@@ -563,7 +703,7 @@ namespace Veldrid{
 
         auto rawPipe = new VulkanGraphicsPipeline(dev);
         rawPipe->_devicePipeline = devicePipeline;
-        rawPipe->_pipelineLayout = pipelineLayout;
+        rawPipe->_pipelineLayout = pipelineLayout.Reset();
         rawPipe->_renderPass = compatRenderPass;
         rawPipe->scissorTestEnabled = rsDesc.scissorTestEnabled;
         rawPipe->resourceSetCount = resourceSetCount;
@@ -627,13 +767,41 @@ namespace Veldrid{
             specializationInfo.pMapEntries = mapEntries.data();
         }
 
-        auto& shader = desc.computeShader;
-        auto* vkShader = PtrCast<VulkanShader>(shader.get());
-        VkPipelineShaderStageCreateInfo stageCI{};
-        stageCI.module = vkShader->GetHandle();
-        stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
-        stageCI.pName = "main"; // Meh
-        stageCI.pSpecializationInfo = &specializationInfo;
+        
+        alloy::vk::SPVRemapper remapper{nullptr};
+
+        VkShaderRAII cs{dev->LogicalDev()};
+        
+        VkPipelineShaderStageCreateInfo stageCI;
+
+        {
+            auto& shader = desc.computeShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+
+            remapper.SetStage(Veldrid::Shader::Stage::Compute);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size() / 4;
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &cs));
+
+            stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCI.module = *cs;
+            stageCI.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCI.pName = "main";//Don't have a way to convince dxil-spv to change this name
+        }
+
         pipelineCI.stage = stageCI;
 
         VkPipeline devicePipeline;

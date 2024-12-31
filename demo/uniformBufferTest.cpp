@@ -18,7 +18,7 @@
 #include <type_traits>
 
 #include "app/App.hpp"
-
+#include "app/HLSLCompiler.hpp"
 
 struct VertexData
 {
@@ -81,6 +81,59 @@ void main()
 //    outColor = vec4(1.0, 0.0, 0.0, 1.0);
 //}
 )";
+
+const wchar_t HLSLCode[] = LR"AGAN(
+//*********************************************************
+//
+// Copyright (c) Microsoft. All rights reserved.
+// This code is licensed under the MIT License (MIT).
+// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
+// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
+// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
+// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
+//
+//*********************************************************
+
+
+struct SceneDescriptor
+{
+    float4 offset;
+    float4 padding[15];
+};
+SceneDescriptor sceneDesc : register(t0);
+
+struct UniformBufferObject{
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+};
+ConstantBuffer<UniformBufferObject> ubo  : register(b0);
+
+struct PSInput
+{
+    float4 position : SV_POSITION;
+    float4 uv : COLOR0;
+    float4 color : COLOR1;
+};
+
+PSInput VSMain(float4 position : POSITION, float4 uv : TEXCOORD, float4 color : COLOR)
+{
+    PSInput result;
+
+    //result.position = ubo.proj * ubo.view * ubo.model * float4(position.xy, 0.0, 1.0);
+    result.position = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(position.xy, 0.0, 1.0))));
+    result.color = color;
+    //result.uv = uv;
+
+    return result;
+}
+
+float4 PSMain(PSInput input) : SV_TARGET
+{
+    return input.color;
+    //return input.uv;
+}
+)AGAN";
 
 using namespace alloy;
 
@@ -162,12 +215,32 @@ class UniformApp : public AppBase {
     }
 
     void CreateShaders() {
-        auto spvCompiler = Veldrid::IGLSLCompiler::Get();
+        auto pComplier = IHLSLCompiler::Create();
+
+        //auto spvCompiler = Veldrid::IGLSLCompiler::Get();
         std::string compileInfo;
 
         std::cout << "Compiling vertex shader...\n";
-        std::vector<std::uint32_t> vertexSpv;
+        std::vector<std::uint8_t> vertexSpv;
+        
+        std::vector<std::uint8_t> fragSpv;
 
+        try {
+            vertexSpv = pComplier->Compile(HLSLCode, L"VSMain", ShaderType::VS);
+        } catch (const ShaderCompileError& const e){
+            std::cout << "Vertex shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+
+        try {
+            fragSpv = pComplier->Compile(HLSLCode, L"PSMain", ShaderType::PS);
+        } catch (const ShaderCompileError& const e){
+            std::cout << "Fragment shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+/*
         Veldrid::Shader::Stage stage = Veldrid::Shader::Stage::Vertex;
         if (!spvCompiler->CompileToSPIRV(
             stage,
@@ -181,7 +254,6 @@ class UniformApp : public AppBase {
         }
 
         std::cout << "Compiling fragment shader...\n";
-        std::vector<std::uint32_t> fragSpv;
 
         stage = Veldrid::Shader::Stage::Fragment;
         if (!spvCompiler->CompileToSPIRV(
@@ -194,18 +266,19 @@ class UniformApp : public AppBase {
         )) {
             std::cout << compileInfo << "\n";
         }
-
+*/
         auto factory = dev->GetResourceFactory();
         Veldrid::Shader::Description vertexShaderDesc{};
         vertexShaderDesc.stage = Veldrid::Shader::Stage::Vertex;
-        vertexShaderDesc.entryPoint = "main";
+        vertexShaderDesc.entryPoint = "VSMain";
         Veldrid::Shader::Description fragmentShaderDesc{};
         fragmentShaderDesc.stage = Veldrid::Shader::Stage::Fragment;
-        fragmentShaderDesc.entryPoint = "main";
+        fragmentShaderDesc.entryPoint = "PSMain";
 
-        fragmentShader = factory->CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size() * 4});
-        vertexShader = factory->CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size() * 4});
+        fragmentShader = factory->CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size()});
+        vertexShader = factory->CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size()});
 
+        delete pComplier;
     }
 
     void CreateBuffers() {
@@ -299,11 +372,12 @@ class UniformApp : public AppBase {
         using VL = Veldrid::GraphicsPipelineDescription::ShaderSet::VertexLayout;
         pipelineDescription.shaderSet.vertexLayouts = { {} };
         pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
-            {"Position", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float2},
-            {"UV", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float2},
-            {"Color", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float4}
+            {"POSITION", {Veldrid::VertexInputSemantic::Name::Position, 0}, Veldrid::ShaderDataType::Float2},
+            {"TEXCOORD", {Veldrid::VertexInputSemantic::Name::TextureCoordinate, 0}, Veldrid::ShaderDataType::Float2},
+            {"COLOR", {Veldrid::VertexInputSemantic::Name::Color, 0}, Veldrid::ShaderDataType::Float4}
             });
-        pipelineDescription.shaderSet.shaders = { vertexShader, fragmentShader };
+        pipelineDescription.shaderSet.vertexShader = vertexShader;
+        pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
         pipelineDescription.outputs = swapChain->GetBackBuffer()->GetOutputDescription();
         //pipelineDescription.outputs = fb->GetOutputDescription();

@@ -21,7 +21,7 @@ namespace Veldrid
         enum class VisitedAttachmentType {
             ColorAttachment, DepthAttachment, DepthStencilAttachment
         };
-        using AttachmentVisitor = std::function<void(const sp<DXCTexture>&, VisitedAttachmentType)>;
+        //using AttachmentVisitor = std::function<void(const sp<DXCTexture>&, VisitedAttachmentType)>;
 
     protected:
         

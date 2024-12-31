@@ -26,6 +26,27 @@ namespace Veldrid
         std::uint64_t data;
     };
 
+    struct VertexInputSemantic {
+        enum class Name {
+            Binormal,
+            BlendIndices,
+            BlendWeight,
+            Color,
+            Normal,
+            Position,
+            PointSize,
+            Tangent,
+            TextureCoordinate
+        } name;
+
+        uint32_t slot;
+
+        bool operator==(const VertexInputSemantic& other) const
+        {
+            return name == other.name && slot == other.slot;
+        }
+    };
+
     struct GraphicsPipelineDescription{
 
         // A description of the blend state, which controls how color values are blended into each color target.
@@ -49,13 +70,12 @@ namespace Veldrid
                 struct Element{
                     // The name of the element.
                     std::string name;
+
                     /// The semantic type of the element.
                     /// NOTE: When using Veldrid.SPIRV, all vertex elements will use
                     /// <see cref="VertexElementSemantic.TextureCoordinate"/>.
-                    enum class Semantic : std::uint8_t{
-                        Position, Normal, 
-                        TextureCoordinate, Color,
-                    } semantic;
+                    //#TODO: Use real semantic name and index in shader converter/dxcpipeline
+                    VertexInputSemantic semantic;
                     
                     // The format of the element.
                     ShaderDataType format;
@@ -98,7 +118,9 @@ namespace Veldrid
             };
 
             std::vector<VertexLayout> vertexLayouts;
-            std::vector<sp<Shader>> shaders;
+            //std::vector<sp<Shader>> shaders;
+            sp<Shader> vertexShader;
+            sp<Shader> fragmentShader;
             std::vector<SpecializationConstant> specializations;
 
         } shaderSet;

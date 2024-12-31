@@ -122,23 +122,26 @@ namespace Veldrid
             refCnts.insert(shader);
         };
 
-        for(auto& shader : desc.shaderSet.shaders) {
-            auto& desc = shader->GetDesc();
+        _FillShaderDesc(desc.shaderSet.vertexShader, psoDesc.VS);
+        _FillShaderDesc(desc.shaderSet.fragmentShader, psoDesc.PS);
 
-            switch (desc.stage)
-            {
-            case Veldrid::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
-            case Veldrid::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
-            case Veldrid::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
-            case Veldrid::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
-            case Veldrid::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
-            
-            default: {
-                //TODO: report unsupported shader stages
-            } break;
-            }
-
-        }
+        //for(auto& shader : desc.shaderSet.shaders) {
+        //    auto& desc = shader->GetDesc();
+        //
+        //    switch (desc.stage)
+        //    {
+        //    case Veldrid::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
+        //    case Veldrid::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
+        //    case Veldrid::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
+        //    case Veldrid::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
+        //    case Veldrid::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
+        //    
+        //    default: {
+        //        //TODO: report unsupported shader stages
+        //    } break;
+        //    }
+        //
+        //}
         
 
         /*
@@ -477,7 +480,7 @@ namespace Veldrid
 
             targetLocation += inputDesc.elements.size();
         }
-        
+
         auto& viState = psoDesc.InputLayout;
         viState.NumElements = iaDescs.size();
         viState.pInputElementDescs = iaDescs.data();

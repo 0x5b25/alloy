@@ -58,11 +58,24 @@ set(VLD_BACKEND_VK_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.hpp"
 )
 
+
+set(VLD_BACKEND_VK_SHADER_CVT_SRCS
+    
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/shader_converter.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/shader_converter.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/vkd3d_shader_main.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/dxil.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/dxbc.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/shader_converter/checksum.cpp"
+)
+
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${VLD_BACKEND_VK_SRCS})
 
 target_sources(Veldrid
     PRIVATE
-        ${VLD_BACKEND_VK_SRCS})
+        ${VLD_BACKEND_VK_SRCS}
+        #${VLD_BACKEND_VK_SHADER_CVT_SRCS}
+)
 
 target_link_libraries(Veldrid
     PRIVATE
@@ -76,5 +89,7 @@ target_link_libraries(Veldrid
     #    glfw
         volk
         vma
+    #    dxil-converter
+        dxil-spirv-c-static
     #    spdlog
     )
