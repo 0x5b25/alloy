@@ -530,37 +530,84 @@ namespace Veldrid{
 
     
     void VulkanCommandList::SetGraphicsResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
+        const sp<ResourceSet>& rs
     ){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
-        assert(!_currentPipeline->IsComputePipeline());
+        auto pipeline = _currentPipeline;
+        assert(!_currentPipeline->IsComputePipeline(), "Expected current bound pipeline is graphics pipeline");
 
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        auto& entry = _resourceSets[slot];
-        entry.isNewlyChanged = true;
-        entry.resSet = RefRawPtr(vkrs);
-        entry.offsets = dynamicOffsets;
+        auto& dss = vkrs->GetHandle();
+
+        auto resourceSetCount = pipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
+
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
+
+        if (!descriptorSets.empty())
+        {
+            // Flush current batch.
+            vkCmdBindDescriptorSets(
+                _cmdBuf,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipeline->GetLayout(),
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr);
+        }
+        _devRes.insert(rs);
+        //auto& entry = _resourceSets[slot];
+        //entry.isNewlyChanged = true;
+        //entry.resSet = RefRawPtr(vkrs);
+        //entry.offsets = dynamicOffsets;
     }
         
     void VulkanCommandList::SetComputeResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
+        const sp<ResourceSet>& rs
     ){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
         assert(_currentPipeline->IsComputePipeline());
 
+        auto pipeline = _currentPipeline;
+        
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        auto& entry = _resourceSets[slot];
-        entry.isNewlyChanged = true;
-        entry.resSet = RefRawPtr(vkrs);
-        entry.offsets = dynamicOffsets;
+        auto& dss = vkrs->GetHandle();
+
+        auto resourceSetCount = pipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
+        
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
+
+        if (!descriptorSets.empty())
+        {
+            // Flush current batch.
+            vkCmdBindDescriptorSets(
+                _cmdBuf,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
+                pipeline->GetLayout(),
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr);
+        }
+        
+        _devRes.insert(rs);
+
+        //auto& entry = _resourceSets[slot];
+        //entry.isNewlyChanged = true;
+        //entry.resSet = RefRawPtr(vkrs);
+        //entry.offsets = dynamicOffsets;
     }
 
     
@@ -797,6 +844,7 @@ namespace Veldrid{
     void VulkanCommandList::_FlushNewResourceSets(
         VkPipelineBindPoint bindPoint
     ) {
+        /*
         auto pipeline = _currentPipeline;
         auto resourceSetCount = pipeline->GetResourceSetCount();
 
@@ -847,8 +895,8 @@ namespace Veldrid{
                         currentBatchFirstSet,
                         descriptorSets.size(),
                         descriptorSets.data(),
-                        dynamicOffsets.size(),
-                        dynamicOffsets.data());
+                        0,
+                        nullptr);
 
                     descriptorSets.clear();
                     dynamicOffsets.clear();
@@ -856,7 +904,7 @@ namespace Veldrid{
 
                 currentBatchFirstSet = currentSlot + 1;
             }
-        }
+        }*/
     }
 
     void VulkanCommandList::PreDrawCommand(){

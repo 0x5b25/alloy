@@ -4,19 +4,27 @@
 
 #include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
+#include "D3DCommon.hpp"
+
+#include <dxgi1_4.h>
+#include <dxgidebug.h>
 
 namespace Veldrid {
 
     
     void DXCTexture::SetResource(ID3D12Resource* res) {
         _res = res;
-        _res->AddRef();
+        //_res->AddRef();
     }
 
     DXCTexture::~DXCTexture() {
-        _res->Release();
         if(_allocation) {
+            //Resource is managed by D3D12MA allocation
+            //We don't need ot manually release it, the
+            // allocation release will do that for us.
             _allocation->Release();
+        } else {
+            _res->Release();
         }
     }
 
@@ -72,7 +80,9 @@ namespace Veldrid {
             resourceDesc.SampleDesc.Count = 1;
         }
         resourceDesc.SampleDesc.Quality = 0;
-        resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //Depth stencil textures can't use row_major
+        //There are also tiled resource support that needs 64K_** layout
+        //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         //if(desc.usage.sampled)         resourceDesc.Flags |= ;
@@ -114,6 +124,23 @@ namespace Veldrid {
              IID_NULL, NULL);
 
         if(FAILED(hr)){
+            
+            //Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
+            //Microsoft::WRL::ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
+            //if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+            //{
+            //    ThrowIfFailed(dxgiDebug->QueryInterface(IID_PPV_ARGS(&dxgiInfoQueue)));
+            //
+            //    for (UINT64 index = 0; index < dxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL); index++)
+            //    {
+            //        SIZE_T length = 0;
+            //        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, nullptr, &length);
+            //        auto msg = (DXGI_INFO_QUEUE_MESSAGE*)malloc(sizeof(length));
+            //        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, msg, &length);
+            //        printf("Description: %s\n", msg->pDescription);
+            //    }
+            //}
+
             return nullptr;
         }
 

@@ -159,14 +159,10 @@ namespace Veldrid
 
         
         virtual void SetGraphicsResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) override;
+            const sp<ResourceSet>& rs) override;
             
         virtual void SetComputeResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) override;
+            const sp<ResourceSet>& rs) override;
 
         virtual void BeginRenderPass(const sp<Framebuffer>& fb) override;
         virtual void EndRenderPass() override;

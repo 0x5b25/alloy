@@ -59,14 +59,12 @@ namespace Veldrid
         // <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
         // <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>, depending on the kind of resource.</param>
         virtual void SetGraphicsResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) = 0;
+            const sp<ResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
             
         virtual void SetComputeResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) = 0;
+            const sp<ResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
 
         virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
         virtual void EndRenderPass() = 0;

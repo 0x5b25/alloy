@@ -6,6 +6,7 @@
 
 #include <unordered_set>
 #include <functional>
+#include <vector>
 
 #include "VkDescriptorPoolMgr.hpp"
 
@@ -16,10 +17,34 @@ namespace Veldrid{
 
     class VulkanResourceLayout : public ResourceLayout{
 
-        VkDescriptorSetLayout _dsl;
+    public:
+        struct BindSetInfo{
+            uint32_t regSpaceDesignated; //Value described in the description
+            uint32_t setIndexAllocated; //Actually allocated value
+            std::vector<uint32_t> elementIdInList;
+            VkDescriptorSetLayout layout;
+            VK::priv::DescriptorResourceCounts resourceCounts;
+            uint32_t dynamicBufferCount;
+        };
 
-        std::uint32_t _dynamicBufferCount;
-        Veldrid::VK::priv::DescriptorResourceCounts _drcs;
+        enum class BindType {
+            Sampler, //Maps to DX12 sampler type
+            UniformBuffer, //Maps to DX12 constant buffer type
+            ShaderResourceReadOnly,//Maps to DX12 SRV type
+            ShaderResourceReadWrite,//Maps to DX12 UAV type
+        };
+
+        struct ResourceBindInfo {
+            //IBindableResource::ResourceKind kind;
+            BindType type;
+            uint32_t baseSetIndex;
+            std::vector<BindSetInfo> sets;
+        };
+
+    private:
+        
+        std::vector<ResourceBindInfo> _bindings;
+        //std::uint32_t _dynamicBufferCount;
 
         VulkanResourceLayout(
             const sp<GraphicsDevice>& dev,
@@ -34,9 +59,11 @@ namespace Veldrid{
             const Description& desc
         );
 
-        const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
-        std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
-        const Veldrid::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+        //const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
+        //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
+        //const Veldrid::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+
+        const std::vector<ResourceBindInfo>& GetBindings() const {return _bindings;}
     };
 
     class VulkanResourceSet : public ResourceSet{
@@ -44,18 +71,15 @@ namespace Veldrid{
         using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
 
-        Veldrid::VK::priv::_DescriptorSet _descSet;
+        std::vector<Veldrid::VK::priv::_DescriptorSet> _descSet;
 
         std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 
         VulkanResourceSet(
             const sp<GraphicsDevice>& dev,
-            Veldrid::VK::priv::_DescriptorSet&& set,
             const Description& desc
         ) 
             : ResourceSet(dev, desc)
-            , _descSet(std::move(set))
-        
         {}
 
     public:
@@ -66,7 +90,7 @@ namespace Veldrid{
             const Description& desc
         );
 
-        const VkDescriptorSet& GetHandle() const { return _descSet.GetHandle(); }
+        const auto& GetHandle() const { return _descSet; }
 
 
         void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);

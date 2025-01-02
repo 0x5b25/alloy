@@ -12,6 +12,7 @@
 #include <optional>
 
 #include "VkCommon.hpp"
+#include "VkSurfaceUtil.hpp"
 #include "VulkanFramebuffer.hpp"
 #include "VulkanTexture.hpp"
 
@@ -101,6 +102,8 @@ namespace Veldrid
 
     class VulkanSwapChain : public SwapChain{
         friend class _SCFB;
+
+        VK::priv::SurfaceContainer _surf;
            
         VkRenderPass _renderPassNoClear;
         VkRenderPass _renderPassNoClearLoad;

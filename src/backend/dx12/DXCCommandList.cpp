@@ -126,7 +126,7 @@ namespace Veldrid
     //        else {
     //            //gather all read references
     //            prevRef.stage |= stage;
-    //            prevRef.access |= access;
+    //            prevRef.access &= access;
     //        }
     //        
     //    }
@@ -189,7 +189,7 @@ namespace Veldrid
     //            else {
     //                //There is a access dependency
     //                prevRef.stage |= stage;
-    //                prevRef.access |= access;
+    //                prevRef.access &= access;
     //            }
     //        }
     //        else {
@@ -601,11 +601,7 @@ namespace Veldrid
     }
 
     
-    void DXCCommandList::SetGraphicsResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
-    ){
+    void DXCCommandList::SetGraphicsResourceSet(const sp<ResourceSet>& rs){
         CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
         assert(!_currentPipeline->IsComputePipeline());
@@ -630,13 +626,9 @@ namespace Veldrid
         //entry.offsets = dynamicOffsets;
     }
         
-    void DXCCommandList::SetComputeResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
-    ){
+    void DXCCommandList::SetComputeResourceSet(const sp<ResourceSet>& rs){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
+        //assert(slot < _resourceSets.size());
         assert(_currentPipeline->IsComputePipeline());
 
         _devRes.insert(rs);
@@ -1620,38 +1612,42 @@ namespace Veldrid
     ){
         D3D12_RESOURCE_STATES legacyState{};
 
-        if(sync & D3D12_BARRIER_SYNC_RESOLVE) { 
-            if(access | D3D12_BARRIER_ACCESS_RESOLVE_SOURCE)
+        //if(sync & D3D12_BARRIER_SYNC_RESOLVE) { 
+            if(access & D3D12_BARRIER_ACCESS_RESOLVE_SOURCE)
                 legacyState |= D3D12_RESOURCE_STATE_RESOLVE_SOURCE; 
-            if(access | D3D12_BARRIER_ACCESS_RESOLVE_DEST)
+            if(access & D3D12_BARRIER_ACCESS_RESOLVE_DEST)
                 legacyState |= D3D12_RESOURCE_STATE_RESOLVE_DEST; 
-        }
+        //}
 
-        if(sync & D3D12_BARRIER_SYNC_COPY) { 
-            if(access | D3D12_BARRIER_ACCESS_COPY_SOURCE)
+        //if(sync & D3D12_BARRIER_SYNC_COPY) { 
+            if(access & D3D12_BARRIER_ACCESS_COPY_SOURCE)
                 legacyState |= D3D12_RESOURCE_STATE_COPY_SOURCE; 
-            if(access | D3D12_BARRIER_ACCESS_COPY_DEST)
+            if(access & D3D12_BARRIER_ACCESS_COPY_DEST)
                 legacyState |= D3D12_RESOURCE_STATE_COPY_DEST; 
-        }
+        //}
 
-        if(sync & D3D12_BARRIER_SYNC_RAYTRACING) {
-            legacyState |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-        }
+        //if(sync & D3D12_BARRIER_SYNC_RAYTRACING) {
+            if(access & ( D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ
+                        | D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE))
+                legacyState |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+        //}
 
-        if(sync & D3D12_BARRIER_SYNC_EXECUTE_INDIRECT) {
+        //if(sync & D3D12_BARRIER_SYNC_EXECUTE_INDIRECT) {
+        if(access & D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT)
             legacyState |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-        }
+        //}
 
-        if(sync & D3D12_BARRIER_SYNC_RENDER_TARGET) { 
+        //if(sync & D3D12_BARRIER_SYNC_RENDER_TARGET) {
+        if(access & D3D12_BARRIER_ACCESS_RENDER_TARGET)
             legacyState |= D3D12_RESOURCE_STATE_RENDER_TARGET;
-        }
+        //}
 
-        if(sync & D3D12_BARRIER_SYNC_DEPTH_STENCIL) {
+        //if(sync & D3D12_BARRIER_SYNC_DEPTH_STENCIL) {
             if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE)
                 legacyState |= D3D12_RESOURCE_STATE_DEPTH_WRITE;   
             if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ)
                 legacyState |= D3D12_RESOURCE_STATE_DEPTH_READ;
-        }
+        //}
 
         //Infer from access flags
         if(access & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) {
@@ -1660,9 +1656,9 @@ namespace Veldrid
 
         if(access & D3D12_BARRIER_ACCESS_SHADER_RESOURCE) {
             legacyState |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            if(sync & D3D12_BARRIER_SYNC_PIXEL_SHADING) {
+            //if(sync & D3D12_BARRIER_SYNC_PIXEL_SHADING) {
                 legacyState |= D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            }
+            //}
         }
 
         if(access & D3D12_BARRIER_ACCESS_INDEX_BUFFER) {
@@ -1814,6 +1810,7 @@ namespace Veldrid
                 _PopulateBarrierAccess(barrierDesc, dxcBarrierFlags);
                 _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
                 barrier.Transition.pResource = dxcBuffer->GetHandle();
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             }
             else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
 
@@ -1827,6 +1824,7 @@ namespace Veldrid
                 _PopulateBarrierAccess(texDesc, dxcBarrierFlags);
                 _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
                 barrier.Transition.pResource = dxcTex->GetHandle();
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             }
         }
 

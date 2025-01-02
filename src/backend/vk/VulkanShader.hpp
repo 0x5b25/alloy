@@ -69,10 +69,26 @@ namespace alloy::vk {
     class SPVRemapper {
 
     public:
-        using VertexInputRemapFn = std::function<bool(const dxil_spv_d3d_vertex_input&,
-                                                            dxil_spv_vulkan_vertex_input&)>;
+        //using VertexInputRemapFn = std::function<bool(const dxil_spv_d3d_vertex_input&,
+        //                                                    dxil_spv_vulkan_vertex_input&)>;
+        //using SRVRemapFn = std::function<bool(const dxil_spv_d3d_binding&,
+        //                                            dxil_spv_srv_vulkan_binding&)>;
+        //using SamplerRemapFn = std::function<bool( const dxil_spv_d3d_binding& binding,
+        //                                                 dxil_spv_vulkan_binding& vk_binding)>;
+        //using UAVRemapFn = std::function<bool( const dxil_spv_uav_d3d_binding& binding,
+        //                                             dxil_spv_uav_vulkan_binding& vk_binding )>;
+        //using CBVRemapFn = std::function< bool( const dxil_spv_d3d_binding& binding,
+        //                                              dxil_spv_cbv_vulkan_binding& vk_binding)>;
+        //
+        //struct RemapFn {
+        //    VertexInputRemapFn vertexRemapFn;
+        //    SRVRemapFn         srvRemapFn;
+        //    SamplerRemapFn     samplerRemapFn;
+        //    UAVRemapFn         uavRemapFn;
+        //    CBVRemapFn         cbvRemapFn;
+        //};
 
-    private:
+    protected:
 
         struct ShaderStageIOInfo {
             std::string semanticName;
@@ -86,45 +102,44 @@ namespace alloy::vk {
 
         std::unordered_map<std::string, ShaderStageIOInfo> shaderStageIoMap;
 
-        VertexInputRemapFn _vertRemapFn;
+        //RemapFn _remapFn;
 
     public:
 
 
-        SPVRemapper(
-            const VertexInputRemapFn& vertRemapFn
-        ) : _vertRemapFn(vertRemapFn)
-        { }
+        SPVRemapper() { }
+
+        virtual ~SPVRemapper() { }
 
         void SetStage(Veldrid::Shader::Stage stage) {currentStage = stage;}
 
-        bool RemapSRV( const dxil_spv_d3d_binding& binding,
+        virtual bool RemapSRV( const dxil_spv_d3d_binding& binding,
                               dxil_spv_srv_vulkan_binding& vk_binding
         );
 
-        bool RemapSampler( const dxil_spv_d3d_binding& binding,
+        virtual bool RemapSampler( const dxil_spv_d3d_binding& binding,
                                   dxil_spv_vulkan_binding& vk_binding
         );
 
-        bool RemapUAV ( const dxil_spv_uav_d3d_binding& binding,
+        virtual bool RemapUAV ( const dxil_spv_uav_d3d_binding& binding,
                                dxil_spv_uav_vulkan_binding& vk_binding
         ) ;
 
-        bool RemapCBV( const dxil_spv_d3d_binding& binding,
+        virtual bool RemapCBV( const dxil_spv_d3d_binding& binding,
                               dxil_spv_cbv_vulkan_binding& vk_binding
         ) ;
 
         
-        bool RemapVertexInput( const dxil_spv_d3d_vertex_input& d3d_input,
+        virtual bool RemapVertexInput( const dxil_spv_d3d_vertex_input& d3d_input,
                                       dxil_spv_vulkan_vertex_input& vk_input
         );
 
         
-        bool RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
+        virtual bool RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
                                         dxil_spv_vulkan_shader_stage_io& vulkan_variable
         );
 
-        bool CaptureShaderStageOutput( const dxil_spv_d3d_shader_stage_io& d3d_input,
+        virtual bool CaptureShaderStageOutput( const dxil_spv_d3d_shader_stage_io& d3d_input,
                                         dxil_spv_vulkan_shader_stage_io& vulkan_variable
         );
 

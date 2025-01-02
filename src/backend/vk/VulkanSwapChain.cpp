@@ -25,27 +25,27 @@ namespace Veldrid
         return supported;
     }
 
-    bool GetPresentQueueIndex(VulkanDevice* dev, std::uint32_t& queueFamilyIndex)
-    {
-        auto& phyDevInfo = dev->GetPhyDevInfo();
-        std::uint32_t graphicsQueueIndex = phyDevInfo.graphicsQueueFamily;
-        std::uint32_t presentQueueIndex = phyDevInfo.graphicsQueueFamily;
-        auto& surface = dev->Surface();
-
-        if (QueueSupportsPresent(dev, graphicsQueueIndex, surface))
-        {
-            queueFamilyIndex = graphicsQueueIndex;
-            return true;
-        }
-        else if (graphicsQueueIndex != presentQueueIndex && QueueSupportsPresent(dev, presentQueueIndex, surface))
-        {
-            queueFamilyIndex = presentQueueIndex;
-            return true;
-        }
-
-        queueFamilyIndex = 0;
-        return false;
-    }
+    //bool GetPresentQueueIndex(VulkanDevice* dev, std::uint32_t& queueFamilyIndex)
+    //{
+    //    auto& phyDevInfo = dev->GetPhyDevInfo();
+    //    std::uint32_t graphicsQueueIndex = phyDevInfo.graphicsQueueFamily;
+    //    std::uint32_t presentQueueIndex = phyDevInfo.graphicsQueueFamily;
+    //    auto& surface = dev->Surface();
+    //
+    //    if (QueueSupportsPresent(dev, graphicsQueueIndex, surface))
+    //    {
+    //        queueFamilyIndex = graphicsQueueIndex;
+    //        return true;
+    //    }
+    //    else if (graphicsQueueIndex != presentQueueIndex && QueueSupportsPresent(dev, presentQueueIndex, surface))
+    //    {
+    //        queueFamilyIndex = presentQueueIndex;
+    //        return true;
+    //    }
+    //
+    //    queueFamilyIndex = 0;
+    //    return false;
+    //}
      
     VkRenderPass _SCFB::GetRenderPassNoClear_Init() const {return _sc->GetRenderPassNoClear_Init();}
     VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
@@ -326,7 +326,7 @@ namespace Veldrid
         ReleaseFramebuffers();
 
         auto _gd = PtrCast<VulkanDevice>(dev.get());
-        auto surface = _gd->Surface();
+        auto surface = _surf.surface;
         if(surface == VK_NULL_HANDLE){
             return false;
         }
@@ -488,6 +488,10 @@ namespace Veldrid
         vkDestroyFence(_gd->LogicalDev(), _imageAvailableFence, nullptr);
         //_framebuffer.Dispose();
         vkDestroySwapchainKHR(_gd->LogicalDev(), _deviceSwapchain, nullptr);
+
+        if(_surf.isOwnSurface){
+            vkDestroySurfaceKHR(_gd->GetInstance(), _surf.surface, nullptr);
+        }
     }
 
     sp<SwapChain> VulkanSwapChain::Make(
@@ -498,9 +502,16 @@ namespace Veldrid
         auto* _swapchainSource = desc.source;
         auto _colorSrgb = desc.colorSrgb;
 
-        auto _surface = dev->Surface();
+        //Make the surface if possible
+        VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
 
-        if (_surface == VK_NULL_HANDLE) return nullptr;
+        if (_swapchainSource != nullptr) {
+            _surf = VK::priv::CreateSurface(dev->GetInstance(), _swapchainSource);
+        }
+
+        //auto _surface = dev->Surface();
+
+        if (_surf.surface == VK_NULL_HANDLE) return nullptr;
 
         //if (existingSurface == nullptr)
         //{
@@ -518,6 +529,7 @@ namespace Veldrid
         //vkGetDeviceQueue(_gd.Device, _presentQueueIndex, 0, out _presentQueue);
 
         auto sc = new VulkanSwapChain(dev, desc);
+        sc->_surf = _surf;
         sc->_renderPassClear = VK_NULL_HANDLE;
         sc->_renderPassNoClear = VK_NULL_HANDLE;
         sc->_renderPassNoClearLoad = VK_NULL_HANDLE;

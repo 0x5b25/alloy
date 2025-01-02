@@ -207,8 +207,7 @@ namespace Veldrid{
         virtual void* GetNativeHandle() const override { return GetDevice(); }
 
         static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options,
-            SwapChainSource* swapChainSource = nullptr
+            const GraphicsDevice::Options& options
         );
 
         //virtual const std::string& DeviceName() const override { return _devName; }

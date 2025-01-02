@@ -53,6 +53,7 @@ namespace Veldrid
 
             struct ElementDescription{
                 uint32_t  bindingSlot;
+                uint32_t  bindingSpace;
                 std::string name;
                 IBindableResource::ResourceKind kind;
 
@@ -72,7 +73,7 @@ namespace Veldrid
                         /// Offsets specified this way must be a multiple of <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
                         /// <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>.
                         /// </summary>
-                        std::uint8_t dynamicBinding : 1;
+                        //std::uint8_t dynamicBinding : 1;
                         
                         //Resource is writable by shader
                         // can only applied to storage buffers, texture storages

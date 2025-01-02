@@ -408,10 +408,9 @@ namespace Veldrid {
 
 
 	sp<GraphicsDevice> CreateVulkanGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     ) {
-		return VulkanDevice::Make(options, swapChainSource);
+		return VulkanDevice::Make(options);
 	}
 
     VulkanDevice::VulkanDevice() : _resFactory(this) {};
@@ -425,9 +424,9 @@ namespace Veldrid {
         delete _copyQ;
         delete _computeQ;
 
-        if(_isOwnSurface){
-            vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
-        }
+        //if(_isOwnSurface){
+        //    vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
+        //}
         vmaDestroyAllocator(_allocator);
 
         //Uninit managers
@@ -445,12 +444,11 @@ namespace Veldrid {
         DEBUGCODE(_copyQ = VK_NULL_HANDLE);
         DEBUGCODE(_computeQ = VK_NULL_HANDLE);
 
-        DEBUGCODE(_surface = VK_NULL_HANDLE);
+        //DEBUGCODE(_surface = VK_NULL_HANDLE);
     }
 
     sp<GraphicsDevice> VulkanDevice::Make(
-		const GraphicsDevice::Options& options,
-		SwapChainSource* swapChainSource
+		const GraphicsDevice::Options& options
 	){
         auto ctx = _VkCtx::Get();
         if (!ctx->IsVulkanSupported()) {
@@ -458,13 +456,13 @@ namespace Veldrid {
         }
 
         //Make the surface if possible
-        VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
+        //VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
 
-        if (swapChainSource != nullptr) {
-            _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
-        }
+        //if (swapChainSource != nullptr) {
+        //    _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
+        //}
 
-        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf.surface, {});
+        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), nullptr/*_surf.surface*/, {});
         if (!phyDev.has_value()) {
             return {};
         }
@@ -473,8 +471,8 @@ namespace Veldrid {
 
         auto dev = sp<VulkanDevice>(new VulkanDevice());
         dev->_ctx = ctx;
-        dev->_surface = _surf.surface;
-        dev->_isOwnSurface = _surf.isOwnSurface;
+        //ev->_surface = _surf.surface;
+        //dev->_isOwnSurface = _surf.isOwnSurface;
         dev->_phyDev = devInfo;
         dev->_features = {};
         dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
@@ -726,6 +724,8 @@ namespace Veldrid {
         return _copyQ;
     }
     
+    
+    const VkInstance& VulkanDevice::GetInstance() const {return _ctx->GetHandle();}
 
     //void VulkanDevice::SubmitCommand(const CommandList* cmd ){
 //

@@ -112,6 +112,7 @@ namespace Veldrid::VK::priv {
 			, _descSet(set)
 		{}
 
+
 		~_DescriptorSet(){
 			//No need to vkDestroy the desc set
 			//since the whole will be reseted once
@@ -119,11 +120,13 @@ namespace Veldrid::VK::priv {
 		}
 
 		//move semantics support
-		_DescriptorSet(_DescriptorSet&& that)
-			: _pool(std::move(that._pool))
-			, _descSet(that._descSet)
-		{}
-
+		_DescriptorSet(_DescriptorSet&& another)
+			: _pool(std::move(another._pool))
+			, _descSet(another._descSet)
+		{
+			another._descSet = VK_NULL_HANDLE;
+		}
+		
 		_DescriptorSet& operator=(_DescriptorSet&& that){
 		 	_pool = std::move(that._pool);
 			_descSet = that._descSet;

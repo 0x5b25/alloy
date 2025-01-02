@@ -157,8 +157,8 @@ namespace Veldrid
         VulkanCommandQueue* _copyQ;
         VulkanCommandQueue* _computeQ;
 
-        VkSurfaceKHR _surface;
-        bool _isOwnSurface;
+        //VkSurfaceKHR _surface;
+        //bool _isOwnSurface;
         VulkanResourceFactory _resFactory;
 
         AdapterInfo _adpInfo;
@@ -177,8 +177,7 @@ namespace Veldrid
         ~VulkanDevice();
 
         static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options,
-            SwapChainSource* swapChainSource = nullptr
+            const GraphicsDevice::Options& options
         );
 
 
@@ -195,7 +194,9 @@ namespace Veldrid
         const VkDevice& LogicalDev() const {return _dev;}
         const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
 
-        const VkSurfaceKHR& Surface() const {return _surface;}
+        const VkInstance& GetInstance() const;
+
+        //const VkSurfaceKHR& Surface() const {return _surface;}
 
         const VkQueue& GraphicsQueue() const {return _gfxQ->GetHandle();}
 

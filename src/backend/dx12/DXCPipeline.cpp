@@ -111,7 +111,7 @@ namespace Veldrid
         //psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         //psoDesc.SampleDesc.Count = 1;
 
-        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayouts.front().get());
+        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());
 
         psoDesc.pRootSignature = dxcResLayout->GetHandle();
 
@@ -707,7 +707,7 @@ namespace Veldrid
         psoDesc.CS.pShaderBytecode = dxcShader->GetData();
         refCnts.insert(desc.computeShader);        
 
-        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayouts.front().get());
+        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());
 
         psoDesc.pRootSignature = dxcResLayout->GetHandle();
 

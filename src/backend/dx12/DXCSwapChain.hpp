@@ -79,6 +79,7 @@ namespace Veldrid {
            
         //sp<VulkanTexture> _depthTarget;
         std::vector<BackBufferContainer> _fbs;
+        uint32_t _fbCnt;
 
         //VkSwapchainKHR _deviceSwapchain;
         //VkExtent2D _scExtent;
@@ -98,7 +99,7 @@ namespace Veldrid {
         bool CreateSwapchain(std::uint32_t width, std::uint32_t height);
 
         void ReleaseFramebuffers();
-        void CreateFramebuffers();
+        void CreateFramebuffers(std::uint32_t width, std::uint32_t height);
 
         void SetImageIndex(std::uint32_t index) {_currentImageIndex = index; }
 

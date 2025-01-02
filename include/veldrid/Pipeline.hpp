@@ -126,7 +126,7 @@ namespace Veldrid
         } shaderSet;
         
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resources in the <see cref="Pipeline"/>.
-        std::vector<sp<ResourceLayout>> resourceLayouts;
+        sp<ResourceLayout> resourceLayout;
         
         // A description of the output attachments used by the <see cref="Pipeline"/>.
         OutputDescription outputs;
@@ -145,7 +145,7 @@ namespace Veldrid
         sp<Shader> computeShader;
         
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resoruces in the <see cref="Pipeline"/>.
-        std::vector<sp<ResourceLayout>> resourceLayouts;
+        sp<ResourceLayout> resourceLayout;
         
         // The X dimension of the thread group size.
         std::uint32_t threadGroupSizeX;

@@ -173,10 +173,9 @@ namespace Veldrid {
 
 
     sp<GraphicsDevice> CreateDX12GraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     ) {
-        return DXCDevice::Make(options, swapChainSource);
+        return DXCDevice::Make(options);
     }
 
 
@@ -367,7 +366,7 @@ namespace Veldrid {
         //Atomically increment the expected fence value
         auto sigVal = _expectedVal.fetch_add(1, std::memory_order_acq_rel);
         //acquired old value, we need to +1
-        //sigVal++;
+        sigVal++;
 
         return q->Signal(_fence.Get(), sigVal);
     }
@@ -387,24 +386,29 @@ namespace Veldrid {
         delete _copyQ;
     }
 
-    sp<GraphicsDevice> DXCDevice::Make(const GraphicsDevice::Options &options, SwapChainSource *swapChainSource)
+    sp<GraphicsDevice> DXCDevice::Make(const GraphicsDevice::Options &options)
     {
+
+        UINT dxgiFactoryFlags = 0;
+        // Enable the debug layer (requires the Graphics Tools "optional feature").
+        // NOTE: Enabling the debug layer after device creation will invalidate the active device.
         if(options.debug){
             // Enable the debug layer.
             ComPtr<ID3D12Debug> debugController;
             if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
             {
                 debugController->EnableDebugLayer();
+
+                // Enable additional debug layers.
+                dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+            }
+            else {
+                return nullptr;
             }
         }
         //Create DXGIFactory
-        UINT createFactoryFlags = 0;
-        if(options.debug){
-            createFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-        }
-
         ComPtr<IDXGIFactory4> dxgiFactory;
-        auto status = CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
+        auto status = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
         if(FAILED(status)) {
             return nullptr;
         } 
@@ -419,10 +423,6 @@ namespace Veldrid {
         ComPtr<ID3D12Device> device;
         if(FAILED(D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)))){
             return nullptr;
-        }
-
-        if(swapChainSource!=nullptr){
-            //Save data for later swap chain creation
         }
 
         D3D12_COMMAND_QUEUE_DESC queueDesc{};
@@ -597,7 +597,13 @@ namespace Veldrid {
         //For buffers Alignment must be 64KB (D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) or 0, 
         //which is effectively 64KB.
         resourceDesc.Alignment = 0;
-        resourceDesc.Width = desc.sizeInBytes;
+
+        auto byteCnt = desc.sizeInBytes;
+        if(desc.usage.uniformBuffer) {
+            //CBV requires 256byte alignment
+            byteCnt = ((byteCnt + 255) / 256 ) * 256;
+        }
+        resourceDesc.Width = byteCnt;
         resourceDesc.Height = 1;
         resourceDesc.DepthOrArraySize = 1;
         resourceDesc.MipLevels = 1;
@@ -606,6 +612,10 @@ namespace Veldrid {
         resourceDesc.SampleDesc.Quality = 0;
         resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+        if(desc.usage.structuredBufferReadWrite) {
+            resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        }
 
         D3D12MA::ALLOCATION_DESC allocationDesc = {};
         D3D12_RESOURCE_STATES resourceState;
@@ -642,6 +652,7 @@ namespace Veldrid {
 
         auto buf = new DXCBuffer{ dev, desc };
         buf->_buffer = allocation;
+        buf->description.sizeInBytes = byteCnt;
 
         return sp(buf);
     }

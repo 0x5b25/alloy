@@ -47,29 +47,12 @@ namespace alloy::vk
             vk_binding.vulkan.uniform_binding.binding = binding.register_index;
             return true;
         }
-
         
         bool SPVRemapper::RemapVertexInput( const dxil_spv_d3d_vertex_input& d3d_input,
                                       dxil_spv_vulkan_vertex_input& vk_input
         ) {
-            //auto itr = std::find_if(remapper->vertex_inputs.begin(), remapper->vertex_inputs.end(),
-	        //                [&](const Remapper::VertexInput &vin) { return vin.semantic == d3d_input.semantic; });
-            //
-	        //if (itr != remapper->vertex_inputs.end())
-	        //{
-	        //	vk_input.location = itr->index + d3d_input.semantic_index;
-	        //}
-	        //else
-            if(_vertRemapFn) {
-                if(!_vertRemapFn(d3d_input, vk_input)) {
-                    return false;
-                }
-                return true;
-            }
-	        else {
-	        	vk_input.location = d3d_input.start_row;
-	        }
 
+            vk_input.location = d3d_input.start_row;
             return true;
         }
 

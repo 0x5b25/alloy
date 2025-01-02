@@ -87,7 +87,7 @@ namespace Veldrid::VK::priv {
         ResourceLayout::Description::ElementDescription::Options options)
     {
         using ResourceKind = typename IBindableResource::ResourceKind;
-        bool dynamicBinding = (options.dynamicBinding) != 0;
+        bool dynamicBinding = false;//(options.dynamicBinding) != 0;
         bool writable = (options.writable) != 0;
         switch (kind)
         {
