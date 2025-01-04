@@ -20,6 +20,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h> // For HRESULT
 
+//Import DX12 agility SDK
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 715; }
+
+extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
+
 // From DXSampleHelper.h 
 // Source: https://github.com/Microsoft/DirectX-Graphics-Samples
 //inline void ThrowIfFailed(HRESULT hr)
@@ -60,7 +65,7 @@ HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAda
         // Check to see if the adapter supports Direct3D 12,
         // but don't create the actual device yet.
         if (FAILED(
-            D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+            D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0,
                 _uuidof(ID3D12Device), nullptr)))
         {
             continue;
@@ -421,7 +426,7 @@ namespace Veldrid {
 
         //Enumeration done. create the selected device
         ComPtr<ID3D12Device> device;
-        if(FAILED(D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)))){
+        if(FAILED(D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)))){
             return nullptr;
         }
 

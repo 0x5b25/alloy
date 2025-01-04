@@ -1677,19 +1677,32 @@ namespace Veldrid
     };
 
     static D3D12_BARRIER_SYNC _GetSyncStages(const alloy::PipelineStages& stages, bool isStagesBefore) {
-        D3D12_BARRIER_SYNC flags {};
-        if(stages[alloy::PipelineStage::TopOfPipe]){
-            if(isStagesBefore)
-                flags |= D3D12_BARRIER_SYNC_NONE;
-            else
-                flags |= D3D12_BARRIER_SYNC_ALL;
-        }
-        if(stages[alloy::PipelineStage::BottomOfPipe]) {
-            if(isStagesBefore)
-                flags |= D3D12_BARRIER_SYNC_ALL;
-            else
-                flags |= D3D12_BARRIER_SYNC_NONE;
-        }
+        D3D12_BARRIER_SYNC flags = D3D12_BARRIER_SYNC_NONE;
+
+        if(stages[alloy::PipelineStage::All])
+            return D3D12_BARRIER_SYNC_ALL;
+
+        //if(stages[alloy::PipelineStage::TopOfPipe]){
+        //    if(isStagesBefore)
+        //        flags |= D3D12_BARRIER_SYNC_NONE;
+        //    else
+        //        flags |= D3D12_BARRIER_SYNC_ALL;
+        //}
+        //if(stages[alloy::PipelineStage::BottomOfPipe]) {
+        //    if(isStagesBefore)
+        //        flags |= D3D12_BARRIER_SYNC_ALL;
+        //    else
+        //        flags |= D3D12_BARRIER_SYNC_NONE;
+        //}
+
+        if(stages[alloy::PipelineStage::Draw])
+            flags |= D3D12_BARRIER_SYNC_DRAW;
+        if(stages[alloy::PipelineStage::NonPixelShading])
+            flags |= D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
+        if(stages[alloy::PipelineStage::AllShading])
+            flags |= D3D12_BARRIER_SYNC_ALL_SHADING;
+
+
         if(stages[alloy::PipelineStage::INPUT_ASSEMBLER])
             flags |= D3D12_BARRIER_SYNC_INDEX_INPUT;
         if(stages[alloy::PipelineStage::VERTEX_SHADING])
@@ -1718,9 +1731,12 @@ namespace Veldrid
 
     static D3D12_BARRIER_ACCESS _GetAccessFlags(const alloy::ResourceAccesses& accesses) {
         D3D12_BARRIER_ACCESS flags {};
+
+        if(!accesses)
+            return D3D12_BARRIER_ACCESS_NO_ACCESS;
         
-        //if(accesses[alloy::ResourceAccess::COMMON])
-        //    flags |= D3D12_BARRIER_ACCESS_COMMON;
+        if(accesses[alloy::ResourceAccess::COMMON])
+            flags |= D3D12_BARRIER_ACCESS_COMMON;
         if(accesses[alloy::ResourceAccess::VERTEX_BUFFER])
             flags |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
         if(accesses[alloy::ResourceAccess::CONSTANT_BUFFER])
@@ -1757,9 +1773,6 @@ namespace Veldrid
             flags |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
         if(accesses[alloy::ResourceAccess::SHADING_RATE_SOURCE])
             flags |= D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE;
-        if(accesses[alloy::ResourceAccess::NO_ACCESS])
-            flags |= D3D12_BARRIER_ACCESS_NO_ACCESS;
-        
         //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
         //if(stages[alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE]){  }
         //if(stages[alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE]){  }
@@ -1783,45 +1796,45 @@ namespace Veldrid
         barrier.Transition.StateAfter= _EnnhancedToLegacyBarrierFlags(data.SyncAfter, data.AccessAfter);
     }
     
-    void DXCCommandList::Barrier(const alloy::BarrierDescription& descs) {
+    void DXCCommandList::Barrier(const std::vector<alloy::BarrierDescription>& descs) {
 
         std::vector<D3D12_RESOURCE_BARRIER> barriers{};
         
-        auto syncAfter = _GetSyncStages(descs.stagesAfter, false);
-        auto syncBefore = _GetSyncStages(descs.stagesBefore, true);
+        for(auto& desc : descs) {
+            auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
+            auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
 
-        for(auto& desc : descs.barriers) {
             barriers.emplace_back();
             auto& barrier = barriers.back();
 
-            if(std::holds_alternative<alloy::MemoryBarrierDescription>(desc)) {
+            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
                 barrier.UAV.pResource = nullptr;
             }
-            else if(std::holds_alternative<alloy::BufferBarrierDescription>(desc)) {
+            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
                 
-                auto& barrierDesc = std::get<alloy::BufferBarrierDescription>(desc);
+                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
                 _devRes.insert(barrierDesc.resource);
                 auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
                 
                 D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
                 dxcBarrierFlags.SyncAfter = syncAfter;
                 dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(barrierDesc, dxcBarrierFlags);
+                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
                 _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
                 barrier.Transition.pResource = dxcBuffer->GetHandle();
                 barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             }
             else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
 
-                auto& texDesc = std::get<alloy::TextureBarrierDescription>(desc);
+                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
                 _devRes.insert(texDesc.resource);
                 auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
 
                 D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
                 dxcBarrierFlags.SyncAfter = syncAfter;
                 dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(texDesc, dxcBarrierFlags);
+                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
                 _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
                 barrier.Transition.pResource = dxcTex->GetHandle();
                 barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -1839,12 +1852,13 @@ namespace Veldrid
 
     void DXCCommandList::InsertDebugMarker(const std::string& name) {};
 
-    static void _PopulateTextureBarrier(const alloy::TextureBarrierDescription& desc,
+    static void _PopulateTextureBarrier(const alloy::TextureBarrierResource& desc,
                                               D3D12_TEXTURE_BARRIER& barrier
     ) {
 
         auto _GetTexLayout = [](const alloy::TextureLayout& layout) -> D3D12_BARRIER_LAYOUT {
             switch(layout) {
+                case alloy::TextureLayout::UNDEFINED: return D3D12_BARRIER_LAYOUT_UNDEFINED;
                 case alloy::TextureLayout::COMMON_READ: return D3D12_BARRIER_LAYOUT_GENERIC_READ;
                 case alloy::TextureLayout::RENDER_TARGET: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 case alloy::TextureLayout::UNORDERED_ACCESS: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
@@ -1861,7 +1875,6 @@ namespace Veldrid
             }
         };
 
-        _PopulateBarrierAccess(desc, barrier);
         barrier.LayoutAfter = _GetTexLayout(desc.toLayout);
         barrier.LayoutBefore = _GetTexLayout(desc.fromLayout);
         barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
@@ -1872,32 +1885,32 @@ namespace Veldrid
         barrier.Subresources.NumPlanes = 0;
     }
 
-    void DXCCommandList7::Barrier(const alloy::BarrierDescription& descs) {
+    void DXCCommandList7::Barrier(const std::vector<alloy::BarrierDescription>& descs) {
         
         std::vector<D3D12_GLOBAL_BARRIER> memBarriers;
         std::vector<D3D12_BUFFER_BARRIER> bufBarriers;
         std::vector<D3D12_TEXTURE_BARRIER> texBarrier;
 
-        auto syncAfter = _GetSyncStages(descs.stagesAfter, false);
-        auto syncBefore = _GetSyncStages(descs.stagesBefore, true);
+        for(auto& desc : descs) {
+            auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
+            auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
 
-        for(auto& desc : descs.barriers) {
-            if(std::holds_alternative<alloy::MemoryBarrierDescription>(desc)) {
+            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
                 memBarriers.emplace_back();
                 auto& barrier = memBarriers.back();
                 barrier.SyncAfter = syncAfter;
                 barrier.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(std::get<alloy::MemoryBarrierDescription>(desc), barrier);
+                _PopulateBarrierAccess(desc.memBarrier, barrier);
             }
-            else if(std::holds_alternative<alloy::BufferBarrierDescription>(desc)) {
+            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
                 bufBarriers.emplace_back();
                 auto& barrier = bufBarriers.back();
                 barrier.SyncAfter = syncAfter;
                 barrier.SyncBefore = syncBefore;
-                auto& barrierDesc = std::get<alloy::BufferBarrierDescription>(desc);
+                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
                 _devRes.insert(barrierDesc.resource);
                 auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
-                _PopulateBarrierAccess(barrierDesc, barrier);
+                _PopulateBarrierAccess(desc.memBarrier, barrier);
                 barrier.pResource = dxcBuffer->GetHandle();
             }
             else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
@@ -1905,9 +1918,11 @@ namespace Veldrid
                 auto& barrier = texBarrier.back();
                 barrier.SyncAfter = syncAfter;
                 barrier.SyncBefore = syncBefore;
-                auto& texDesc = std::get<alloy::TextureBarrierDescription>(desc);
+                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
                 _devRes.insert(texDesc.resource);
                 auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
+                
+                _PopulateBarrierAccess(desc.memBarrier, barrier);
                 _PopulateTextureBarrier(texDesc, barrier);
                 barrier.pResource = dxcTex->GetHandle();
             }
@@ -1930,7 +1945,7 @@ namespace Veldrid
             grp.pBufferBarriers = bufBarriers.data();
         }
 
-        if(!memBarriers.empty()) {
+        if(!texBarrier.empty()) {
             barrierGrps.emplace_back();
             auto& grp = barrierGrps.back();
             grp.Type = D3D12_BARRIER_TYPE_TEXTURE;

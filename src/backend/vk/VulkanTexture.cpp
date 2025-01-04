@@ -53,7 +53,7 @@ namespace Veldrid {
             imageCI.extent.width = desc.width;
             imageCI.extent.height = desc.height;
             imageCI.extent.depth = desc.depth;
-            imageCI.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
+            imageCI.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
             imageCI.usage = VdToVkTextureUsage(desc.usage);
             imageCI.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL; //isStaging ? VkImageTiling.Linear : VkImageTiling.Optimal;
             imageCI.format = Veldrid::VK::priv::VdToVkPixelFormat(desc.format, desc.usage.depthStencil);

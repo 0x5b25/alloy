@@ -62,7 +62,7 @@ namespace Veldrid {
         auto vldSC = sp(new DXCSwapChain(dev, desc));
 
         //#TODO: settle for now. Add to swapchain desc later maybe
-        uint32_t backBufferCnt = 2;
+        uint32_t backBufferCnt = desc.backBufferCnt;
 
         // Describe and create the swap chain.
         DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};

@@ -11,6 +11,8 @@
 #include <optional>
 #include <vector>
 #include <unordered_set>
+#include <format>
+#include <iostream>
 
 #include "VkSurfaceUtil.hpp"
 #include "VkCommon.hpp"
@@ -170,20 +172,20 @@ private:
         const char* pMsg,
         void* pUserData)
     {
-#define LOG(...) printf(__VA_ARGS__)
+//#define LOG(...) printf(__VA_ARGS__)
 
         if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-            LOG("ERR " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("ERR " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-            LOG("WARN" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("WARN" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-            LOG("DBG " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("DBG " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-            LOG("PERF" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("PERF" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-            LOG("INFO" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("INFO" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         return 0;
-#undef LOG
+//#undef LOG
     }
 
 
@@ -529,6 +531,16 @@ namespace Veldrid {
         features12.timelineSemaphore = true;
         createInfo.pNext = &features12;
 
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature { };
+        dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+        dynamicRenderingFeature.dynamicRendering = VK_TRUE,
+        features12.pNext = &dynamicRenderingFeature;
+
+        VkPhysicalDeviceSynchronization2Features sync2Features{};
+        sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        sync2Features.synchronization2 = VK_TRUE;
+        dynamicRenderingFeature.pNext = &sync2Features;
+
         //First add pointers to the queue creation info and device features structs:
 
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
@@ -568,6 +580,14 @@ namespace Veldrid {
 
         if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE)) {
             throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
+        }
+
+        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING)) {
+            throw std::exception("VkDevice creation failed. dynamic rendering not supported");
+        }
+
+        if(!_AddExtIfPresent(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
+            throw std::exception("VkDevice creation failed. synchronization2 not supported");
         }
 
 #if defined VLD_DEBUG

@@ -47,11 +47,11 @@ namespace Veldrid
     //    return false;
     //}
      
-    VkRenderPass _SCFB::GetRenderPassNoClear_Init() const {return _sc->GetRenderPassNoClear_Init();}
-    VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
-    VkRenderPass _SCFB::GetRenderPassClear() const {return _sc->GetRenderPassClear();}
+    //VkRenderPass _SCFB::GetRenderPassNoClear_Init() const {return _sc->GetRenderPassNoClear_Init();}
+    //VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
+    //VkRenderPass _SCFB::GetRenderPassClear() const {return _sc->GetRenderPassClear();}
 
-    inline const Framebuffer::Description& _SCFB::GetDesc() const { return _sc->_fbDesc; }
+    inline const Framebuffer::Description& _SCFB::GetDesc() const { return _fbDesc; }
 
     _SCFB::~_SCFB(){
         auto _gd = PtrCast<VulkanDevice>(dev.get());
@@ -59,7 +59,7 @@ namespace Veldrid
         if(HasDepthTarget()){
             vkDestroyImageView(_gd->LogicalDev(), _depthTargetView, nullptr);
         }
-        vkDestroyFramebuffer(_gd->LogicalDev(), _fb, nullptr);
+        //vkDestroyFramebuffer(_gd->LogicalDev(), _fb, nullptr);
     }
 
 
@@ -112,38 +112,43 @@ namespace Veldrid
             VK_CHECK(vkCreateImageView(dev->LogicalDev(), &depthViewCI, nullptr, &attachments[1]));
         }
 
-        VkFramebufferCreateInfo fbCI{};
-        fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        fbCI.renderPass = sc->GetRenderPassNoClear_Init();
-        fbCI.attachmentCount = 1;
-        fbCI.pAttachments = attachments;
-        fbCI.width = colorTarget->GetDesc().width;
-        fbCI.height = colorTarget->GetDesc().height;
-        fbCI.layers = 1;
-        if(depthTarget != nullptr){
-            fbCI.attachmentCount += 1;
-        }
-        VkFramebuffer fb;
-        VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
+        //VkFramebufferCreateInfo fbCI{};
+        //fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        //fbCI.renderPass = sc->GetRenderPassNoClear_Init();
+        //fbCI.attachmentCount = 1;
+        //fbCI.pAttachments = attachments;
+        //fbCI.width = colorTarget->GetDesc().width;
+        //fbCI.height = colorTarget->GetDesc().height;
+        //fbCI.layers = 1;
+        //if(depthTarget != nullptr){
+        //    fbCI.attachmentCount += 1;
+        //}
+        //VkFramebuffer fb;
+        //VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
 
         dev->ref();
         auto spDev = sp(dev);
         auto scfb = new _SCFB(spDev);
         scfb->_sc = sc;
-        scfb->_fb = fb;
+        //scfb->_fb = fb;
         scfb->_colorTarget = colorTarget;
         scfb->_depthTarget = depthTarget;
         scfb->_colorTargetView = attachments[0];
         scfb->_depthTargetView = attachments[1];
+        scfb->_fbDesc.colorTargets = { {colorTarget, colorTarget->GetDesc().arrayLayers, colorTarget->GetDesc().mipLevels} };
+        if(depthTarget)
+            scfb->_fbDesc.depthTarget = {depthTarget, depthTarget->GetDesc().arrayLayers, depthTarget->GetDesc().mipLevels};
+            //VulkanFramebufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
+            
 
         return sp(scfb);
     }
 
     void VulkanSwapChain::ReleaseFramebuffers(){
         auto _gd = PtrCast<VulkanDevice>(dev.get());
-        vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClear, nullptr);
-        vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClearLoad, nullptr);
-        vkDestroyRenderPass(_gd->LogicalDev(), _renderPassClear, nullptr);
+        //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClear, nullptr);
+        //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClearLoad, nullptr);
+        //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassClear, nullptr);
 
 #ifdef VLD_DEBUG
         //for(auto& fb : _fbs){
@@ -176,14 +181,14 @@ namespace Veldrid
         VK_CHECK(vkGetSwapchainImagesKHR(_gd->LogicalDev(), _deviceSwapchain, &scImageCount, scImgs.data()));
 
         assert(scImageCount > 0);
-        auto _CreateSCFB = [&](VulkanTexture* colorTgt) {
+        auto _CreateSCFB = [&](const sp<VulkanTexture>& colorTgt, const sp<VulkanTexture>& dsTgt) {
             this->ref();
             auto spsc = sp(this);
-            auto fb = _SCFB::Make(_gd, spsc, RefRawPtr(colorTgt), _depthTarget);
+            auto fb = _SCFB::Make(_gd, spsc, colorTgt, dsTgt);
             assert(fb != nullptr);
             _fbs.push_back(std::move(fb));
         };
-
+#if 0
         //_scExtent = swapchainExtent;
         //Framebuffer description Prepare render passes
         //CreateDepthTexture();
@@ -208,7 +213,7 @@ namespace Veldrid
             _fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
         }
 
-        Texture::Description texDesc{};
+        //Texture::Description texDesc{};
         {
             auto firstTex = scImgs.front();
             texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
@@ -228,20 +233,62 @@ namespace Veldrid
             //auto firstColorTgt = _gd->GetResourceFactory()->WrapNativeTexture(firstTex, texDesc);
             auto vkFirstColorTgt = PtrCast<VulkanTexture>(firstColorTgt.get());
             _fbDesc.colorTargets = { {firstColorTgt, firstColorTgt->GetDesc().arrayLayers, firstColorTgt->GetDesc().mipLevels} };
-            VulkanFramebufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
-                _renderPassNoClear, _renderPassNoClearLoad, _renderPassClear);
+            //VulkanFramebufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
+            //    _renderPassNoClear, _renderPassNoClearLoad, _renderPassClear);
 
             _CreateSCFB(vkFirstColorTgt);
         }
-        //Create rest framebuffer images
-        for (unsigned i = 1; i < scImgs.size(); i++) {
+#endif
+
+        Texture::Description colorDesc{}, dsDesc{};
+
+        if (description.depthFormat.has_value()) {
+            dsDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            dsDesc.width = _scExtent.width;
+            dsDesc.height = _scExtent.height;
+            dsDesc.depth = 1;
+            dsDesc.mipLevels = 1;
+            dsDesc.arrayLayers = 1;
+            dsDesc.usage.depthStencil = true;
+            dsDesc.sampleCount = SampleCount::x1;
+            dsDesc.format = description.depthFormat.value();
+        }
+
+        {
+            colorDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            colorDesc.width = _scExtent.width;
+            colorDesc.height = _scExtent.height;
+            colorDesc.depth = 1;
+            colorDesc.mipLevels = 1;
+            colorDesc.arrayLayers = 1;
+            colorDesc.usage.renderTarget = true;
+            colorDesc.sampleCount = SampleCount::x1;
+            colorDesc.format = Veldrid::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
+        }
+
+
+
+        for (unsigned i = 0; i < scImgs.size(); i++) {
             auto tex = scImgs[i];
-            auto colorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,
+            auto colorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), colorDesc,
                 VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, tex
             );
-            auto vkColorTgt = PtrCast<VulkanTexture>(colorTgt.get());
 
-            _CreateSCFB(vkColorTgt);
+            auto colorTex = SPCast<VulkanTexture>(colorTgt);
+            sp<VulkanTexture> dsTex {};
+
+            //Create depth stencil target if requested
+            if (description.depthFormat.has_value()) {
+                
+                auto dTgt = _gd->GetResourceFactory()
+                    ->CreateTexture(dsDesc);
+                dsTex = SPCast<VulkanTexture>(dTgt);
+                dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+                //_fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
+            }
+
+
+            _CreateSCFB(colorTex, dsTex);
         }
 
         
@@ -425,7 +472,12 @@ namespace Veldrid
             = surfaceCapabilities.maxImageCount == 0 
                 ? UINT32_MAX
                 : surfaceCapabilities.maxImageCount;
-        std::uint32_t imageCount = std::min(maxImageCount, surfaceCapabilities.minImageCount + 1);
+        std::uint32_t minImageCount = surfaceCapabilities.minImageCount;
+        //std::uint32_t imageCount = std::min(maxImageCount, surfaceCapabilities.minImageCount + 1);
+
+        std::uint32_t imageCount = description.backBufferCnt;
+        if(imageCount < minImageCount) imageCount = minImageCount;
+        else if(imageCount > maxImageCount) imageCount = maxImageCount;
 
         VkSwapchainCreateInfoKHR swapchainCI{};
         swapchainCI.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -530,9 +582,9 @@ namespace Veldrid
 
         auto sc = new VulkanSwapChain(dev, desc);
         sc->_surf = _surf;
-        sc->_renderPassClear = VK_NULL_HANDLE;
-        sc->_renderPassNoClear = VK_NULL_HANDLE;
-        sc->_renderPassNoClearLoad = VK_NULL_HANDLE;
+        //sc->_renderPassClear = VK_NULL_HANDLE;
+        //sc->_renderPassNoClear = VK_NULL_HANDLE;
+        //sc->_renderPassNoClearLoad = VK_NULL_HANDLE;
         sc->_deviceSwapchain = VK_NULL_HANDLE;
 
 
@@ -583,6 +635,24 @@ namespace Veldrid
         //#TODO: handle case VK_ERROR_OUT_OF_DATE_KHR
     }
 
-
+    //Transition color targets from VK_LAYOUT_UNDEFINED to VK_LAYOUT_GENERAL
+    //transition depth stencil targets from VK_LAYOUT_PREINITIALIZED to VK_LAYOUT_GENERAL
+    //void VulkanSwapChain::PerformInitialLayoutTransition() {
+    //
+    //
+    //    auto _gd = PtrCast<VulkanDevice>(dev.get());
+    //
+    //    //Allocate command buffer
+    //
+    //
+    //    //Gather and build transition command
+    //
+    //    //submit on default graphics queue
+    //
+    //    //wait for fence
+    //
+    //    vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
+    //    vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
+    //}
 
 } // namespace Veldrid

@@ -54,6 +54,7 @@ struct VkDevExtNames {
     static const char* VK_KHR_DRIVER_PROPS;
     static const char* VK_EXT_DEPTH_CLIP_ENABLE;
     static const char* VK_KHR_TIMELINE_SEMAPHORE;
+    static const char* VK_KHR_DYNAMIC_RENDERING;
 };
 
 struct VkCommonStrings {

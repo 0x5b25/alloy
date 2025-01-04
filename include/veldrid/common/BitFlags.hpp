@@ -66,7 +66,7 @@ struct BitFlags
    *
    * The resulting bitset can contain at most 1 bit.
    */
-  BitFlags operator&(const T&val)
+  BitFlags operator&(const T&val) const
   {
     BitFlags ret(*this);
     ret &= val;
@@ -79,7 +79,7 @@ struct BitFlags
    * Perform a AND binary operation between *this and
    * `val` and return the result as a copy.
    */
-  BitFlags operator&(const BitFlags &val)
+  BitFlags operator&(const BitFlags &val) const
   {
     BitFlags ret(*this);
     ret.bitset &= val.bitset;
@@ -93,7 +93,7 @@ struct BitFlags
    *
    * The resulting bitset contains at least 1 bit.
    */
-  BitFlags operator|(const T& val)
+  BitFlags operator|(const T& val) const
   {
     BitFlags ret(*this);
     ret |= val;
@@ -106,7 +106,7 @@ struct BitFlags
    * Perform a OR binary operation between *this and
    * `val` and return the result as a copy.
    */
-  BitFlags operator|(const BitFlags &val)
+  BitFlags operator|(const BitFlags &val) const
   {
     BitFlags ret(*this);
     ret.bitset |= val.bitset;

@@ -241,7 +241,7 @@ namespace Veldrid
                     switch(type){
                         case _ResKind::UniformBuffer:
                         case _ResKind::StorageBuffer: {
-                            auto* range = PtrCast<BufferRange>(boundResources[i].get());
+                            auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
                             auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
                             bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
                             bufferInfos[i].offset = range->GetShape().offsetInElements;
@@ -251,7 +251,7 @@ namespace Veldrid
                         } break;
 
                         case _ResKind::Texture:{
-                            auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[i].get());
+                            auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
                             imageInfos[i].imageView = vkTexView->GetHandle();
                             if(elem.options.writable){
                                 imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
@@ -271,7 +271,7 @@ namespace Veldrid
 
 
                         case _ResKind::Sampler:{
-                            auto* sampler = PtrCast<VulkanSampler>(boundResources[i].get());
+                            auto* sampler = PtrCast<VulkanSampler>(boundResources[elemIdx].get());
                             imageInfos[i].sampler = sampler->GetHandle();
                             descriptorWrites[i].pImageInfo = &imageInfos[i];
                             //_refCounts.push_back(boundResources[i]);

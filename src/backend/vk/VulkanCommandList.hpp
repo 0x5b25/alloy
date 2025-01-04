@@ -187,7 +187,7 @@ namespace Veldrid
 
         void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
         void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
-        void PreDrawCommand();
+        //void PreDrawCommand();
         virtual void Draw(
             std::uint32_t vertexCount, std::uint32_t instanceCount,
             std::uint32_t vertexStart, std::uint32_t instanceStart) override;
@@ -266,7 +266,7 @@ namespace Veldrid
         virtual void InsertDebugMarker(const std::string& name) override;
 
         
-        virtual void Barrier(const alloy::BarrierDescription&) override;
+        virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;
 
     };
     

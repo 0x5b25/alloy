@@ -6,9 +6,9 @@
 
 namespace Veldrid
 {
+    class VulkanCommandList;
     
-    
-    void BindBarrier(VkCommandBuffer cmdBuf, const alloy::BarrierDescription& barriers);
+    void BindBarrier(VulkanCommandList* cmdBuf, const std::vector<alloy::BarrierDescription>& barriers);
 
 } // namespace Veldrid
 

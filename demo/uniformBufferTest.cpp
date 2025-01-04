@@ -155,7 +155,11 @@ class UniformApp : public AppBase {
     Veldrid::sp<Veldrid::CommandList> cmd;
 
     uint64_t renderFinishFenceValue = 0;
-    bool _isFirstSubmission = true;
+
+    //Swapchain backbuffers requires image layout transitions
+    //from undefined to target layout. This counter corresponds
+    //to swapchain backbuffer count
+    uint32_t _initSubmissionCnt = 2;
 
     template<typename T>
     void UpdateBuffer(
@@ -211,14 +215,12 @@ class UniformApp : public AppBase {
         unsigned surfaceWidth,
         unsigned surfaceHeight
     ) {
-
-
-
         Veldrid::SwapChain::Description swapChainDesc{};
         swapChainDesc.source = swapChainSrc;
         swapChainDesc.initialWidth = surfaceWidth;
         swapChainDesc.initialHeight = surfaceHeight;
         swapChainDesc.depthFormat = Veldrid::PixelFormat::D24_UNorm_S8_UInt;
+        swapChainDesc.backBufferCnt = _initSubmissionCnt;
         swapChain = dev->GetResourceFactory()->CreateSwapChain(swapChainDesc);
     }
 
@@ -235,7 +237,7 @@ class UniformApp : public AppBase {
 
         try {
             vertexSpv = pComplier->Compile(HLSLCode, L"VSMain", ShaderType::VS);
-        } catch (const ShaderCompileError& const e){
+        } catch (const ShaderCompileError& e){
             std::cout << "Vertex shader compilation failed\n";
             std::cout << "    ERROR: " << e.what() << std::endl;
             throw e;
@@ -243,7 +245,7 @@ class UniformApp : public AppBase {
 
         try {
             fragSpv = pComplier->Compile(HLSLCode, L"PSMain", ShaderType::PS);
-        } catch (const ShaderCompileError& const e){
+        } catch (const ShaderCompileError& e){
             std::cout << "Fragment shader compilation failed\n";
             std::cout << "    ERROR: " << e.what() << std::endl;
             throw e;
@@ -407,8 +409,20 @@ class UniformApp : public AppBase {
         opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
         //dev = Veldrid::CreateVulkanGraphicsDevice(opt, swapChainSrc);
-        //dev = Veldrid::CreateVulkanGraphicsDevice(opt);
-        dev = Veldrid::CreateDX12GraphicsDevice(opt);
+        dev = Veldrid::CreateVulkanGraphicsDevice(opt);
+        //dev = Veldrid::CreateDX12GraphicsDevice(opt);
+
+        auto& adpInfo = dev->GetAdapterInfo();
+
+        std::cout << "Picked device:\n";
+        std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";
+        std::cout << "    Device ID   : " << std::hex << adpInfo.deviceID << "\n";
+        std::cout << "    Name        : " <<             adpInfo.deviceName << "\n";
+        std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
+                                    std::cout << "." << adpInfo.apiVersion.minor;
+                                    std::cout << "." << adpInfo.apiVersion.subminor;
+                                    std::cout << "." << adpInfo.apiVersion.patch << std::endl;
+
         
         //CreateResources
         std::cout << "Creating swapchain...\n";
@@ -421,6 +435,9 @@ class UniformApp : public AppBase {
         CreatePipeline();
         std::cout << "Creating sync objects...\n";
         CreateSyncObjects();
+
+        
+        std::cout << "Resource creation completed." << std::endl;
 
         ubMapped = uniformBuffer->MapToCPU();
     }
@@ -457,6 +474,7 @@ class UniformApp : public AppBase {
             swapChain->Resize(currWidth, currHeight);
             initialWidth = currWidth;
             initialHeight = currHeight;
+            _initSubmissionCnt = 2;
         }
 
         /* Render here */
@@ -470,44 +488,63 @@ class UniformApp : public AppBase {
         //Record command buffer
         _commandList->Begin();
 
+        
+
+        {
+            auto initialLayout = alloy::TextureLayout::UNDEFINED;
+            
+            bool isInitSubmission = false;
+            if(_initSubmissionCnt > 0) {
+                _initSubmissionCnt--;
+                isInitSubmission = true;
+            }
+
+            // Indicate that the back buffer will be used as a render target.
+            //auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            //m_commandList->ResourceBarrier(1, &barrier);
+            alloy::BarrierDescription texBarrier{
+                .memBarrier = {
+                    .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
+                    .stagesAfter = alloy::PipelineStage::RENDER_TARGET,
+                    .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
+                    .accessAfter = alloy::ResourceAccess::RENDER_TARGET,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::PRESENT,
+                    .toLayout = alloy::TextureLayout::RENDER_TARGET,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                }
+                //.barriers = { texBarrier, dsBarrier }
+            };
+
+
+            //if(_isFirstSubmission) {
+            alloy::BarrierDescription dsBarrier{
+                .memBarrier = {
+                    .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
+                    .stagesAfter = alloy::PipelineStage::DEPTH_STENCIL,
+                    .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
+                    .accessAfter = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::COMMON,
+                    .toLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                }
+            };
+                //_isFirstSubmission = false;
+            //}
+            
+            _commandList->Barrier({ texBarrier, dsBarrier });
+        }
+
         _commandList->BeginRenderPass(swapChain->GetBackBuffer());
         //_commandList->BeginRenderPass(fb);
         _commandList->SetPipeline(pipeline);
         _commandList->SetFullViewports();
         _commandList->SetFullScissorRects();
-
-        {
-            // Indicate that the back buffer will be used as a render target.
-            //auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            //m_commandList->ResourceBarrier(1, &barrier);
-            alloy::BarrierDescription desc{
-                .stagesBefore = alloy::PipelineStage::BottomOfPipe,
-                .stagesAfter = alloy::PipelineStage::RENDER_TARGET,
-                //.barriers = { texBarrier, dsBarrier }
-            };
-
-
-            alloy::TextureBarrierDescription texBarrier{};
-            texBarrier.accessBefore = alloy::ResourceAccess::COMMON;
-            texBarrier.accessAfter = alloy::ResourceAccess::RENDER_TARGET;
-            texBarrier.fromLayout = alloy::TextureLayout::COMMON;
-            texBarrier.toLayout = alloy::TextureLayout::RENDER_TARGET;
-            texBarrier.resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target;
-            desc.barriers.push_back(texBarrier);
-
-            //if(_isFirstSubmission) {
-                alloy::TextureBarrierDescription dsBarrier{};
-                dsBarrier.accessBefore = alloy::ResourceAccess::COMMON;
-                dsBarrier.accessAfter = alloy::ResourceAccess::DEPTH_STENCIL_WRITE;
-                dsBarrier.fromLayout = alloy::TextureLayout::COMMON;
-                dsBarrier.toLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE;
-                dsBarrier.resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target;
-                desc.barriers.push_back(dsBarrier);
-                //_isFirstSubmission = false;
-            //}
-            
-            _commandList->Barrier(desc);
-        }
 
         _commandList->ClearDepthStencil(0, 0);
         _commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);
@@ -522,33 +559,47 @@ class UniformApp : public AppBase {
             /*vertexOffset:  */0,
             /*instanceStart: */0);
 
+        _commandList->EndRenderPass();
         // Indicate that the back buffer will now be used to present.
         {
             //auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
             //m_commandList->ResourceBarrier(1, &barrier);
-            alloy::TextureBarrierDescription texBarrier{};
-            texBarrier.accessBefore = alloy::ResourceAccess::RENDER_TARGET;
-            texBarrier.accessAfter = alloy::ResourceAccess::COMMON;
-            texBarrier.fromLayout = alloy::TextureLayout::RENDER_TARGET;
-            texBarrier.toLayout = alloy::TextureLayout::COMMON;
-            texBarrier.resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target;
+            alloy::BarrierDescription texBarrier{
+                .memBarrier = {
+                    .stagesBefore = alloy::PipelineStage::RENDER_TARGET,
+                    .stagesAfter = alloy::PipelineStage::All,
+                    .accessBefore = alloy::ResourceAccess::RENDER_TARGET,
+                    .accessAfter = alloy::ResourceAccess::COMMON,
+                },
 
-            alloy::TextureBarrierDescription dsBarrier{};
-            dsBarrier.accessBefore = alloy::ResourceAccess::DEPTH_STENCIL_WRITE;
-            dsBarrier.accessAfter = alloy::ResourceAccess::COMMON;
-            dsBarrier.fromLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE;
-            dsBarrier.toLayout = alloy::TextureLayout::COMMON;
-            dsBarrier.resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target;
-
-            alloy::BarrierDescription desc{
-                .stagesBefore = alloy::PipelineStage::RENDER_TARGET,
-                .stagesAfter = alloy::PipelineStage::BottomOfPipe,
-                .barriers = { texBarrier, dsBarrier }
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = alloy::TextureLayout::RENDER_TARGET,
+                    .toLayout = alloy::TextureLayout::PRESENT,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                }
+                //.barriers = { texBarrier, dsBarrier }
             };
-            _commandList->Barrier(desc);
+
+
+            //if(_isFirstSubmission) {
+            alloy::BarrierDescription dsBarrier{
+                .memBarrier = {
+                    .stagesBefore = alloy::PipelineStage::DEPTH_STENCIL,
+                    .stagesAfter = alloy::PipelineStage::All,
+                    .accessBefore = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessAfter = alloy::ResourceAccess::COMMON,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
+                    .toLayout = alloy::TextureLayout::COMMON,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                }
+            };
+
+            _commandList->Barrier({ texBarrier, dsBarrier });
         }
 
-        _commandList->EndRenderPass();
         _commandList->End();
 
         //Wait for previous render to complete

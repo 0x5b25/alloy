@@ -332,7 +332,7 @@ public:
         auto vkDev = _Dev();
         if (!IsComputePipeline())
         {
-            vkDestroyRenderPass(vkDev->LogicalDev(), _renderPass, nullptr);
+            //vkDestroyRenderPass(vkDev->LogicalDev(), _renderPass, nullptr);
         }
     }
 
@@ -826,10 +826,35 @@ public:
         // Create fake RenderPass for compatibility.
         auto& outputDesc = desc.outputs;
         
+        //We have dynamic rendering now
         //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, VK_SAMPLE_COUNT_1_BIT);
-        auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, vkSampleCount);
-        
-        pipelineCI.renderPass = compatRenderPass;
+        //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, vkSampleCount);
+        //pipelineCI.renderPass = compatRenderPass;
+
+        // Provide information for dynamic rendering
+        std::vector<VkFormat> colorAttachmentFormats{};
+        colorAttachmentFormats.reserve(outputDesc.colorAttachment.size());
+
+        for(auto& a : outputDesc.colorAttachment)
+            colorAttachmentFormats.push_back(VK::priv::VdToVkPixelFormat(a.format, false));
+
+        VkPipelineRenderingCreateInfoKHR dynRenderingCI{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .pNext                   = nullptr,
+            .colorAttachmentCount    = (uint32_t)colorAttachmentFormats.size(),
+            .pColorAttachmentFormats = colorAttachmentFormats.data(),
+        };
+
+        if(outputDesc.depthAttachment.has_value()) {
+            PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
+            auto vkFormat = VK::priv::VdToVkPixelFormat(depthFormat, true);
+            dynRenderingCI.depthAttachmentFormat  = vkFormat;
+            if(Helpers::FormatHelpers::IsStencilFormat(depthFormat))
+                dynRenderingCI.stencilAttachmentFormat = vkFormat;
+        }
+        // Use the pNext to point to the rendering create struct
+        pipelineCI.pNext               = &dynRenderingCI; // reference the new dynamic structure
+        pipelineCI.renderPass          = nullptr; // previously required non-null
         
         VkPipeline devicePipeline;
         VK_CHECK(vkCreateGraphicsPipelines(dev->LogicalDev(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &devicePipeline));
@@ -854,7 +879,7 @@ public:
         auto rawPipe = new VulkanGraphicsPipeline(dev);
         rawPipe->_devicePipeline = devicePipeline;
         rawPipe->_pipelineLayout = pipelineLayout.Reset();
-        rawPipe->_renderPass = compatRenderPass;
+        //rawPipe->_renderPass = compatRenderPass;
         rawPipe->scissorTestEnabled = rsDesc.scissorTestEnabled;
         rawPipe->resourceSetCount = resourceSetCount;
         rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
