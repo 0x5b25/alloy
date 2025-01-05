@@ -138,12 +138,17 @@ namespace Veldrid
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
-        VulkanCommandList(const sp<GraphicsDevice>& dev) : CommandList(dev){}
 
     public:
+        VulkanCommandList(
+            const sp<VulkanDevice>& dev,
+            VkCommandBuffer cmdBuf,
+            sp<_CmdPoolContainer>&& alloc
+        );
+
         ~VulkanCommandList();
 
-        static sp<CommandList> Make(const sp<VulkanDevice>& dev);
+        //static sp<CommandList> Make(const sp<VulkanDevice>& dev);
         const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
         
         virtual void Begin() override;

@@ -2,7 +2,7 @@
 
 
 //3rd-party headers
-#include <directx/d3d12.h>
+#include <d3d12.h>
 #include <D3D12MemAlloc.h>
 
 #include "veldrid/Texture.hpp"
@@ -15,6 +15,9 @@ namespace Veldrid
     class DXCDevice;
     
     class DXCTexture : public Texture{
+    public:
+        static uint32_t ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer);
+    private:
 
         D3D12MA::Allocation* _allocation;
         ID3D12Resource* _res;
@@ -54,6 +57,31 @@ namespace Veldrid
             ID3D12Resource* nativeRes
         );
 
+        
+        virtual void WriteSubresource(
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            uint32_t dstX, uint32_t dstY, uint32_t dstZ,
+            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+            const void* src,
+            uint32_t srcRowPitch,
+            uint32_t srcDepthPitch
+        ) override;
+
+        virtual void ReadSubresource(
+            void* dst,
+            uint32_t dstRowPitch,
+            uint32_t dstDepthPitch,
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            uint32_t srcX, uint32_t srcY, uint32_t srcZ,
+            std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        ) override;
+
+        virtual SubresourceLayout GetSubresourceLayout(
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            SubresourceAspect aspect) override;
 
 
     public:
@@ -80,29 +108,21 @@ namespace Veldrid
 
     
 
-    //class DXCTextureView : public TextureView {
-    //
-    //    VkImageView _view;
-    //
-    //    DXCTextureView(
-    //        const sp<DXCTexture>& target,
-    //        const TextureView::Description& desc
-    //    ) :
-    //        TextureView(target,desc)
-    //    {}
-    //
-    //public:
-    //
-    //    ~DXCTextureView();
-    //
-    //    const VkImageView& GetHandle() const { return _view; }
-    //
-    //    static sp<TextureView> Make(
-    //        const sp<DXCTexture>& target,
-    //        const TextureView::Description& desc
-    //    );
-    //
-    //};
+    class DXCTextureView : public TextureView {
+    
+    
+    public:
+        DXCTextureView(
+            sp<Texture>&& target,
+            const TextureView::Description& desc
+        ) :
+            TextureView(std::move(target),desc)
+        {}
+    
+    
+        ~DXCTextureView() {}
+        
+    };
 
     //class DXCSampler : public Sampler{
     //

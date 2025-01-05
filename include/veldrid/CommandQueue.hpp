@@ -2,6 +2,7 @@
 
 #include "veldrid/common/Macros.h"
 #include "veldrid/DeviceResource.hpp"
+#include "veldrid/CommandList.hpp"
 
 namespace Veldrid{
 
@@ -30,7 +31,8 @@ namespace Veldrid{
 
         //#TODO: Add command buffer creation to here. Both Metal and Vulkan demands
         //command buffer are allocated from and submitted to the same queue.
-
+        
+        virtual sp<CommandList> CreateCommandList() = 0;
     };
 
 }

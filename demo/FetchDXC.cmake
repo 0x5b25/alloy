@@ -1,8 +1,31 @@
-cmake_minimum_required(VERSION 3.12)
-project(DXC VERSION 1.0)
+include(FetchContent)
+
+FetchContent_Declare(
+  DXC
+  URL      https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2407/dxc_2024_07_31.zip
+  URL_HASH SHA256=E2627F004F0F9424D8C71EA1314D04F38C5A5096884AE9217F1F18BD320267B5
+)
+
+message( "Fetching DirectX Shader Compiler 1.8.2407..." )
+
+FetchContent_MakeAvailable(DXC)
+
+FetchContent_GetProperties(
+    DXC
+    SOURCE_DIR DXC_SRC
+    BINARY_DIR DXC_BIN
+    POPULATED DXC_FETCHED
+)
+
+if(${DXC_FETCHED})
+    message( "DXC SRC      : ${DXC_SRC}" )
+    message( "DXC Binaries : ${DXC_BIN}")
+else()
+    message( FATAL_ERROR "DirectX Shader Compiler fetch failed" )
+endif()
 
 # Define the path to the DXC binaries relative to this CMakeLists.txt
-set(DXC_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin")
+set(DXC_BIN_DIR "${DXC_SRC}/bin")
 
 # Determine architecture
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -16,8 +39,8 @@ else()
 endif()
 
 # Set paths to the DLLs
-set(DXC_COMPILER_DLL "${DXC_BIN_DIR}/${DXC_ARCH}/dxcompiler.dll" PARENT_SCOPE)
-set(DXC_DXIL_DLL "${DXC_BIN_DIR}/${DXC_ARCH}/dxil.dll" PARENT_SCOPE)
+set(DXC_COMPILER_DLL "${DXC_BIN_DIR}/${DXC_ARCH}/dxcompiler.dll")
+set(DXC_DXIL_DLL "${DXC_BIN_DIR}/${DXC_ARCH}/dxil.dll")
 
 # Create imported targets for the DLLs
 #add_library(DXC::compiler SHARED IMPORTED GLOBAL)
@@ -35,7 +58,7 @@ add_library(dxc INTERFACE)
 #)
 
 # Add include directories
-set(DXC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/inc")
+set(DXC_INCLUDE_DIR "${DXC_SRC}/inc")
 target_include_directories(dxc INTERFACE "${DXC_INCLUDE_DIR}")
 
 
@@ -43,7 +66,9 @@ set(testA "abcd")
 
 # Function to copy DLLs to target directory
 function(dxc_copy_binaries TARGET)
+    
     add_custom_command(TARGET ${TARGET} POST_BUILD
+        COMMAND echo "Copying DirectX shader compiler dlls to $<TARGET_FILE_DIR:${TARGET}>/D3D12 ..."
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${DXC_COMPILER_DLL}"
             "${DXC_DXIL_DLL}"

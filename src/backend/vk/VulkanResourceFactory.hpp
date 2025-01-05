@@ -49,9 +49,6 @@ namespace Veldrid{
             const sp<Texture>& texture,
             const TextureView::Description& description) override;
 
-       
-        virtual sp<CommandList> CreateCommandList() override;
-
         virtual sp<Fence> CreateFence() override;
         virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };

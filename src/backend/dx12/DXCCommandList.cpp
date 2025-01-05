@@ -14,19 +14,19 @@
 namespace Veldrid
 {
 
-    sp<DXCCommandList> DXCCommandList::Make(const sp<DXCDevice>& dev) {
+    sp<DXCCommandList> DXCCommandList::Make(const sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type) {
 
         auto pDev = dev->GetDevice();
 
-        D3D12_COMMAND_LIST_TYPE cmdListType = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        //D3D12_COMMAND_LIST_TYPE cmdListType = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
         ID3D12CommandAllocator* pAllocator;
-        ThrowIfFailed(pDev->CreateCommandAllocator(cmdListType, IID_PPV_ARGS(&pAllocator)));
+        ThrowIfFailed(pDev->CreateCommandAllocator(type, IID_PPV_ARGS(&pAllocator)));
 
         
         ID3D12GraphicsCommandList* pCmdList;
         // Create the command list.
-        ThrowIfFailed(pDev->CreateCommandList(0, cmdListType, pAllocator, nullptr, IID_PPV_ARGS(&pCmdList)));
+        ThrowIfFailed(pDev->CreateCommandList(0, type, pAllocator, nullptr, IID_PPV_ARGS(&pCmdList)));
         ThrowIfFailed(pCmdList->Close());
 
         
@@ -1159,10 +1159,10 @@ namespace Veldrid
         //vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
     };
 
-    static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
-    {
-        return ((arrayLayer * mipLevelCount) + mipLevel);
-    };
+    //static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
+    //{
+    //    return ((arrayLayer * mipLevelCount) + mipLevel);
+    //};
 
     void DXCCommandList::ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) {
         
@@ -1288,7 +1288,7 @@ namespace Veldrid
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dstSubresource.SubresourceIndex = _ComputeSubresource(
+        dstSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
             srcMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
    
 
@@ -1416,7 +1416,7 @@ namespace Veldrid
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        srcSubresource.SubresourceIndex = _ComputeSubresource(
+        srcSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
             srcMipLevel, srcDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
    
 
@@ -1542,14 +1542,14 @@ namespace Veldrid
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        srcSubresource.SubresourceIndex = _ComputeSubresource(
+        srcSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
             srcMipLevel, srcDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
    
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dstSubresource.SubresourceIndex = _ComputeSubresource(
+        dstSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
             dstMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
 
         D3D12_BOX srcRegion {};

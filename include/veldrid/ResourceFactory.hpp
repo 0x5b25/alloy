@@ -71,7 +71,7 @@ namespace Veldrid
             const TextureView::Description& description) = 0;
 
        
-        virtual sp<CommandList> CreateCommandList() = 0;
+        //virtual sp<CommandList> CreateCommandList() = 0;
 
         virtual sp<Fence> CreateFence() = 0;
         //Why don't call CreateSemaphore? because there is a WinBase #define 

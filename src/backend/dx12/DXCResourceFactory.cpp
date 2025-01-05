@@ -104,14 +104,9 @@ namespace Veldrid
         const sp<Texture>& texture,
         const TextureView::Description& description
     ){
-        return nullptr;
-       // auto vkTex = PtrCast<VulkanTexture>(texture.get());
+        return sp(new DXCTextureView(RefRawPtr(texture.get()), description));
+        // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
-    }
-
-    
-    sp<CommandList> DXCResourceFactory::CreateCommandList(){
-        return DXCCommandList::Make(_CreateNewDevHandle());
     }
 
     sp<Fence> DXCResourceFactory::CreateFence() {

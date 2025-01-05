@@ -1,8 +1,8 @@
 
 
-cmake_minimum_required(VERSION 3.13)
+#cmake_minimum_required(VERSION 3.13)
 
-project(vk_third_party LANGUAGES C CXX)
+#project(vk_third_party LANGUAGES C CXX)
 
 # glm
 
@@ -121,6 +121,7 @@ endif()
 
 target_compile_definitions(vulkan INTERFACE ${VULKAN_WSI_DEF})
 
+set_property(TARGET vulkan PROPERTY FOLDER "3rd-party/vk")
 
 # volk
 set(VOLK_STATIC_DEFINES ${VULKAN_WSI_DEF})
@@ -136,7 +137,7 @@ elseif (VKB_WSI_SELECTION STREQUAL WAYLAND)
     target_include_directories(volk PUBLIC ${WAYLAND_INCLUDE_DIRS})
 endif()
 
-set_property(TARGET volk PROPERTY FOLDER "Veldrid/vk/3rd-party")
+set_property(TARGET volk PROPERTY FOLDER "3rd-party/vk")
 
 
 # spdlog
@@ -152,7 +153,13 @@ target_sources(vma INTERFACE ${VMA_DIR}/vk_mem_alloc.h)
 target_include_directories(vma INTERFACE ${VMA_DIR})
 #target_link_libraries(vma PUBLIC vulkan)
 
+set_property(TARGET vma PROPERTY FOLDER "3rd-party/vk")
 # dxil-spirv
 
 set(DXIL_SPIRV_CLI OFF CACHE BOOL "" FORCE)
 add_subdirectory(dxil-spirv)
+set_property(TARGET dxil-spirv-c-static PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-spirv-c-shared PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-converter PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-debug PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-utils PROPERTY FOLDER "3rd-party/vk/dxil-spv")

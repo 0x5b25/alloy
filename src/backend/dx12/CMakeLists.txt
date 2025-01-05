@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+#cmake_minimum_required(VERSION 3.13)
 #project(vk_backend VERSION 0.1.0)
 
 
@@ -65,7 +65,8 @@ target_sources(Veldrid
 target_link_libraries(Veldrid 
     PRIVATE
         D3D12MemoryAllocator
-        DirectX-Headers
+        AgilitySDK
+    #    DirectX-Headers
         d3d12.lib
         dxgi.lib
     #    dxguid.lib

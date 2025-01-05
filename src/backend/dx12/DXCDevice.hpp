@@ -1,7 +1,7 @@
 #pragma once
 
 //3rd-party headers
-#include <directx/d3d12.h>
+#include <d3d12.h>
 #include <D3D12MemAlloc.h>
 
 //veldrid public headers
@@ -76,10 +76,12 @@ namespace Veldrid{
     class DXCCommandQueue : public CommandQueue{
 
         ID3D12CommandQueue* _q;
+        D3D12_COMMAND_LIST_TYPE _qType;
+        DXCDevice* _dev;
 
     public:
 
-        DXCCommandQueue(ID3D12Device* pDev, D3D12_COMMAND_LIST_TYPE cmdQType);
+        DXCCommandQueue(DXCDevice* pDev, D3D12_COMMAND_LIST_TYPE cmdQType);
 
         ID3D12CommandQueue* GetHandle() const {return _q;}
 
@@ -98,6 +100,8 @@ namespace Veldrid{
         virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
 
         virtual void SubmitCommand(CommandList* cmd) override;
+        
+        virtual sp<CommandList> CreateCommandList() override;
 
     };
 
@@ -163,6 +167,9 @@ namespace Veldrid{
 
         bool SupportEnhancedBarrier() const { return options12.EnhancedBarriersSupported; }
         bool SupportMeshShader() const {return options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;}
+        bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
+        bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
+    
     };
 
     class DXCDevice : public  GraphicsDevice, public DXCResourceFactory {

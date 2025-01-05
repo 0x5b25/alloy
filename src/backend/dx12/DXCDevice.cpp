@@ -21,7 +21,7 @@
 #include <Windows.h> // For HRESULT
 
 //Import DX12 agility SDK
-extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 715; }
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 614; }
 
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
 
@@ -471,8 +471,8 @@ namespace Veldrid {
         dev->_adp = std::move(adp);
         //dev->_dev = std::move(device);
         //dev->_q = std::move(queue);
-        dev->_gfxQ = new DXCCommandQueue(device.Get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
-        dev->_copyQ = new DXCCommandQueue(device.Get(), D3D12_COMMAND_LIST_TYPE_COPY);
+        dev->_gfxQ = new DXCCommandQueue(dev.get(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+        dev->_copyQ = new DXCCommandQueue(dev.get(), D3D12_COMMAND_LIST_TYPE_COPY);
         //dev->_cmdAlloc = std::move(cmdAlloc);
         dev->_waitIdleFence.Init(std::move(waitIdleFence));
         dev->_alloc = std::move(allocator);
@@ -673,15 +673,23 @@ namespace Veldrid {
         return mappedPtr;
     }
 
-    DXCCommandQueue::DXCCommandQueue(ID3D12Device* pDev, D3D12_COMMAND_LIST_TYPE cmdQType) {
+    DXCCommandQueue::DXCCommandQueue(DXCDevice* pDev, D3D12_COMMAND_LIST_TYPE cmdQType)
+        : _dev(pDev)
+        , _qType(cmdQType)
+    {
         D3D12_COMMAND_QUEUE_DESC queueDesc {};
         queueDesc.Type = cmdQType;// ;
         queueDesc.NodeMask = 0;
-        ThrowIfFailed(pDev->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&_q)));
+        ThrowIfFailed(pDev->GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&_q)));
     }
 
     DXCCommandQueue::~DXCCommandQueue() {
         _q->Release();
+    }
+
+    sp<CommandList> DXCCommandQueue::CreateCommandList() {
+        _dev->ref();
+        return DXCCommandList::Make(sp(_dev), _qType);
     }
 
     //virtual bool WaitForSignal(std::uint64_t timeoutNs) = 0;

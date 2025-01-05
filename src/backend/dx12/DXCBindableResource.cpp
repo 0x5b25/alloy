@@ -4,7 +4,7 @@
 #include "D3DTypeCvt.hpp"
 #include "DXCDevice.hpp"
 #include "DXCTexture.hpp"
-#include "directx/d3d12.h"
+#include <d3d12.h>
 
 namespace Veldrid
 { 
@@ -404,7 +404,8 @@ namespace Veldrid
                 samplerDesc.AddressU = VdToD3DSamplerAddressMode(desc.addressModeU);
                 samplerDesc.AddressV = VdToD3DSamplerAddressMode(desc.addressModeV);
                 samplerDesc.AddressW = VdToD3DSamplerAddressMode(desc.addressModeW);
-                samplerDesc.ComparisonFunc = VdToD3DCompareOp(*desc.comparisonKind);
+                if(desc.comparisonKind)
+                    samplerDesc.ComparisonFunc = VdToD3DCompareOp(*desc.comparisonKind);
 
                 switch (desc.borderColor) {
                     case Sampler::Description::BorderColor::TransparentBlack : 

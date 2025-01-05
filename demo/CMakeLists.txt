@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.13)
+#cmake_minimum_required(VERSION 3.13)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -7,7 +7,7 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_VULKAN_STATIC ON CACHE BOOL "" FORCE)
 add_subdirectory("glfw")
 add_subdirectory("glm")
-add_subdirectory("dxc")
+include("FetchDXC.cmake")
 
 set_target_properties(glfw glm PROPERTIES FOLDER "demo/3rd-party")
 
@@ -25,12 +25,11 @@ function(CreateDemoApp DemoName)
     )
 
     target_link_libraries(${DemoName} 
-        PUBLIC 
-            Veldrid
+        PUBLIC
             glm::glm
             glfw
     )
-
+    link_with_veldrid(${DemoName})
     target_link_libraries(${DemoName} PRIVATE dxc)
     dxc_copy_binaries(${DemoName})  # If you need the DLLs in your output directory
 
@@ -40,4 +39,5 @@ endfunction(CreateDemoApp)
 
 #CreateDemoApp(demo)
 CreateDemoApp(uniformBufferTest)
+CreateDemoApp(textureTest)
 

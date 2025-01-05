@@ -55,14 +55,11 @@ namespace Veldrid
         sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
 
     public:
-        _CmdPoolMgr() { }
-        ~_CmdPoolMgr() { }
-
-        void Init(VkDevice dev, std::uint32_t queueFamily){
-            _dev = dev; _queueFamily = queueFamily;
-        }
-
-        void DeInit(){
+        _CmdPoolMgr(VkDevice dev, std::uint32_t queueFamily)
+            : _dev { dev }
+            , _queueFamily { queueFamily }
+        { }
+        ~_CmdPoolMgr() {
             //Threoretically there should be no bound command pools,
             // i.e. all command buffers holded by threads should be released
             // then the VulkanDevice can be destroyed.
@@ -90,13 +87,13 @@ namespace Veldrid
 
     class VulkanCommandQueue : public CommandQueue {
 
+        VulkanDevice* _dev;
+        _CmdPoolMgr _cmdPoolMgr;
         VkQueue _q;
 
     public:
 
-        VulkanCommandQueue(VkQueue q)
-            : _q(q)
-        { }
+        VulkanCommandQueue(VulkanDevice* dev, std::uint32_t queueFamily, VkQueue q);
 
         //virtual ~VulkanCommandQueue() override {
         //    _q->Release();
@@ -117,6 +114,10 @@ namespace Veldrid
         virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
 
         virtual void SubmitCommand(CommandList* cmd) override;
+
+
+        
+        virtual sp<CommandList> CreateCommandList() override;
 
     };
 
@@ -150,7 +151,7 @@ namespace Veldrid
         PhyDevInfo _phyDev;
         VkDevice _dev;
         VmaAllocator _allocator;
-        _CmdPoolMgr _cmdPoolMgr;
+        //_CmdPoolMgr _cmdPoolMgr;
         VK::priv::_DescriptorPoolMgr _descPoolMgr;
 
         VulkanCommandQueue* _gfxQ;
@@ -211,7 +212,7 @@ namespace Veldrid
 
 
     public:
-        sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
+        //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
         VK::priv::_DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
     //Interface
     public:

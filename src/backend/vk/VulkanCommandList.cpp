@@ -261,19 +261,29 @@ namespace Veldrid{
     #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentRenderPass != nullptr))
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentRenderPass != nullptr))
 
-    sp<CommandList> VulkanCommandList::Make(const sp<VulkanDevice>& dev){
-        auto* vkDev = PtrCast<VulkanDevice>(dev.get());
+    //sp<CommandList> VulkanCommandList::Make(const sp<VulkanDevice>& dev){
+    //    auto* vkDev = PtrCast<VulkanDevice>(dev.get());
+    //
+    //    auto cmdPool = vkDev->GetCmdPool();
+    //    auto vkCmdBuf = cmdPool->AllocateBuffer();
+    //
+    //    sp<GraphicsDevice> _dev(dev);
+    //    auto cmdBuf = new VulkanCommandList(_dev);
+    //    cmdBuf->_cmdBuf = vkCmdBuf;
+    //    cmdBuf->_cmdPool = std::move(cmdPool);
+    //
+    //    return sp<CommandList>(cmdBuf);
+    //}
 
-        auto cmdPool = vkDev->GetCmdPool();
-        auto vkCmdBuf = cmdPool->AllocateBuffer();
-
-        sp<GraphicsDevice> _dev(dev);
-        auto cmdBuf = new VulkanCommandList(_dev);
-        cmdBuf->_cmdBuf = vkCmdBuf;
-        cmdBuf->_cmdPool = std::move(cmdPool);
-
-        return sp<CommandList>(cmdBuf);
-    }
+    VulkanCommandList::VulkanCommandList(
+        const sp<VulkanDevice>& dev,
+        VkCommandBuffer cmdBuf,
+        sp<_CmdPoolContainer>&& alloc
+    )
+        : CommandList(dev)
+        , _cmdBuf(cmdBuf)
+        , _cmdPool(std::move(alloc))
+    { }
 
     VulkanCommandList::~VulkanCommandList(){
         _cmdPool->FreeBuffer(_cmdBuf);

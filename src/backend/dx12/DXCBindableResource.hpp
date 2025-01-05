@@ -1,7 +1,6 @@
 #pragma once
 
 //3rd-party headers
-#include <directx/d3d12.h>
 
 //veldrid public headers
 #include "veldrid/common/RefCnt.hpp"
@@ -17,7 +16,7 @@
 #include <vector>
 
 //backend specific headers
-#include "directx/d3d12.h"
+#include <d3d12.h>
 
 //platform specific headers
 

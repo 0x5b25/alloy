@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.28)
 
 project(veldridcpp
     DESCRIPTION "A C++ port of the legendary veldrid library"
@@ -136,6 +136,16 @@ endif()
 
 target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_features(Veldrid PUBLIC cxx_std_20)
+
+function(link_with_veldrid TARGET)
+
+    target_link_libraries(${TARGET} PRIVATE Veldrid)
+
+    if(${VLD_BACKEND_DXC})
+        agility_sdk_copy_binaries(${TARGET})
+    endif()
+
+endfunction()
 
 add_subdirectory("demo")
 

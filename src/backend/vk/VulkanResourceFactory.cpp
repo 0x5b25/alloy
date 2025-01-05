@@ -108,9 +108,7 @@ namespace Veldrid
     }
 
     
-    sp<CommandList> VulkanResourceFactory::CreateCommandList(){
-        return VulkanCommandList::Make(_CreateNewDevHandle());
-    }
+
 
     sp<Fence> VulkanResourceFactory::CreateFence() {
         return VulkanFence::Make(_CreateNewDevHandle());

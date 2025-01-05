@@ -4,6 +4,7 @@
 #include <format>
 #include <vector>
 #include <unordered_map>
+#include <iostream>
 
 #ifdef _WIN32
     #include <Windows.h>
@@ -241,6 +242,22 @@ public:
 
         ComPtr<IDxcBlob> pShader;
         ThrowIfFailed(pResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&pShader), nullptr));
+
+        //Print disassemble results:
+        if(true){
+            DxcBuffer dxilBuffer { };
+            dxilBuffer.Ptr = pShader->GetBufferPointer();
+            dxilBuffer.Size = pShader->GetBufferSize();
+            dxilBuffer.Encoding = 0;
+
+            ComPtr<IDxcResult> pDasmResult;
+            ThrowIfFailed(pCompiler3->Disassemble(&dxilBuffer, IID_PPV_ARGS(&pDasmResult)));
+        
+            ComPtr<IDxcBlobUtf8> pDasm;
+            ThrowIfFailed(pDasmResult->GetOutput(DXC_OUT_DISASSEMBLY, IID_PPV_ARGS(&pDasm), nullptr));
+
+            std::cout << "Disassemble of shader code: \n" << pDasm->GetStringPointer() << std::endl;        
+        }
 
         // Copy bytecode to vector
         const uint8_t* byteData = reinterpret_cast<const uint8_t*>(pShader->GetBufferPointer());

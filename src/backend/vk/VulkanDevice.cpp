@@ -433,7 +433,7 @@ namespace Veldrid {
 
         //Uninit managers
         _descPoolMgr.DeInit();
-        _cmdPoolMgr.DeInit();
+        //_cmdPoolMgr.DeInit();
 
         vkDestroyDevice(_dev, nullptr);
 
@@ -618,24 +618,28 @@ namespace Veldrid {
         //poolInfo.queueFamilyIndex = devInfo.graphicsQueueFamily;
         //poolInfo.flags = 0; // Optional
         //VK_CHECK(vkCreateCommandPool(dev->_dev, &poolInfo, nullptr, &dev->_cmdPool));
-        dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
+        //dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
         dev->_descPoolMgr.Init(dev->_dev, 1000);
 
         //Get queues
         {
             VkQueue rawGfxQ;
             vkGetDeviceQueue(dev->_dev, devInfo.graphicsQueueFamily, 0, &rawGfxQ);
-            dev->_gfxQ = new VulkanCommandQueue(rawGfxQ);
+            dev->_gfxQ = new VulkanCommandQueue(dev.get(), devInfo.graphicsQueueFamily, rawGfxQ);
         }
         if (devInfo.transferQueueFamily.has_value()) {
             VkQueue rawCopyQ;
             vkGetDeviceQueue(dev->_dev, devInfo.transferQueueFamily.value(), 0, &rawCopyQ);
-            dev->_copyQ = new VulkanCommandQueue(rawCopyQ);
+            dev->_copyQ = new VulkanCommandQueue(dev.get(),
+                                                 devInfo.transferQueueFamily.value(),
+                                                 rawCopyQ);
         }
         if (devInfo.computeQueueFamily.has_value()) {
             VkQueue rawComputeQ;
             vkGetDeviceQueue(dev->_dev, devInfo.computeQueueFamily.value(), 0, &rawComputeQ);
-            dev->_computeQ = new VulkanCommandQueue(rawComputeQ);
+            dev->_computeQ = new VulkanCommandQueue(dev.get(),
+                                                    devInfo.computeQueueFamily.value(),
+                                                    rawComputeQ);
         }
 
         //Init allocator
@@ -1072,7 +1076,8 @@ namespace Veldrid {
                 //Create a new command pool
                 VkCommandPoolCreateInfo cmdPoolCI{};
                 cmdPoolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-                cmdPoolCI.flags = VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+                cmdPoolCI.flags = VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_TRANSIENT_BIT
+                                | VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 cmdPoolCI.queueFamilyIndex = _queueFamily;
 
                 VK_CHECK(vkCreateCommandPool(_dev, &cmdPoolCI, nullptr, &raw_pool));
@@ -1089,6 +1094,16 @@ namespace Veldrid {
 
         return sp(holder);
     }
+
+    VulkanCommandQueue::VulkanCommandQueue(
+        VulkanDevice* dev,
+        std::uint32_t queueFamily,
+        VkQueue q
+    )
+        : _dev(dev)
+        , _cmdPoolMgr(dev->LogicalDev(), queueFamily)
+        , _q(q)
+    { }
 
     void VulkanCommandQueue::EncodeSignalFence(Fence* fence, uint64_t value) {
         auto rawFence = PtrCast<VulkanFence>(fence)->GetHandle();
@@ -1142,6 +1157,20 @@ namespace Veldrid {
         VK_CHECK(vkQueueSubmit(
             _q, 1, &info, nullptr
         ));
+    }
+
+    sp<CommandList> VulkanCommandQueue::CreateCommandList(){
+
+        _dev->ref();
+        auto vkDev = sp<VulkanDevice>(_dev);
+
+        auto cmdPool = _cmdPoolMgr.GetOnePool();
+        auto vkCmdBuf = cmdPool->AllocateBuffer();
+
+        auto cmdBuf = new VulkanCommandList(vkDev, vkCmdBuf, std::move(cmdPool));
+
+        return sp<CommandList>(cmdBuf);
+    
     }
 
     //sp<_CmdPoolContainer> _CmdPoolMgr::GetOnePool() { return _AcquireCmdPoolHolder(); }

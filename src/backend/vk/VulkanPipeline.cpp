@@ -143,7 +143,11 @@ public:
 			    vk_binding.buffer_binding.set = set;
 			    vk_binding.buffer_binding.binding = binding.register_index;
 			    //vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
-			    return true;
+                if(    binding.kind == DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER
+                    || binding.kind == DXIL_SPV_RESOURCE_KIND_RAW_BUFFER )
+                    vk_binding.buffer_binding.descriptor_type = DXIL_SPV_VULKAN_DESCRIPTOR_TYPE_SSBO;
+			    
+                return true;
             }
             return false;
         }

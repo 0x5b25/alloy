@@ -6,7 +6,7 @@
 //backend specific headers
 
 //platform specific headers
-#include <directx/d3d12.h>
+#include <d3d12.h>
 #include <dxgi1_4.h> //Guaranteed by DX12
 
 //Local headers

@@ -14,7 +14,7 @@
 
 //platform specific headers
 #include <dxgi1_4.h> //Guaranteed by DX12
-#include <directx/d3d12.h>
+#include <d3d12.h>
 
 //TODO: a system to track image layouts inside a command buffer and
 //insert image layout transition commands when necessary. also each
@@ -95,7 +95,7 @@ namespace Veldrid
         virtual ~DXCCommandList() override;
 
         
-        static sp<DXCCommandList> Make(const sp<DXCDevice>& dev);
+        static sp<DXCCommandList> Make(const sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
         ID3D12CommandList* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
