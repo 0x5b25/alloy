@@ -1,6 +1,7 @@
 #pragma once
 
 #include "veldrid/common/RefCnt.hpp"
+#include "veldrid/common/BitFlags.hpp"
 #include "veldrid/DeviceResource.hpp"
 #include "veldrid/Shader.hpp"
 
@@ -35,6 +36,8 @@ namespace Veldrid
             /// A <see cref="Veldrid.Sampler"/>.
             /// </summary>
             Sampler,
+
+            MAX_VALUE
         };
 
         virtual ~IBindableResource() = default;
@@ -50,10 +53,11 @@ namespace Veldrid
 
             struct ElementDescription{
                 uint32_t  bindingSlot;
+                uint32_t  bindingSpace;
                 std::string name;
                 IBindableResource::ResourceKind kind;
 
-                Shader::Description::Stage stages;
+                alloy::BitFlags<Shader::Stage> stages;
 
                 union Options
                 {
@@ -69,7 +73,7 @@ namespace Veldrid
                         /// Offsets specified this way must be a multiple of <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
                         /// <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>.
                         /// </summary>
-                        std::uint8_t dynamicBinding : 1;
+                        //std::uint8_t dynamicBinding : 1;
                         
                         //Resource is writable by shader
                         // can only applied to storage buffers, texture storages
@@ -97,6 +101,9 @@ namespace Veldrid
 
     public:
         const Description& GetDesc() const {return description;}
+
+        
+        virtual void* GetNativeHandle() const {return nullptr; }
 
     };
 
@@ -128,6 +135,7 @@ namespace Veldrid
     public:
         const Description& GetDesc() const {return description;}
 
+        virtual void* GetNativeHandle() const {return nullptr; }
     };
  
 } // namespace Veldrid

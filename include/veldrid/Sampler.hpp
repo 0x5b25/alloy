@@ -7,12 +7,12 @@
 
 #include <cstdint>
 #include <string>
-
+ 
 namespace Veldrid
 {
     
 
-    class Sampler : public IBindableResource, public DeviceResource
+    class Sampler : public IBindableResource
     {
 
     public:       
@@ -70,25 +70,31 @@ namespace Veldrid
             ComparisonKind* comparisonKind;
         
             // The maximum anisotropy of the filter, when <see cref="SamplerFilter.Anisotropic"/> is used, or otherwise ignored.
-            std::uint32_t maximumAnisotropy;
+            float maximumAnisotropy;
         
             // The minimum level of detail.
-            std::uint32_t minimumLod;
+            float minimumLod;
 
             // The maximum level of detail.
-            std::uint32_t maximumLod;
+            float maximumLod;
         
             // The level of detail bias.
-            std::int32_t lodBias;
+            float lodBias;
             
             
         };
 
-    protected:
-        Sampler(
-            const sp<GraphicsDevice>& dev
-        ) : DeviceResource(dev){}
+        
+        virtual ResourceKind GetResourceKind() const override {return ResourceKind::Sampler;}
 
+        const Description& GetDesc() const {return description;}
+
+        Sampler(const Description& desc) : description(desc) {}
+
+        virtual ~Sampler() {}
+
+    protected:
+        Description description;
     };
 } // namespace Veldrid
 

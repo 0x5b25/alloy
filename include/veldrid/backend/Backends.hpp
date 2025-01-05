@@ -34,23 +34,19 @@ namespace Veldrid
     };    
     
     sp<GraphicsDevice> CreateDX12GraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     );
 
     sp<GraphicsDevice> CreateVulkanGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     );
 
     sp<GraphicsDevice> CreateMetalGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     );
 
     sp<GraphicsDevice> CreateDefaultGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     );
 
 } // namespace Veldrid

@@ -11,6 +11,8 @@
 #include <optional>
 #include <vector>
 #include <unordered_set>
+#include <format>
+#include <iostream>
 
 #include "VkSurfaceUtil.hpp"
 #include "VkCommon.hpp"
@@ -80,6 +82,8 @@ private:
         std::unordered_set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
         std::unordered_set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
 
+        uint32_t vkAPIVer = 0;
+        vkEnumerateInstanceVersion(&vkAPIVer);
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -168,20 +172,20 @@ private:
         const char* pMsg,
         void* pUserData)
     {
-#define LOG(...) printf(__VA_ARGS__)
+//#define LOG(...) printf(__VA_ARGS__)
 
         if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-            LOG("ERR " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("ERR " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-            LOG("WARN" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("WARN" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-            LOG("DBG " "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("DBG " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-            LOG("PERF" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("PERF" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-            LOG("INFO" "[%s] [Vk#%d]: %s\n", pLayerPrefix, msgCode, pMsg);
+            std::cout << std::format("INFO" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
         return 0;
-#undef LOG
+//#undef LOG
     }
 
 
@@ -406,10 +410,9 @@ namespace Veldrid {
 
 
 	sp<GraphicsDevice> CreateVulkanGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+        const GraphicsDevice::Options& options
     ) {
-		return VulkanDevice::Make(options, swapChainSource);
+		return VulkanDevice::Make(options);
 	}
 
     VulkanDevice::VulkanDevice() : _resFactory(this) {};
@@ -417,14 +420,20 @@ namespace Veldrid {
     VulkanDevice::~VulkanDevice()
     {
         vkDeviceWaitIdle(_dev);
-        if(_isOwnSurface){
-            vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
-        }
+
+        
+        delete _gfxQ;
+        delete _copyQ;
+        delete _computeQ;
+
+        //if(_isOwnSurface){
+        //    vkDestroySurfaceKHR(_ctx->GetHandle(), _surface, nullptr);
+        //}
         vmaDestroyAllocator(_allocator);
 
         //Uninit managers
         _descPoolMgr.DeInit();
-        _cmdPoolMgr.DeInit();
+        //_cmdPoolMgr.DeInit();
 
         vkDestroyDevice(_dev, nullptr);
 
@@ -433,16 +442,15 @@ namespace Veldrid {
         DEBUGCODE(_dev = VK_NULL_HANDLE);
         DEBUGCODE(_allocator = VK_NULL_HANDLE);
 
-        DEBUGCODE(_queueGraphics = VK_NULL_HANDLE);
-        DEBUGCODE(_queueCopy = VK_NULL_HANDLE);
-        DEBUGCODE(_queueCompute = VK_NULL_HANDLE);
+        DEBUGCODE(_gfxQ = VK_NULL_HANDLE);
+        DEBUGCODE(_copyQ = VK_NULL_HANDLE);
+        DEBUGCODE(_computeQ = VK_NULL_HANDLE);
 
-        DEBUGCODE(_surface = VK_NULL_HANDLE);
+        //DEBUGCODE(_surface = VK_NULL_HANDLE);
     }
 
     sp<GraphicsDevice> VulkanDevice::Make(
-		const GraphicsDevice::Options& options,
-		SwapChainSource* swapChainSource
+		const GraphicsDevice::Options& options
 	){
         auto ctx = _VkCtx::Get();
         if (!ctx->IsVulkanSupported()) {
@@ -450,13 +458,13 @@ namespace Veldrid {
         }
 
         //Make the surface if possible
-        VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
+        //VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
 
-        if (swapChainSource != nullptr) {
-            _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
-        }
+        //if (swapChainSource != nullptr) {
+        //    _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
+        //}
 
-        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), _surf.surface, {});
+        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), nullptr/*_surf.surface*/, {});
         if (!phyDev.has_value()) {
             return {};
         }
@@ -465,8 +473,8 @@ namespace Veldrid {
 
         auto dev = sp<VulkanDevice>(new VulkanDevice());
         dev->_ctx = ctx;
-        dev->_surface = _surf.surface;
-        dev->_isOwnSurface = _surf.isOwnSurface;
+        //ev->_surface = _surf.surface;
+        //dev->_isOwnSurface = _surf.isOwnSurface;
         dev->_phyDev = devInfo;
         dev->_features = {};
         dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
@@ -518,6 +526,21 @@ namespace Veldrid {
         VkPhysicalDeviceFeatures deviceFeatures{};
         vkGetPhysicalDeviceFeatures(dev->_phyDev.handle, &deviceFeatures);
 
+        VkPhysicalDeviceVulkan12Features features12 { };
+        features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        features12.timelineSemaphore = true;
+        createInfo.pNext = &features12;
+
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature { };
+        dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+        dynamicRenderingFeature.dynamicRendering = VK_TRUE,
+        features12.pNext = &dynamicRenderingFeature;
+
+        VkPhysicalDeviceSynchronization2Features sync2Features{};
+        sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        sync2Features.synchronization2 = VK_TRUE;
+        dynamicRenderingFeature.pNext = &sync2Features;
+
         //First add pointers to the queue creation info and device features structs:
 
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
@@ -555,6 +578,18 @@ namespace Veldrid {
             return false;
         };
 
+        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE)) {
+            throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
+        }
+
+        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING)) {
+            throw std::exception("VkDevice creation failed. dynamic rendering not supported");
+        }
+
+        if(!_AddExtIfPresent(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
+            throw std::exception("VkDevice creation failed. synchronization2 not supported");
+        }
+
 #if defined VLD_DEBUG
         dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
 #endif
@@ -583,15 +618,29 @@ namespace Veldrid {
         //poolInfo.queueFamilyIndex = devInfo.graphicsQueueFamily;
         //poolInfo.flags = 0; // Optional
         //VK_CHECK(vkCreateCommandPool(dev->_dev, &poolInfo, nullptr, &dev->_cmdPool));
-        dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
+        //dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
         dev->_descPoolMgr.Init(dev->_dev, 1000);
 
         //Get queues
-        vkGetDeviceQueue(dev->_dev, devInfo.graphicsQueueFamily, 0, &dev->_queueGraphics);
-        if (devInfo.transferQueueFamily.has_value())
-            vkGetDeviceQueue(dev->_dev, devInfo.transferQueueFamily.value(), 0, &dev->_queueCopy);
-        if (devInfo.computeQueueFamily.has_value())
-            vkGetDeviceQueue(dev->_dev, devInfo.computeQueueFamily.value(), 0, &dev->_queueCompute);
+        {
+            VkQueue rawGfxQ;
+            vkGetDeviceQueue(dev->_dev, devInfo.graphicsQueueFamily, 0, &rawGfxQ);
+            dev->_gfxQ = new VulkanCommandQueue(dev.get(), devInfo.graphicsQueueFamily, rawGfxQ);
+        }
+        if (devInfo.transferQueueFamily.has_value()) {
+            VkQueue rawCopyQ;
+            vkGetDeviceQueue(dev->_dev, devInfo.transferQueueFamily.value(), 0, &rawCopyQ);
+            dev->_copyQ = new VulkanCommandQueue(dev.get(),
+                                                 devInfo.transferQueueFamily.value(),
+                                                 rawCopyQ);
+        }
+        if (devInfo.computeQueueFamily.has_value()) {
+            VkQueue rawComputeQ;
+            vkGetDeviceQueue(dev->_dev, devInfo.computeQueueFamily.value(), 0, &rawComputeQ);
+            dev->_computeQ = new VulkanCommandQueue(dev.get(),
+                                                    devInfo.computeQueueFamily.value(),
+                                                    rawComputeQ);
+        }
 
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
@@ -692,69 +741,30 @@ namespace Veldrid {
 
         return dev;
 	}
-
-    
-
-    void VulkanDevice::SubmitCommand(
-        const std::vector<SubmitBatch>& batch,
-        Fence* fence
-    ){
-        struct _SubmitDataHolder{
-            std::vector<VkPipelineStageFlags> vkWaitStages;
-            std::vector<VkSemaphore> vkWaitSems;
-            std::vector<VkSemaphore> vkSignalSems;
-            std::vector<VkCommandBuffer> vkCmdBufs;
-        };
-
-        std::vector<_SubmitDataHolder> submitData (batch.size());
-        std::vector<VkSubmitInfo> submits(batch.size(), { VK_STRUCTURE_TYPE_SUBMIT_INFO });
-
-        for(auto i = 0UL; i < batch.size(); i++){
-
-            auto& b = batch[i];
-            auto& data = submitData[i];
-
-            data.vkWaitStages.reserve(b.waitSemaphores.size());
-            data.vkWaitSems.reserve(b.waitSemaphores.size());
-            for (auto* s : b.waitSemaphores) {
-                assert(s != nullptr);
-                auto* vkS = PtrCast<VulkanSemaphore>(s); data.vkWaitSems.push_back(vkS->GetHandle());
-                data.vkWaitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-            }
-
-            data.vkSignalSems.reserve(b.signalSemaphores.size());
-            for (auto* s : b.signalSemaphores) {
-                assert(s != nullptr);
-                auto* vkS = PtrCast<VulkanSemaphore>(s); data.vkSignalSems.push_back(vkS->GetHandle());
-            }
-
-            data.vkCmdBufs.reserve(b.cmd.size());
-            for (auto* c : b.cmd) {
-                assert(c != nullptr);
-                auto* vkCmd = PtrCast<VulkanCommandList>(c);
-                data.vkCmdBufs.push_back(vkCmd->GetHandle());
-            }
-
-            VkSubmitInfo& info = submits[i];
-            info.signalSemaphoreCount = data.vkSignalSems.size();
-            info.pSignalSemaphores = data.vkSignalSems.data();
-            info.commandBufferCount = data.vkCmdBufs.size();
-            info.pCommandBuffers = data.vkCmdBufs.data();
-
-            info.waitSemaphoreCount = data.vkWaitSems.size();
-            info.pWaitSemaphores = data.vkWaitSems.data();
-            info.pWaitDstStageMask = data.vkWaitStages.data();
-        }
-        VkFence vkFence = VK_NULL_HANDLE;
-        if (fence != nullptr) {
-            VulkanFence* _vkFence = PtrCast<VulkanFence>(fence);
-            vkFence = _vkFence->GetHandle();
-        }
-
-        VK_CHECK(vkQueueSubmit(
-            _queueGraphics, submits.size(), submits.data(), vkFence
-        ));
+    CommandQueue* VulkanDevice::GetGfxCommandQueue() {
+        return _gfxQ;
     }
+    CommandQueue* VulkanDevice::GetCopyCommandQueue() {
+        return _copyQ;
+    }
+    
+    
+    const VkInstance& VulkanDevice::GetInstance() const {return _ctx->GetHandle();}
+
+    //void VulkanDevice::SubmitCommand(const CommandList* cmd ){
+//
+    //    assert(cmd != nullptr);
+    //    auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
+    //    auto rawCmdBuf = vkCmd->GetHandle();
+    //        
+    //    VkSubmitInfo info {};
+    //    info.commandBufferCount = 1;
+    //    info.pCommandBuffers = &rawCmdBuf;
+    //   
+    //    VK_CHECK(vkQueueSubmit(
+    //        _queueGraphics, 1, &info, nullptr
+    //    ));
+    //}
 
     SwapChain::State VulkanDevice::PresentToSwapChain(
         const std::vector<Semaphore*>& waitSemaphores,
@@ -776,10 +786,12 @@ namespace Veldrid {
         auto imageIndex = vkSC->GetCurrentImageIdx();
         presentInfo.pImageIndices = &imageIndex;
 
+        vkSC->MarkCurrentImageInUse();
+
         //object presentLock = vkSC.PresentQueueIndex == _graphicsQueueIndex ? _graphicsQueueLock : vkSC;
         //lock(presentLock)
         {
-            auto res = vkQueuePresentKHR(_queueGraphics, &presentInfo);
+            auto res = vkQueuePresentKHR(_gfxQ->GetHandle(), &presentInfo);
             //if (vkSC.AcquireNextImage(_device, VkSemaphore.Null, vkSC.ImageAvailableFence))
             //{
             //    Vulkan.VkFence fence = vkSC.ImageAvailableFence;
@@ -857,19 +869,19 @@ namespace Veldrid {
 
         switch (desc.hostAccess)
         {        
-        case Description::HostAccess::PreferRead:
+        case HostAccess::PreferRead:
             //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
             break;
-        case Description::HostAccess::PreferWrite:
+        case HostAccess::PreferWrite:
             //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
             break;
-        case Description::HostAccess::None:
+        case HostAccess::None:
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         default:
             break;
@@ -934,34 +946,72 @@ namespace Veldrid {
     }
 
     VulkanFence::~VulkanFence()
-    {
-        vkDestroyFence(_Dev()->LogicalDev(), _fence, nullptr);
+    {        
+        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        vkDestroySemaphore(vkDev->LogicalDev(), _timelineSem, nullptr);
     }
+    
+    uint64_t VulkanFence::GetCurrentValue() {
+        uint64_t value;
+        vkGetSemaphoreCounterValue(_Dev()->LogicalDev(), _timelineSem, &value);
 
-    inline bool VulkanFence::IsSignaled() const
-    {
-        auto res = vkGetFenceStatus(_Dev()->LogicalDev(), _fence);
-        VK_ASSERT(res != VK_ERROR_DEVICE_LOST);
-        return res == VK_SUCCESS;
+        return value;
     }
+    void VulkanFence::SignalFromCPU(uint64_t signalValue) {
+        VkSemaphoreSignalInfo signalInfo {};
+        signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+        signalInfo.pNext = nullptr;
+        signalInfo.semaphore = _timelineSem;
+        signalInfo.value = signalValue;
 
-    inline void VulkanFence::Reset() {
-        VK_CHECK(vkResetFences(_Dev()->LogicalDev(), 1, &_fence));
+        vkSignalSemaphoreKHR(_Dev()->LogicalDev(), &signalInfo);
     }
+    bool VulkanFence::WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) {
+        VkSemaphoreWaitInfo waitInfo {};
+        waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        waitInfo.pNext = nullptr;
+        waitInfo.flags = 0;
+        waitInfo.semaphoreCount = 1;
+        waitInfo.pSemaphores = &_timelineSem;
+        waitInfo.pValues = &expectedValue;
 
-    sp<Fence> VulkanFence::Make(const sp<VulkanDevice>& dev, bool signaled)
-    {
-        VkFenceCreateInfo fenceCreateInfo{};
-        fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (signaled)
-        {
-            fenceCreateInfo.flags |= VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
+        auto res = vkWaitSemaphoresKHR(_Dev()->LogicalDev(), &waitInfo, timeoutMs * 1000000);
+
+        switch (res) {
+        //On success, this command returns
+            case VK_SUCCESS: return true;
+            case VK_TIMEOUT: return false;
+
+        //On failure, this command returns
+            case VK_ERROR_OUT_OF_HOST_MEMORY:
+            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+            case VK_ERROR_DEVICE_LOST:
+            default:
+                //throw std::exception("wait returns error: %d");
+                break;
         }
-        VkFence raw_fence;
-        VK_CHECK(vkCreateFence(dev->LogicalDev(), &fenceCreateInfo, nullptr, &raw_fence));
+
+        return false;
+    }
+
+    sp<Fence> VulkanFence::Make(const sp<VulkanDevice>& dev)
+    {
+        VkSemaphoreTypeCreateInfo timelineCreateInfo {};
+        timelineCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+        timelineCreateInfo.pNext = NULL;
+        timelineCreateInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        timelineCreateInfo.initialValue = 0;
+
+        VkSemaphoreCreateInfo createInfo {};
+        createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        createInfo.pNext = &timelineCreateInfo;
+        createInfo.flags = 0;
+
+        VkSemaphore timelineSemaphore;
+        VK_CHECK(vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &timelineSemaphore));
 
         auto fen = new VulkanFence(dev);
-        fen->_fence = raw_fence;
+        fen->_timelineSem = timelineSemaphore;
 
         return sp<Fence>(fen);
     }
@@ -1026,7 +1076,8 @@ namespace Veldrid {
                 //Create a new command pool
                 VkCommandPoolCreateInfo cmdPoolCI{};
                 cmdPoolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-                cmdPoolCI.flags = VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+                cmdPoolCI.flags = VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_TRANSIENT_BIT
+                                | VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 cmdPoolCI.queueFamilyIndex = _queueFamily;
 
                 VK_CHECK(vkCreateCommandPool(_dev, &cmdPoolCI, nullptr, &raw_pool));
@@ -1042,6 +1093,84 @@ namespace Veldrid {
         }
 
         return sp(holder);
+    }
+
+    VulkanCommandQueue::VulkanCommandQueue(
+        VulkanDevice* dev,
+        std::uint32_t queueFamily,
+        VkQueue q
+    )
+        : _dev(dev)
+        , _cmdPoolMgr(dev->LogicalDev(), queueFamily)
+        , _q(q)
+    { }
+
+    void VulkanCommandQueue::EncodeSignalFence(Fence* fence, uint64_t value) {
+        auto rawFence = PtrCast<VulkanFence>(fence)->GetHandle();
+        const uint64_t signalValue = value; // Set semaphore value
+
+        VkTimelineSemaphoreSubmitInfo timelineInfo {};
+        timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timelineInfo.pNext = NULL;
+        timelineInfo.signalSemaphoreValueCount = 1;
+        timelineInfo.pSignalSemaphoreValues = &signalValue;
+
+        VkSubmitInfo submitInfo {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = &timelineInfo;
+        submitInfo.signalSemaphoreCount  = 1;
+        submitInfo.pSignalSemaphores = &rawFence;
+
+        vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE);
+
+    }
+
+    void VulkanCommandQueue::EncodeWaitForFence(Fence* fence, uint64_t value) {
+        auto rawFence = PtrCast<VulkanFence>(fence)->GetHandle();
+        const uint64_t waitValue = value; // Wait until semaphore value is >= 2
+
+        VkTimelineSemaphoreSubmitInfo timelineInfo {};
+        timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timelineInfo.pNext = NULL;
+        timelineInfo.waitSemaphoreValueCount = 1;
+        timelineInfo.pWaitSemaphoreValues = &waitValue;
+
+        VkSubmitInfo submitInfo {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = &timelineInfo;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &rawFence;
+
+        vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE);
+    }
+
+    void VulkanCommandQueue::SubmitCommand(CommandList* cmd) {
+        assert(cmd != nullptr);
+        auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
+        auto rawCmdBuf = vkCmd->GetHandle();
+            
+        VkSubmitInfo info {};
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        info.commandBufferCount = 1;
+        info.pCommandBuffers = &rawCmdBuf;
+       
+        VK_CHECK(vkQueueSubmit(
+            _q, 1, &info, nullptr
+        ));
+    }
+
+    sp<CommandList> VulkanCommandQueue::CreateCommandList(){
+
+        _dev->ref();
+        auto vkDev = sp<VulkanDevice>(_dev);
+
+        auto cmdPool = _cmdPoolMgr.GetOnePool();
+        auto vkCmdBuf = cmdPool->AllocateBuffer();
+
+        auto cmdBuf = new VulkanCommandList(vkDev, vkCmdBuf, std::move(cmdPool));
+
+        return sp<CommandList>(cmdBuf);
+    
     }
 
     //sp<_CmdPoolContainer> _CmdPoolMgr::GetOnePool() { return _AcquireCmdPoolHolder(); }

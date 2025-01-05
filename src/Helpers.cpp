@@ -357,20 +357,20 @@ namespace Veldrid::Helpers
             }
         }
 
-        std::uint32_t GetSampleCountUInt32(Veldrid::Texture::Description::SampleCount sampleCount){
+        std::uint32_t GetSampleCountUInt32(Veldrid::SampleCount sampleCount){
             switch (sampleCount)
             {
-                case Veldrid::Texture::Description::SampleCount::x1:
+                case Veldrid::SampleCount::x1:
                     return 1;
-                case Veldrid::Texture::Description::SampleCount::x2:
+                case Veldrid::SampleCount::x2:
                     return 2;
-                case Veldrid::Texture::Description::SampleCount::x4:
+                case Veldrid::SampleCount::x4:
                     return 4;
-                case Veldrid::Texture::Description::SampleCount::x8:
+                case Veldrid::SampleCount::x8:
                     return 8;
-                case Veldrid::Texture::Description::SampleCount::x16:
+                case Veldrid::SampleCount::x16:
                     return 16;
-                case Veldrid::Texture::Description::SampleCount::x32:
+                case Veldrid::SampleCount::x32:
                     return 32;
                 default:return 0;
             }
@@ -476,17 +476,17 @@ namespace Veldrid::Helpers
             return viewFormat == realFormat;
         }
 
-        Veldrid::Texture::Description::SampleCount GetSampleCount(std::uint32_t samples)
+        Veldrid::SampleCount GetSampleCount(std::uint32_t samples)
         {
             switch (samples)
             {
-                case 1: return Veldrid::Texture::Description::SampleCount::x1;
-                case 2: return Veldrid::Texture::Description::SampleCount::x2;
-                case 4: return Veldrid::Texture::Description::SampleCount::x4;
-                case 8: return Veldrid::Texture::Description::SampleCount::x8;
-                case 16: return Veldrid::Texture::Description::SampleCount::x16;
-                case 32: return Veldrid::Texture::Description::SampleCount::x32;
-                default: return Veldrid::Texture::Description::SampleCount::x1;
+                case 1: return  Veldrid::SampleCount::x1;
+                case 2: return  Veldrid::SampleCount::x2;
+                case 4: return  Veldrid::SampleCount::x4;
+                case 8: return  Veldrid::SampleCount::x8;
+                case 16: return Veldrid::SampleCount::x16;
+                case 32: return Veldrid::SampleCount::x32;
+                default: return Veldrid::SampleCount::x1;
             }
         }
 

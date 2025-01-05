@@ -30,13 +30,52 @@ namespace Veldrid
         return sp(_vkDev);
     }
 
-    VLD_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
+    sp<Framebuffer> VulkanResourceFactory::CreateFramebuffer (
+        const Framebuffer ::Description& description 
+    ){ 
+        return VulkanFramebuffer ::Make(_CreateNewDevHandle(), description); 
+    }
+    
+    sp<Texture> VulkanResourceFactory::CreateTexture ( 
+        const Texture ::Description& description 
+    ){ 
+        return VulkanTexture ::Make(_CreateNewDevHandle(), description); 
+    } 
+    sp<Buffer> VulkanResourceFactory::CreateBuffer ( 
+        const Buffer ::Description& description 
+    ){ 
+        return VulkanBuffer ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<Sampler> VulkanResourceFactory::CreateSampler ( 
+        const Sampler ::Description& description 
+    ){ 
+        return VulkanSampler ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<ResourceSet> VulkanResourceFactory::CreateResourceSet ( 
+        const ResourceSet ::Description& description 
+    ){ 
+        return VulkanResourceSet ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<ResourceLayout> VulkanResourceFactory::CreateResourceLayout ( 
+        const ResourceLayout ::Description& description 
+    ){ 
+        return VulkanResourceLayout ::Make(_CreateNewDevHandle(), description); 
+    } 
+    
+    sp<SwapChain> VulkanResourceFactory::CreateSwapChain (
+        const SwapChain ::Description& description 
+    ){ 
+        return VulkanSwapChain ::Make(_CreateNewDevHandle(), description); 
+    }
 
     sp<Shader> VulkanResourceFactory::CreateShader(
         const Shader::Description& desc,
-        const std::vector<std::uint32_t>& spv
+        const std::span<std::uint8_t>& il
     ){
-        return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
+        return VulkanShader::Make(_CreateNewDevHandle(), desc, il);
     }
 
     sp<Pipeline> VulkanResourceFactory::CreateGraphicsPipeline(
@@ -65,16 +104,14 @@ namespace Veldrid
         const TextureView::Description& description
     ){
         auto vkTex = PtrCast<VulkanTexture>(texture.get());
-        return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
+        return VulkanTextureView::Make(RefRawPtr(vkTex), description);
     }
 
     
-    sp<CommandList> VulkanResourceFactory::CreateCommandList(){
-        return VulkanCommandList::Make(_CreateNewDevHandle());
-    }
 
-    sp<Fence> VulkanResourceFactory::CreateFence(bool initialSignaled) {
-        return VulkanFence::Make(_CreateNewDevHandle(), initialSignaled);
+
+    sp<Fence> VulkanResourceFactory::CreateFence() {
+        return VulkanFence::Make(_CreateNewDevHandle());
     }
 
     sp<Semaphore> VulkanResourceFactory::CreateDeviceSemaphore() {

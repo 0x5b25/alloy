@@ -44,14 +44,15 @@ namespace Veldrid
 
         virtual ~VulkanFramebufferBase();
 
-        virtual const VkFramebuffer& GetHandle() const = 0;
 
+        //virtual const VkFramebuffer& GetHandle() const = 0;
 
-        virtual VkRenderPass GetRenderPassNoClear_Init() const = 0;
-        virtual VkRenderPass GetRenderPassNoClear_Load() const = 0;
-        virtual VkRenderPass GetRenderPassClear() const = 0;
+        //virtual VkRenderPass GetRenderPassNoClear_Init() const = 0;
+        //virtual VkRenderPass GetRenderPassNoClear_Load() const = 0;
+        //virtual VkRenderPass GetRenderPassClear() const = 0;
 
         virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) = 0;
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) = 0;
 
         virtual void VisitAttachments(AttachmentVisitor visitor) = 0;
 
@@ -59,10 +60,10 @@ namespace Veldrid
 
     class VulkanFramebuffer : public VulkanFramebufferBase{
 
-        VkFramebuffer _fb;
-        VkRenderPass renderPassNoClear;
-        VkRenderPass renderPassNoClearLoad;
-        VkRenderPass renderPassClear;
+        //VkFramebuffer _fb;
+        //VkRenderPass renderPassNoClear;
+        //VkRenderPass renderPassNoClearLoad;
+        //VkRenderPass renderPassClear;
 
         std::vector<VkImageView> _attachmentViews;
 
@@ -77,10 +78,10 @@ namespace Veldrid
             , description(desc)
         { 
 
-            CreateCompatibleRenderPasses(
-                reinterpret_cast<VulkanDevice*>(dev.get()), description, isPresented,
-                renderPassNoClear, renderPassNoClearLoad, renderPassClear
-            );
+            //CreateCompatibleRenderPasses(
+            //    reinterpret_cast<VulkanDevice*>(dev.get()), description, isPresented,
+            //    renderPassNoClear, renderPassNoClearLoad, renderPassClear
+            //);
         }
 
     public:
@@ -92,15 +93,16 @@ namespace Veldrid
             bool isPresented = false
         );
 
-        virtual const VkFramebuffer& GetHandle() const override {return _fb;}
+        //virtual const VkFramebuffer& GetHandle() const override {return _fb;}
 
-        virtual VkRenderPass GetRenderPassNoClear_Init() const {return renderPassNoClear;}
-        virtual VkRenderPass GetRenderPassNoClear_Load() const {return renderPassNoClearLoad;}
-        virtual VkRenderPass GetRenderPassClear() const {return renderPassClear;}
+        //virtual VkRenderPass GetRenderPassNoClear_Init() const {return renderPassNoClear;}
+        //virtual VkRenderPass GetRenderPassNoClear_Load() const {return renderPassNoClearLoad;}
+        //virtual VkRenderPass GetRenderPassClear() const {return renderPassClear;}
 
         virtual const Description& GetDesc() const {return description;}
 
         virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) override;
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) override;
 
         virtual void VisitAttachments(AttachmentVisitor visitor);
 

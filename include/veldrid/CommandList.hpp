@@ -2,18 +2,25 @@
 
 #include "veldrid/Helpers.hpp"
 #include "veldrid/DeviceResource.hpp"
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/Framebuffer.hpp"
+//#include "veldrid/Pipeline.hpp"
+//#include "veldrid/Buffer.hpp"
+//#include "veldrid/BindableResource.hpp"
+//#include "veldrid/Framebuffer.hpp"
 #include "veldrid/Types.hpp"
+#include "veldrid/ResourceBarrier.hpp"
 
 #include <cstdint>
 #include <vector>
 #include <type_traits>
+#include <variant>
 
 namespace Veldrid
 {
+    class Buffer;
+    class Pipeline;
+    class FrameBuffer;
+    class ResourceLayout;
+    class ResourceSet;
     
     class CommandList : public DeviceResource{
 
@@ -52,15 +59,14 @@ namespace Veldrid
         // <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
         // <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>, depending on the kind of resource.</param>
         virtual void SetGraphicsResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) = 0;
+            const sp<ResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
             
         virtual void SetComputeResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) = 0;
+            const sp<ResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
 
+        //#TODO: add load, store and clearcolor handling for more efficient operation
         virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
         virtual void EndRenderPass() = 0;
 
@@ -183,32 +189,32 @@ namespace Veldrid
         /// which new data will be uploaded.</param>
         /// <param name="source">A pointer to the start of the data to upload.</param>
         /// <param name="sizeInBytes">The total size of the uploaded data, in bytes.</param>
-        virtual void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            void* source,
-            std::uint32_t sizeInBytes) = 0;
-
-        template<typename T>
-        void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            const T& source
-        ){
-            UpdateBuffer(buffer, bufferOffsetInBytes,
-                &source, sizeof(source));
-        }
-
-        template<typename T>
-        void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            const std::vector<T>& source
-        ){
-            auto totalSize = sizeof(T) * source.size();
-            UpdateBuffer(buffer, bufferOffsetInBytes,
-                source.data(), totalSize);
-        }
+        //virtual void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    void* source,
+        //    std::uint32_t sizeInBytes) = 0;
+        //
+        //template<typename T>
+        //void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    const T& source
+        //){
+        //    UpdateBuffer(buffer, bufferOffsetInBytes,
+        //        &source, sizeof(source));
+        //}
+        //
+        //template<typename T>
+        //void UpdateBuffer(
+        //    const sp<Buffer>& buffer,
+        //    std::uint32_t bufferOffsetInBytes,
+        //    const std::vector<T>& source
+        //){
+        //    auto totalSize = sizeof(T) * source.size();
+        //    UpdateBuffer(buffer, bufferOffsetInBytes,
+        //        source.data(), totalSize);
+        //}
 
         /// <summary>
         /// Copies a region from the source <see cref="DeviceBuffer"/> to another region in the destination <see cref="DeviceBuffer"/>.
@@ -358,6 +364,9 @@ namespace Veldrid
         // <param name="texture">The <see cref="Texture"/> to generate mipmaps for. This Texture must have been created with
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
         virtual void GenerateMipmaps(const sp<Texture>& texture) = 0;
+
+        
+        virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) = 0;
 
         // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
         // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order

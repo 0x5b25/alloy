@@ -9,6 +9,7 @@
 #include "veldrid/SyncObjects.hpp"
 #include "veldrid/Buffer.hpp"
 #include "veldrid/SwapChain.hpp"
+#include "veldrid/CommandQueue.hpp"
 
 #include <deque>
 #include <map>
@@ -25,7 +26,6 @@ namespace Veldrid
     class VulkanBuffer;
     class VulkanDevice;
     //class VulkanResourceFactory;
-
     
     struct PhyDevInfo {
         std::string name;
@@ -55,14 +55,11 @@ namespace Veldrid
         sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
 
     public:
-        _CmdPoolMgr() { }
-        ~_CmdPoolMgr() { }
-
-        void Init(VkDevice dev, std::uint32_t queueFamily){
-            _dev = dev; _queueFamily = queueFamily;
-        }
-
-        void DeInit(){
+        _CmdPoolMgr(VkDevice dev, std::uint32_t queueFamily)
+            : _dev { dev }
+            , _queueFamily { queueFamily }
+        { }
+        ~_CmdPoolMgr() {
             //Threoretically there should be no bound command pools,
             // i.e. all command buffers holded by threads should be released
             // then the VulkanDevice can be destroyed.
@@ -86,6 +83,42 @@ namespace Veldrid
 
         VkCommandBuffer AllocateBuffer();
         void FreeBuffer(VkCommandBuffer buf);
+    };
+
+    class VulkanCommandQueue : public CommandQueue {
+
+        VulkanDevice* _dev;
+        _CmdPoolMgr _cmdPoolMgr;
+        VkQueue _q;
+
+    public:
+
+        VulkanCommandQueue(VulkanDevice* dev, std::uint32_t queueFamily, VkQueue q);
+
+        //virtual ~VulkanCommandQueue() override {
+        //    _q->Release();
+        //}
+
+        //virtual bool WaitForSignal(std::uint64_t timeoutNs) = 0;
+        //bool WaitForSignal() {
+        //    return WaitForSignal((std::numeric_limits<std::uint64_t>::max)());
+        //}
+        //virtual bool IsSignaled() const = 0;
+
+        //virtual void Reset() = 0;
+
+        VkQueue GetHandle() const {return _q;}
+
+        virtual void EncodeSignalFence(Fence* fence, uint64_t value) override;
+
+        virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
+
+        virtual void SubmitCommand(CommandList* cmd) override;
+
+
+        
+        virtual sp<CommandList> CreateCommandList() override;
+
     };
 
     class VulkanDevice : public GraphicsDevice {
@@ -118,13 +151,15 @@ namespace Veldrid
         PhyDevInfo _phyDev;
         VkDevice _dev;
         VmaAllocator _allocator;
-        _CmdPoolMgr _cmdPoolMgr;
+        //_CmdPoolMgr _cmdPoolMgr;
         VK::priv::_DescriptorPoolMgr _descPoolMgr;
 
-        VkQueue _queueGraphics, _queueCopy, _queueCompute;
+        VulkanCommandQueue* _gfxQ;
+        VulkanCommandQueue* _copyQ;
+        VulkanCommandQueue* _computeQ;
 
-        VkSurfaceKHR _surface;
-        bool _isOwnSurface;
+        //VkSurfaceKHR _surface;
+        //bool _isOwnSurface;
         VulkanResourceFactory _resFactory;
 
         AdapterInfo _adpInfo;
@@ -143,12 +178,14 @@ namespace Veldrid
         ~VulkanDevice();
 
         static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options,
-            SwapChainSource* swapChainSource = nullptr
+            const GraphicsDevice::Options& options
         );
 
 
     public:
+        
+        virtual void* GetNativeHandle() const override { return _dev; }
+
         virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
@@ -158,9 +195,11 @@ namespace Veldrid
         const VkDevice& LogicalDev() const {return _dev;}
         const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
 
-        const VkSurfaceKHR& Surface() const {return _surface;}
+        const VkInstance& GetInstance() const;
 
-        const VkQueue& GraphicsQueue() const {return _queueGraphics;}
+        //const VkSurfaceKHR& Surface() const {return _surface;}
+
+        const VkQueue& GraphicsQueue() const {return _gfxQ->GetHandle();}
 
         const VmaAllocator& Allocator() const {return _allocator;}
 
@@ -173,17 +212,18 @@ namespace Veldrid
 
 
     public:
-        sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
+        //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
         VK::priv::_DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
     //Interface
     public:
 
-        virtual void SubmitCommand(
-            const std::vector<SubmitBatch>& batch,
-            Fence* fence) override;
+        //virtual void SubmitCommand(const CommandList* cmd) override;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,
             SwapChain* sc) override;
+
+        virtual CommandQueue* GetGfxCommandQueue() override;
+        virtual CommandQueue* GetCopyCommandQueue() override;
 
         //virtual bool WaitForFence(const sp<Fence>& fence, std::uint32_t timeOutNs) override;
         void WaitForIdle() override {vkDeviceWaitIdle(_dev);}
@@ -234,7 +274,7 @@ namespace Veldrid
 
     private:
 
-        VkFence _fence;
+        VkSemaphore  _timelineSem;
 
         VulkanDevice* _Dev() const {
             return static_cast<VulkanDevice*>(dev.get());
@@ -247,19 +287,17 @@ namespace Veldrid
         ~VulkanFence();
 
         static sp<Fence> Make(
-            const sp<VulkanDevice>& dev,
-            bool signaled = false
+            const sp<VulkanDevice>& dev
         );
 
-        const VkFence& GetHandle() const { return _fence; }
-
-        bool WaitForSignal(std::uint64_t timeoutNs) override {
-            auto res = vkWaitForFences(_Dev()->LogicalDev(), 1, &_fence, 0, timeoutNs);
-            return res == VK_SUCCESS;
+        const VkSemaphore& GetHandle() const { return _timelineSem; }
+    
+        virtual uint64_t GetCurrentValue() override;
+        virtual void SignalFromCPU(uint64_t signalValue) override;
+        virtual bool WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) override;
+        bool WaitFromCPU(uint64_t expectedValue) {
+            return WaitFromCPU(expectedValue, (std::numeric_limits<std::uint32_t>::max)());
         }
-        bool IsSignaled() const override;
-
-        void Reset() override;
 
     };
     

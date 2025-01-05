@@ -9,6 +9,8 @@
 
 namespace Veldrid
 {
+    //class Texture;
+
     // A description of the output attachments used by the <see cref="Pipeline"/>.
     struct OutputDescription {
 
@@ -18,10 +20,11 @@ namespace Veldrid
 
         std::optional<Attachment> depthAttachment;
         std::vector<Attachment> colorAttachment;
-        Texture::Description::SampleCount sampleCount;
+        SampleCount sampleCount;
 
     };
 
+    //#TODO: Rename framebuffer to rendertarget to more accurately reflect its usage
     class Framebuffer : public DeviceResource{
 
     public:
@@ -88,7 +91,7 @@ namespace Veldrid
             auto& sampleCount = odesc.sampleCount;
             auto& description = GetDesc();
 
-            sampleCount = Texture::Description::SampleCount::x1;
+            sampleCount = SampleCount::x1;
             //OutputAttachmentDescription? depthAttachment = null;
             if (description.depthTarget.target != nullptr)
             {

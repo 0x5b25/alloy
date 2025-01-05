@@ -1,6 +1,7 @@
 #pragma once
 
 //3rd-party headers
+#include <d3d12.h>
 #include <D3D12MemAlloc.h>
 
 //veldrid public headers
@@ -10,6 +11,7 @@
 #include "veldrid/SyncObjects.hpp"
 #include "veldrid/Buffer.hpp"
 #include "veldrid/SwapChain.hpp"
+#include "veldrid/CommandQueue.hpp"
 
 //standard library headers
 #include <string>
@@ -18,16 +20,17 @@
 //backend specific headers
 
 //platform specific headers
-#include <d3d12.h>
 #include <dxgi1_4.h> //Guaranteed by DX12
 #include <wrl/client.h> // for ComPtr
 
 //Local headers
 #include "DXCResourceFactory.hpp"
+#include "D3DDescriptorHeapMgr.hpp"
 
 namespace Veldrid{
 
-
+    class DXCFence;
+    class DXCCommandQueue;
     class DXCQueue : public RefCntBase{
     private:
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> _queue;
@@ -68,6 +71,41 @@ namespace Veldrid{
         std::uint64_t ExecuteCommandList(ID3D12CommandList* List);    
     
     };
+
+    
+    class DXCCommandQueue : public CommandQueue{
+
+        ID3D12CommandQueue* _q;
+        D3D12_COMMAND_LIST_TYPE _qType;
+        DXCDevice* _dev;
+
+    public:
+
+        DXCCommandQueue(DXCDevice* pDev, D3D12_COMMAND_LIST_TYPE cmdQType);
+
+        ID3D12CommandQueue* GetHandle() const {return _q;}
+
+        virtual ~DXCCommandQueue() override;
+
+        //virtual bool WaitForSignal(std::uint64_t timeoutNs) override;
+        //bool WaitForSignal() {
+        //    return WaitForSignal((std::numeric_limits<std::uint64_t>::max)());
+        //}
+        //virtual bool IsSignaled() const override;
+
+        //virtual void Reset() override;
+
+        virtual void EncodeSignalFence(Fence* fence, uint64_t value) override;
+
+        virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
+
+        virtual void SubmitCommand(CommandList* cmd) override;
+        
+        virtual sp<CommandList> CreateCommandList() override;
+
+    };
+
+    
 
     //Signal operation will increment expected fence value, so a wait-signal pattern is required
     class DXCAutoFence {
@@ -112,21 +150,29 @@ namespace Veldrid{
         D3D12_FEATURE_DATA_D3D12_OPTIONS2 options2;
         D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
         D3D12_FEATURE_DATA_D3D12_OPTIONS4 options4;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
-        //D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
 
         float timestamp_period;
-        //bool support_a4b4g4r4;
+        bool support_a4b4g4r4;
 
         void ReadFromDevice(ID3D12Device* pdev);
+
+        bool SupportEnhancedBarrier() const { return options12.EnhancedBarriersSupported; }
+        bool SupportMeshShader() const {return options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;}
+        bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
+        bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
+    
     };
 
-    class DXCDevice : public  GraphicsDevice {
+    class DXCDevice : public  GraphicsDevice, public DXCResourceFactory {
 
     public:
 
@@ -136,14 +182,19 @@ namespace Veldrid{
         Microsoft::WRL::ComPtr<IDXGIAdapter1> _adp;
         Microsoft::WRL::ComPtr<ID3D12Device> _dev;
 
-        Microsoft::WRL::ComPtr<ID3D12CommandQueue> _q;
-        Microsoft::WRL::ComPtr<ID3D12CommandAllocator> _cmdAlloc;
+        //Microsoft::WRL::ComPtr<ID3D12CommandQueue> _q;
+
+        DXCCommandQueue* _gfxQ;
+        DXCCommandQueue* _copyQ;
+
+        //Microsoft::WRL::ComPtr<ID3D12CommandAllocator> _cmdAlloc;
         DXCAutoFence _waitIdleFence;
 
         Microsoft::WRL::ComPtr<D3D12MA::Allocator> _alloc;
 
+        Veldrid::DXC::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
-        DXCResourceFactory _resFactory;
+        //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
         AdapterInfo _adpInfo;
@@ -151,17 +202,19 @@ namespace Veldrid{
         GraphicsDevice::Features _commonFeat;
         D3D12DevCaps _dxcFeat;
 
-        DXCDevice();
+        DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev);
 
     public:
 
         ~DXCDevice();
 
-        ID3D12Device* GetDevice() {return _dev.Get();}
+        ID3D12Device* GetDevice() const {return _dev.Get();}
+        IDXGIAdapter1* GetDxgiAdp() const {return _adp.Get();}
+
+        virtual void* GetNativeHandle() const override { return GetDevice(); }
 
         static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options,
-            SwapChainSource* swapChainSource = nullptr
+            const GraphicsDevice::Options& options
         );
 
         //virtual const std::string& DeviceName() const override { return _devName; }
@@ -172,22 +225,52 @@ namespace Veldrid{
 
         const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }
 
-        virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
-
-        ID3D12CommandQueue* GraphicsQueue() const {return _q.Get();}
+        virtual ResourceFactory* GetResourceFactory() override { return this; };
 
         D3D12MA::Allocator* Allocator() const {return _alloc.Get();}
 
-
-        virtual void SubmitCommand(
-            const std::vector<SubmitBatch>& batch,
-            Fence* fence) override;
+        ID3D12CommandQueue* GetImplicitQueue() const {return _gfxQ->GetHandle(); } 
+        //virtual void SubmitCommand(const CommandList* cmd) override;
         virtual SwapChain::State PresentToSwapChain(
             const std::vector<Semaphore*>& waitSemaphores,
             SwapChain* sc) override;
                
+        virtual CommandQueue* GetGfxCommandQueue() override;
+        virtual CommandQueue* GetCopyCommandQueue() override;
+
         virtual void WaitForIdle() override;
 
+    };
+
+    class DXCFence : public Fence {
+
+        ID3D12Fence* _f;
+        //SetEventOnCompletion will block until complete if handle is null
+        HANDLE _fenceEventHandle;
+
+    public:
+
+        DXCFence(DXCDevice* dev);
+
+        virtual ~DXCFence() override;
+
+        ID3D12Fence* GetHandle() const {return _f;}
+
+        //virtual bool WaitForSignal(std::uint64_t timeoutNs) override;
+        //bool WaitForSignal() {
+        //    return WaitForSignal((std::numeric_limits<std::uint64_t>::max)());
+        //}
+        //virtual bool IsSignaled() const override;
+
+        //virtual void Reset() override;
+
+        virtual uint64_t GetCurrentValue() override {
+            return _f->GetCompletedValue();
+        }
+        virtual void SignalFromCPU(uint64_t signalValue) override {
+            _f->Signal(signalValue);
+        }
+        virtual bool WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) override;
     };
 
     
@@ -224,6 +307,9 @@ namespace Veldrid{
             const Buffer::Description& desc
         );
 
+        
+        virtual uint64_t GetNativeHandle() const {return GetHandle()->GetGPUVirtualAddress();}
+
         ID3D12Resource* GetHandle() const {return _buffer->GetResource();}
 
         virtual void* MapToCPU();
@@ -233,27 +319,28 @@ namespace Veldrid{
     };
 
 
-    class DXCVLDFence : public Fence {
 
-        DXCAutoFence _fence;
-
-        DXCVLDFence(const sp<GraphicsDevice>& dev) : Fence(dev) {}
-    public:
-        ~DXCVLDFence() {}
-
-        static sp<Fence> Make(
-            const sp<DXCDevice>& dev,
-            bool signaled = false
-        );
-
-        const DXCAutoFence& GetHandle() const { return _fence; }
-
-        bool WaitForSignal(std::uint64_t timeoutNs) override;
-
-        bool IsSignaled() const override { return _fence.IsCompleted(); }
-
-        void Reset() override { _fence.IncrementFence();  }
-    };
+    //class DXCVLDFence : public Fence {
+    //
+    //    DXCAutoFence _fence;
+    //
+    //    DXCVLDFence(const sp<GraphicsDevice>& dev) : Fence(dev) {}
+    //public:
+    //    ~DXCVLDFence() {}
+    //
+    //    static sp<Fence> Make(
+    //        const sp<DXCDevice>& dev,
+    //        bool signaled = false
+    //    );
+    //
+    //    const DXCAutoFence& GetHandle() const { return _fence; }
+    //
+    //    bool WaitForSignal(std::uint64_t timeoutNs) override;
+    //
+    //    bool IsSignaled() const override { return _fence.IsCompleted(); }
+    //
+    //    void Reset() override { _fence.IncrementFence();  }
+    //};
 
     
 

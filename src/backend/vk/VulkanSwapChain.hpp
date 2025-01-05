@@ -12,6 +12,7 @@
 #include <optional>
 
 #include "VkCommon.hpp"
+#include "VkSurfaceUtil.hpp"
 #include "VulkanFramebuffer.hpp"
 #include "VulkanTexture.hpp"
 
@@ -29,7 +30,10 @@ namespace Veldrid
 
         VkImageView _colorTargetView;
         VkImageView _depthTargetView;
-        VkFramebuffer _fb;
+        //VkFramebuffer _fb;
+
+        
+        Framebuffer::Description _fbDesc;
 
 
         _SCFB(const sp<GraphicsDevice>& dev) : VulkanFramebufferBase(dev){}
@@ -45,11 +49,11 @@ namespace Veldrid
             const sp<VulkanTexture>& depthTarget = nullptr
         );
 
-        virtual const VkFramebuffer& GetHandle() const override {return _fb;}
+        //virtual const VkFramebuffer& GetHandle() const override {return _fb;}
 
-        virtual VkRenderPass GetRenderPassNoClear_Init() const;
-        virtual VkRenderPass GetRenderPassNoClear_Load() const;
-        virtual VkRenderPass GetRenderPassClear() const;
+        //virtual VkRenderPass GetRenderPassNoClear_Init() const;
+        //virtual VkRenderPass GetRenderPassNoClear_Load() const;
+        //virtual VkRenderPass GetRenderPassClear() const;
 
         virtual const Description& GetDesc() const;
 
@@ -83,6 +87,58 @@ namespace Veldrid
             }
         }
 
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) override {
+            VkRenderingAttachmentInfoKHR colorAttachmentRef{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+                .pNext = nullptr,
+                .imageView = _colorTargetView,
+                .imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .resolveMode = VK_RESOLVE_MODE_NONE,
+                .resolveImageView = nullptr,
+                .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD,
+                .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {},
+            };
+
+            VkRenderingAttachmentInfoKHR dsAttachment{
+                VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+            };
+
+            bool hasDepth = false, hasStencil = false;
+
+            if (HasDepthTarget())
+            {
+                hasDepth = true;
+
+                auto& texDesc = _depthTarget->GetDesc();
+
+                hasStencil = Helpers::FormatHelpers::IsStencilFormat(texDesc.format);
+
+                dsAttachment.imageView = _depthTargetView;
+                dsAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                dsAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+                dsAttachment.resolveImageView = nullptr;
+                dsAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                dsAttachment.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+                dsAttachment.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+                dsAttachment.clearValue = {};
+            }
+
+
+            const VkRenderingInfoKHR render_info {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+                .renderArea = VkRect2D{ {0, 0}, {GetDesc().GetWidth(), GetDesc().GetHeight()} },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &colorAttachmentRef,
+                .pDepthAttachment = hasDepth ? &dsAttachment : nullptr,
+                .pStencilAttachment = hasStencil ? &dsAttachment : nullptr,   
+            };
+
+            vkCmdBeginRenderingKHR(cb, &render_info);
+        }
+
         void VisitAttachments(AttachmentVisitor visitor) override {
             visitor(_colorTarget, VisitedAttachmentType::ColorAttachment);
             
@@ -101,14 +157,16 @@ namespace Veldrid
 
     class VulkanSwapChain : public SwapChain{
         friend class _SCFB;
+
+        VK::priv::SurfaceContainer _surf;
            
-        VkRenderPass _renderPassNoClear;
-        VkRenderPass _renderPassNoClearLoad;
-        VkRenderPass _renderPassClear;
+        //VkRenderPass _renderPassNoClear;
+        //VkRenderPass _renderPassNoClearLoad;
+        //VkRenderPass _renderPassClear;
 
         sp<VulkanTexture> _depthTarget;
         std::vector<sp<_SCFB>> _fbs;
-        Framebuffer::Description _fbDesc;
+        //std::vector<Framebuffer::Description> _fbDesc;
 
         VkSwapchainKHR _deviceSwapchain;
         VkExtent2D _scExtent;
@@ -117,12 +175,15 @@ namespace Veldrid
 
         VkFence _imageAvailableFence;
         std::uint32_t _currentImageIndex;
+        bool _currentImageInUse;
 
         VulkanSwapChain(
             const sp<GraphicsDevice>& dev,
             const Description& desc
             ) : SwapChain(dev, desc){
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
+            _currentImageIndex = 0;
+            _currentImageInUse = true;
         }
 
         bool CreateSwapchain(std::uint32_t width, std::uint32_t height);
@@ -136,6 +197,7 @@ namespace Veldrid
 
         //void RecreateAndReacquire(std::uint32_t width, std::uint32_t height);
         
+        //void PerformInitialLayoutTransition();
 
     public:
 
@@ -146,19 +208,17 @@ namespace Veldrid
             const Description& desc
         );
 
-        const VkRenderPass& GetRenderPassNoClear_Init() const {return _renderPassNoClear;}
-        const VkRenderPass& GetRenderPassNoClear_Load() const {return _renderPassNoClearLoad;}
-        const VkRenderPass& GetRenderPassClear() const {return _renderPassClear;}
+        //const VkRenderPass& GetRenderPassNoClear_Init() const {return _renderPassNoClear;}
+        //const VkRenderPass& GetRenderPassNoClear_Load() const {return _renderPassNoClearLoad;}
+        //const VkRenderPass& GetRenderPassClear() const {return _renderPassClear;}
         const VkSwapchainKHR& GetHandle() const { return _deviceSwapchain; }
 
         std::uint32_t GetCurrentImageIdx() const { return _currentImageIndex; }
 
+        void MarkCurrentImageInUse() { _currentImageInUse = true; }
+
     public:
-        sp<Framebuffer> GetFramebuffer() override{
-            //Swapchain image may be 0 when app minimized
-            if (_currentImageIndex < _fbs.size()) return _fbs[_currentImageIndex];
-            else                                  return nullptr;
-        }
+        sp<Framebuffer> GetBackBuffer() override;
 
         void Resize(
             std::uint32_t width, 
@@ -177,11 +237,6 @@ namespace Veldrid
         std::uint32_t GetHeight() const override {return _scExtent.height;}
 
         //virtual State SwapBuffers() override;
-
-        virtual State SwitchToNextFrameBuffer(
-            //Semaphore* signalSemaphore,
-            //Fence* fence
-        ) override;
     };
 
 } // namespace Veldrid

@@ -5,6 +5,8 @@
 #include <cassert>
 
 
+namespace Veldrid::VK::priv{
+
 SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
@@ -45,4 +47,6 @@ std::string GetSurfaceExtension(Veldrid::SwapChainSource* swapchainSource) {
 			return {};
 		}
 	}
+}
+
 }

@@ -7,6 +7,7 @@
 #include "VkTypeCvt.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
+#include "VulkanResourceBarrier.hpp"
 
 namespace Veldrid{
     const VkAccessFlags READ_MASK =
@@ -119,7 +120,7 @@ namespace Veldrid{
                 
             }
             else {
-                auto&[ entryIt, _insertRes] = _texRefs.insert({ 
+                const auto&[ entryIt, _insertRes] = _texRefs.insert({ 
                     vkTex, 
                     {
                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
@@ -237,7 +238,7 @@ namespace Veldrid{
 
         }
 
-        //VkMemoryBarrier{};
+        VkMemoryBarrier{};
         //VkBufferMemoryBarrier{};
         //VkImageMemoryBarrier{};
         vkCmdPipelineBarrier(
@@ -260,19 +261,29 @@ namespace Veldrid{
     #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentRenderPass != nullptr))
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentRenderPass != nullptr))
 
-    sp<CommandList> VulkanCommandList::Make(const sp<VulkanDevice>& dev){
-        auto* vkDev = PtrCast<VulkanDevice>(dev.get());
+    //sp<CommandList> VulkanCommandList::Make(const sp<VulkanDevice>& dev){
+    //    auto* vkDev = PtrCast<VulkanDevice>(dev.get());
+    //
+    //    auto cmdPool = vkDev->GetCmdPool();
+    //    auto vkCmdBuf = cmdPool->AllocateBuffer();
+    //
+    //    sp<GraphicsDevice> _dev(dev);
+    //    auto cmdBuf = new VulkanCommandList(_dev);
+    //    cmdBuf->_cmdBuf = vkCmdBuf;
+    //    cmdBuf->_cmdPool = std::move(cmdPool);
+    //
+    //    return sp<CommandList>(cmdBuf);
+    //}
 
-        auto cmdPool = vkDev->GetCmdPool();
-        auto vkCmdBuf = cmdPool->AllocateBuffer();
-
-        sp<GraphicsDevice> _dev(dev);
-        auto cmdBuf = new VulkanCommandList(_dev);
-        cmdBuf->_cmdBuf = vkCmdBuf;
-        cmdBuf->_cmdPool = std::move(cmdPool);
-
-        return sp<CommandList>(cmdBuf);
-    }
+    VulkanCommandList::VulkanCommandList(
+        const sp<VulkanDevice>& dev,
+        VkCommandBuffer cmdBuf,
+        sp<_CmdPoolContainer>&& alloc
+    )
+        : CommandList(dev)
+        , _cmdBuf(cmdBuf)
+        , _cmdPool(std::move(alloc))
+    { }
 
     VulkanCommandList::~VulkanCommandList(){
         _cmdPool->FreeBuffer(_cmdBuf);
@@ -321,45 +332,48 @@ namespace Veldrid{
         _rndPasses.emplace_back();
         _currentRenderPass = &_rndPasses.back();
 
+        //Add framebuffer to refcount resouces
         VulkanFramebufferBase* vkfb = PtrCast<VulkanFramebufferBase>(fb.get());
         _currentRenderPass->fb = RefRawPtr(vkfb);
 
-        _currentRenderPass->clearColorTargets.resize(
-            vkfb->GetDesc().colorTargets.size(), {}
-        );
+        //_currentRenderPass->clearColorTargets.resize(
+        //    vkfb->GetDesc().colorTargets.size(), {}
+        //);
 
-        vkfb->VisitAttachments([&](
-            const sp<VulkanTexture>& vkTarget,
-            VulkanFramebufferBase::VisitedAttachmentType type) {
+        //vkfb->VisitAttachments([&](
+        //    const sp<VulkanTexture>& vkTarget,
+        //    VulkanFramebufferBase::VisitedAttachmentType type) {
+        //
+        //        switch (type)
+        //        {
+        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::ColorAttachment: {
+        //            _resReg.RegisterTexUsage(vkTarget,
+        //                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        //                VK_ACCESS_SHADER_WRITE_BIT
+        //            );
+        //        }break;
+        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthAttachment: {
+        //            _resReg.RegisterTexUsage(vkTarget,
+        //                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        //                VK_ACCESS_SHADER_WRITE_BIT
+        //            );
+        //        }break;
+        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthStencilAttachment: {
+        //            _resReg.RegisterTexUsage(vkTarget,
+        //                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        //                VK_ACCESS_SHADER_WRITE_BIT
+        //            );
+        //        }break;
+        //        }
+        //    }
+        //);
 
-                switch (type)
-                {
-                case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::ColorAttachment: {
-                    _resReg.RegisterTexUsage(vkTarget,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_SHADER_WRITE_BIT
-                    );
-                }break;
-                case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthAttachment: {
-                    _resReg.RegisterTexUsage(vkTarget,
-                        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_SHADER_WRITE_BIT
-                    );
-                }break;
-                case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthStencilAttachment: {
-                    _resReg.RegisterTexUsage(vkTarget,
-                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_SHADER_WRITE_BIT
-                    );
-                }break;
-                }
-            }
-        );
+        vkfb->InsertCmdBeginDynamicRendering(_cmdBuf);
 
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
         //Init attachment containers
 
@@ -479,7 +493,8 @@ namespace Veldrid{
     }
     void VulkanCommandList::EndRenderPass(){
         CHK_RENDERPASS_BEGUN();
-        vkCmdEndRenderPass(_cmdBuf);
+        //vkCmdEndRenderPass(_cmdBuf);
+        vkCmdEndRenderingKHR(_cmdBuf);
         DEBUGCODE(_currentRenderPass = nullptr);
 
 
@@ -509,7 +524,7 @@ namespace Veldrid{
             VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
             VkAccessFlagBits::VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT
         );
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer.get());
         std::uint64_t offset64 = offset;
         vkCmdBindVertexBuffers(_cmdBuf, index, 1, &(vkBuffer->GetHandle()), &offset64);
@@ -522,44 +537,91 @@ namespace Veldrid{
             VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
             VkAccessFlagBits::VK_ACCESS_INDEX_READ_BIT
         );
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer.get());
-        vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, VdToVkIndexFormat(format));
+        vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, Veldrid::VK::priv::VdToVkIndexFormat(format));
     }
 
     
     void VulkanCommandList::SetGraphicsResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
+        const sp<ResourceSet>& rs
     ){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
-        assert(!_currentPipeline->IsComputePipeline());
+        auto pipeline = _currentPipeline;
+        assert(!_currentPipeline->IsComputePipeline(), "Expected current bound pipeline is graphics pipeline");
 
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        auto& entry = _resourceSets[slot];
-        entry.isNewlyChanged = true;
-        entry.resSet = RefRawPtr(vkrs);
-        entry.offsets = dynamicOffsets;
+        auto& dss = vkrs->GetHandle();
+
+        auto resourceSetCount = pipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
+
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
+
+        if (!descriptorSets.empty())
+        {
+            // Flush current batch.
+            vkCmdBindDescriptorSets(
+                _cmdBuf,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipeline->GetLayout(),
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr);
+        }
+        _devRes.insert(rs);
+        //auto& entry = _resourceSets[slot];
+        //entry.isNewlyChanged = true;
+        //entry.resSet = RefRawPtr(vkrs);
+        //entry.offsets = dynamicOffsets;
     }
         
     void VulkanCommandList::SetComputeResourceSet(
-        std::uint32_t slot, 
-        const sp<ResourceSet>& rs, 
-        const std::vector<std::uint32_t>& dynamicOffsets
+        const sp<ResourceSet>& rs
     ){
         CHK_PIPELINE_SET();
-        assert(slot < _resourceSets.size());
         assert(_currentPipeline->IsComputePipeline());
 
+        auto pipeline = _currentPipeline;
+        
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        auto& entry = _resourceSets[slot];
-        entry.isNewlyChanged = true;
-        entry.resSet = RefRawPtr(vkrs);
-        entry.offsets = dynamicOffsets;
+        auto& dss = vkrs->GetHandle();
+
+        auto resourceSetCount = pipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
+        
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
+
+        if (!descriptorSets.empty())
+        {
+            // Flush current batch.
+            vkCmdBindDescriptorSets(
+                _cmdBuf,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
+                pipeline->GetLayout(),
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr);
+        }
+        
+        _devRes.insert(rs);
+
+        //auto& entry = _resourceSets[slot];
+        //entry.isNewlyChanged = true;
+        //entry.resSet = RefRawPtr(vkrs);
+        //entry.offsets = dynamicOffsets;
     }
 
     
@@ -569,36 +631,36 @@ namespace Veldrid{
     ){
         CHK_RENDERPASS_BEGUN();
 
-        auto& clearValue = _currentRenderPass->clearColorTargets[slot];
-        VkClearColorValue clearColor{};
-
-        clearColor.float32[0] = r;
-        clearColor.float32[1] = g;
-        clearColor.float32[2] = b;
-        clearColor.float32[3] = a;
-
-        clearValue = clearColor;
-
-        //VkClearAttachment clearAttachment{};
-        //clearAttachment.clearValue.color.float32[0] = r;
-        //clearAttachment.clearValue.color.float32[1] = g;
-        //clearAttachment.clearValue.color.float32[2] = b;
-        //clearAttachment.clearValue.color.float32[3] = a;
+        //auto& clearValue = _currentRenderPass->clearColorTargets[slot];
+        //VkClearColorValue clearColor{};
         //
-        ////if (_activeRenderPass != VkRenderPass.Null)
-        //{
-        //    auto& fb = _currentRenderPass->fb;
-        //    clearAttachment.colorAttachment = slot;
-        //    clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+        //clearColor.float32[0] = r;
+        //clearColor.float32[1] = g;
+        //clearColor.float32[2] = b;
+        //clearColor.float32[3] = a;
         //
-        //    auto colorTex = fb->GetDesc().colorTargets[slot].target;
-        //    VkClearRect clearRect{};
-        //    clearRect.baseArrayLayer = 0;
-        //    clearRect.layerCount = 1;
-        //    clearRect.rect = {0, 0, colorTex->GetDesc().width, colorTex->GetDesc().height};
-        //
-        //    vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-        //}
+        //clearValue = clearColor;
+
+        VkClearAttachment clearAttachment{};
+        clearAttachment.clearValue.color.float32[0] = r;
+        clearAttachment.clearValue.color.float32[1] = g;
+        clearAttachment.clearValue.color.float32[2] = b;
+        clearAttachment.clearValue.color.float32[3] = a;
+        
+        //if (_activeRenderPass != VkRenderPass.Null)
+        {
+            auto& fb = _currentRenderPass->fb;
+            clearAttachment.colorAttachment = slot;
+            clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+        
+            auto colorTex = fb->GetDesc().colorTargets[slot].target;
+            VkClearRect clearRect{};
+            clearRect.baseArrayLayer = 0;
+            clearRect.layerCount = 1;
+            clearRect.rect = {0, 0, colorTex->GetDesc().width, colorTex->GetDesc().height};
+        
+            vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
+        }
         //else
         //{
         //    // Queue up the clear value for the next RenderPass.
@@ -610,38 +672,38 @@ namespace Veldrid{
     void VulkanCommandList::ClearDepthStencil(float depth, std::uint8_t stencil){
         CHK_RENDERPASS_BEGUN();
 
-        VkClearDepthStencilValue clearDS{};
-        clearDS.depth = depth;
-        clearDS.stencil = stencil;
-        _currentRenderPass->clearDSTarget = clearDS;
+        //VkClearDepthStencilValue clearDS{};
+        //clearDS.depth = depth;
+        //clearDS.stencil = stencil;
+        //_currentRenderPass->clearDSTarget = clearDS;
 
-        //VkClearAttachment clearAttachment{};
-        //clearAttachment.clearValue.depthStencil.depth = depth;
-        //clearAttachment.clearValue.depthStencil.stencil = stencil;
-        //
-        ////if (_activeRenderPass != VkRenderPass.Null)
-        //{
-        //    auto& fb = _currentRenderPass->fb;
-        //    
-        //    clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-        //    if(Helpers::FormatHelpers::IsStencilFormat(
-        //        fb->GetDesc().depthTarget.target->GetDesc().format
-        //    )){
-        //        clearAttachment.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-        //    }                        
-        //
-        //    auto renderableWidth = fb->GetDesc().GetWidth();
-        //    auto renderableHeight = fb->GetDesc().GetHeight();
-        //    if (renderableWidth > 0 && renderableHeight > 0)
-        //    {
-        //        VkClearRect clearRect{};
-        //        clearRect.baseArrayLayer = 0;
-        //        clearRect.layerCount = 1;
-        //        clearRect.rect = {0, 0, renderableWidth, renderableHeight};
-        //
-        //        vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-        //    }
-        //}
+        VkClearAttachment clearAttachment{};
+        clearAttachment.clearValue.depthStencil.depth = depth;
+        clearAttachment.clearValue.depthStencil.stencil = stencil;
+        
+        //if (_activeRenderPass != VkRenderPass.Null)
+        {
+            auto& fb = _currentRenderPass->fb;
+            
+            clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+            if(Helpers::FormatHelpers::IsStencilFormat(
+                fb->GetDesc().depthTarget.target->GetDesc().format
+            )){
+                clearAttachment.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            }                        
+        
+            auto renderableWidth = fb->GetDesc().GetWidth();
+            auto renderableHeight = fb->GetDesc().GetHeight();
+            if (renderableWidth > 0 && renderableHeight > 0)
+            {
+                VkClearRect clearRect{};
+                clearRect.baseArrayLayer = 0;
+                clearRect.layerCount = 1;
+                clearRect.rect = {0, 0, renderableWidth, renderableHeight};
+        
+                vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
+            }
+        }
         //else
         //{
         //    // Queue up the clear value for the next RenderPass.
@@ -697,7 +759,7 @@ namespace Veldrid{
         auto gd = PtrCast<VulkanDevice>(dev.get());
         if (index == 0 || gd->GetFeatures().multipleViewports) {
 
-            VkRect2D scissor{(int)x, (int)y, (int)width, (int)height};
+            VkRect2D scissor{(int)x, (int)y, width, height};
             //if (_scissorRects[index] != scissor)
             //{
             //    _scissorRects[index] = scissor;
@@ -749,51 +811,54 @@ namespace Veldrid{
                 auto& elem = vkLayout->GetDesc().elements[i];
                 auto& res = desc.boundResources[i];
                 auto type = elem.kind;
-                using _ResKind = ResourceLayout::Description::ElementDescription::ResourceKind;
+                bool writable = elem.options.writable;
+                using _ResKind = IBindableResource::ResourceKind;
                 switch (type) {
-                case _ResKind::UniformBuffer:
-                case _ResKind::StructuredBufferReadOnly: {
+                case _ResKind::UniformBuffer: {
                     auto* range = PtrCast<BufferRange>(res.get());
                     auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
                     _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, VK_ACCESS_SHADER_READ_BIT);
                 } break;
-                case _ResKind::StructuredBufferReadWrite: {
+                case _ResKind::StorageBuffer: {
+                    VkAccessFlags accessFlags = VK_ACCESS_SHADER_READ_BIT;
+                    if(writable) {
+                        accessFlags |= VK_ACCESS_SHADER_WRITE_BIT;
+                    }
                     auto* range = PtrCast<BufferRange>(res.get());
                     auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
-                    _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage,
-                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                    _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, accessFlags);
                 } break;
 
-                case _ResKind::TextureReadOnly: {
+                case _ResKind::Texture: {
                     auto* vkTexView = PtrCast<VulkanTextureView>(res.get());
                     auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-                    _resReg.RegisterTexUsage(
-                        RefRawPtr(vkTex),
-                        VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        accessStage, VK_ACCESS_SHADER_READ_BIT);
-                }break;
+                    if(writable) {
+                        _resReg.RegisterTexUsage(
+                            RefRawPtr(vkTex),
+                            VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
+                            accessStage,
+                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
+                        );
 
-                case _ResKind::TextureReadWrite: {
-                    auto* vkTexView = PtrCast<VulkanTextureView>(res.get());
-                    auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-                    _resReg.RegisterTexUsage(
-                        RefRawPtr(vkTex),
-                        VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
-                        accessStage,
-                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
-                    );
+                    } else {
+                        _resReg.RegisterTexUsage(
+                            RefRawPtr(vkTex),
+                            VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            accessStage, VK_ACCESS_SHADER_READ_BIT);
+                    }
                 }break;
                 default:break;
                 }
             }
         }
 
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
     }
 
     void VulkanCommandList::_FlushNewResourceSets(
         VkPipelineBindPoint bindPoint
     ) {
+        /*
         auto pipeline = _currentPipeline;
         auto resourceSetCount = pipeline->GetResourceSetCount();
 
@@ -844,8 +909,8 @@ namespace Veldrid{
                         currentBatchFirstSet,
                         descriptorSets.size(),
                         descriptorSets.data(),
-                        dynamicOffsets.size(),
-                        dynamicOffsets.data());
+                        0,
+                        nullptr);
 
                     descriptorSets.clear();
                     dynamicOffsets.clear();
@@ -853,9 +918,9 @@ namespace Veldrid{
 
                 currentBatchFirstSet = currentSlot + 1;
             }
-        }
+        }*/
     }
-
+#if 0
     void VulkanCommandList::PreDrawCommand(){
         //Run some checks
         //TODO:Handle renderpass end after begun but no draw command
@@ -950,12 +1015,12 @@ namespace Veldrid{
         //        VkPipelineBindPoint.Graphics,
         //        _currentGraphicsPipeline.PipelineLayout);
     }
-
+#endif
     void VulkanCommandList::Draw(
         std::uint32_t vertexCount, std::uint32_t instanceCount,
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
-        PreDrawCommand();
+        //PreDrawCommand();
         vkCmdDraw(_cmdBuf, vertexCount, instanceCount, vertexStart, instanceStart);
     }
     
@@ -964,7 +1029,7 @@ namespace Veldrid{
         std::uint32_t indexStart, std::uint32_t vertexOffset, 
         std::uint32_t instanceStart
     ){
-        PreDrawCommand();
+        //PreDrawCommand();
         vkCmdDrawIndexed(_cmdBuf, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
     }
     
@@ -977,7 +1042,7 @@ namespace Veldrid{
             VK_ACCESS_INDIRECT_COMMAND_READ_BIT
             );
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-        PreDrawCommand();
+        //PreDrawCommand();
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
         vkCmdDrawIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
@@ -990,7 +1055,7 @@ namespace Veldrid{
             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
             VK_ACCESS_INDIRECT_COMMAND_READ_BIT
         );
-        PreDrawCommand();
+        //PreDrawCommand();
 
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
         vkCmdDrawIndexedIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
@@ -1092,20 +1157,6 @@ namespace Veldrid{
         }
     }
 
-    void VulkanCommandList::UpdateBuffer(
-        const sp<Buffer>& buffer,
-        std::uint32_t bufferOffsetInBytes,
-        void* source,
-        std::uint32_t sizeInBytes
-    ) {
-        //VkBuffer stagingBuffer = GetStagingBuffer(sizeInBytes);
-        //    _gd.UpdateBuffer(stagingBuffer, 0, source, sizeInBytes);
-        //    CopyBuffer(stagingBuffer, 0, buffer, bufferOffsetInBytes, sizeInBytes);
-        
-    }
-
-
-
     void VulkanCommandList::CopyBufferToTexture(
         const sp<Buffer>& source,
         const Texture::Description& srcDesc,
@@ -1132,7 +1183,7 @@ namespace Veldrid{
             VK_ACCESS_TRANSFER_WRITE_BIT
         );
 
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
         auto* srcBuffer = PtrCast<VulkanBuffer>(source.get());
         auto* dstImg = PtrCast<VulkanTexture>(destination.get());
@@ -1260,7 +1311,7 @@ namespace Veldrid{
             VK_ACCESS_TRANSFER_WRITE_BIT
         );
         
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
         auto srcVkTexture = PtrCast<VulkanTexture>(source.get());
         VkImage srcImage = srcVkTexture->GetHandle();
@@ -1400,7 +1451,7 @@ namespace Veldrid{
             VK_ACCESS_TRANSFER_WRITE_BIT
         );
 
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
         auto srcVkTexture = PtrCast<VulkanTexture>(source.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(destination.get());
@@ -1485,7 +1536,7 @@ namespace Veldrid{
             VK_ACCESS_TRANSFER_READ_BIT
         );
 
-        _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
         auto layerCount = vkTex->GetDesc().arrayLayers;
         if (vkTex->GetDesc().usage.cubemap) {
@@ -1500,7 +1551,7 @@ namespace Veldrid{
 
         VkFormatProperties vkFormatProps;
         vkGetPhysicalDeviceFormatProperties(
-            vkDev->PhysicalDev(), VdToVkPixelFormat(vkTex->GetDesc().format), &vkFormatProps);
+            vkDev->PhysicalDev(), Veldrid::VK::priv::VdToVkPixelFormat(vkTex->GetDesc().format), &vkFormatProps);
         
         VkFilter filter 
             = (vkFormatProps.optimalTilingFeatures 
@@ -1582,6 +1633,24 @@ namespace Veldrid{
     void VulkanCommandList::PopDebugGroup() {};
 
     void VulkanCommandList::InsertDebugMarker(const std::string& name) {};
+
+    
+    void VulkanCommandList::Barrier(const std::vector<alloy::BarrierDescription>& barriers) {
+        for(auto& desc : barriers) {
+            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
+                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
+                _devRes.insert(barrierDesc.resource);
+            }
+            else if(std::holds_alternative<alloy::TextureBarrierResource>(desc.resourceInfo)) {
+                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
+                _devRes.insert(texDesc.resource);
+            }
+        }
+
+        BindBarrier(this, barriers);
+    }
 
 
 }

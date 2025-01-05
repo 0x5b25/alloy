@@ -2,14 +2,14 @@
 
 #include <cassert>
 
+#include "DXCPipeline.hpp"
+#include "DXCCommandList.hpp"
+#include "DXCTexture.hpp"
+#include "DXCShader.hpp"
+#include "DXCBindableResource.hpp"
+#include "DXCSwapChain.hpp"
+#include "DXCFramebuffer.hpp"
 #include "DXCDevice.hpp"
-//#include "VulkanPipeline.hpp"
-//#include "VulkanCommandList.hpp"
-//#include "VulkanTexture.hpp"
-//#include "VulkanShader.hpp"
-//#include "VulkanBindableResource.hpp"
-//#include "VulkanSwapChain.hpp"
-//#include "VulkanFramebuffer.hpp"
 
 namespace Veldrid
 {
@@ -19,38 +19,75 @@ namespace Veldrid
     sp<ResType> DXCResourceFactory::Create##ResType ( \
         const ResType ::Description& description \
     ){ \
-        /*return DXC##ResType ::Make(_CreateNewDevHandle(), description);*/ \
-        return nullptr; \
+        return DXC##ResType ::Make(_CreateNewDevHandle(), description); \
+        /*return nullptr;*/ \
     }
+
+#define DXC_RF_FOR_EACH_RES(V) \
+    /*V(Framebuffer)*/\
+    V(Texture)\
+    V(Buffer)\
+    /*V(Sampler)*/\
+    /*V(Shader)*/\
+    V(ResourceSet)\
+    V(ResourceLayout)\
+    /*V(SwapChain)*/
 
     sp<DXCDevice> DXCResourceFactory::_CreateNewDevHandle(){
-        assert(_dev != nullptr);
-        _dev->ref();
-        return sp(_dev);
+        //assert(_dev != nullptr);
+        auto dev = GetBase();
+        dev->ref();
+        return sp<DXCDevice>(dev);
     }
 
-    VLD_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
+    
+    void* DXCResourceFactory::GetHandle() const {
+        auto dev = GetBase();
+        return dev->GetDxgiAdp();
+    }
+
+    sp<Sampler> DXCResourceFactory::CreateSampler (
+        const Sampler ::Description& description
+    ){
+        return sp(new Sampler(description));
+    }
+
+    sp<Framebuffer> DXCResourceFactory::CreateFramebuffer (
+        const Framebuffer ::Description& description
+    ){
+        return nullptr;
+    }
+
+    sp<SwapChain> DXCResourceFactory::CreateSwapChain (
+        const SwapChain ::Description& description
+    ){
+        return DXCSwapChain::Make(_CreateNewDevHandle(), description);
+    }
+
+    //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
+
+    DXC_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
 
     sp<Shader> DXCResourceFactory::CreateShader(
         const Shader::Description& desc,
-        const std::vector<std::uint32_t>& spv
+        const std::span<std::uint8_t>& il
     ){
         //return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
-        return nullptr;
+        return DXCShader::Make(_CreateNewDevHandle(), desc, il);
     }
 
     sp<Pipeline> DXCResourceFactory::CreateGraphicsPipeline(
         const GraphicsPipelineDescription& description
     ) {
-        return nullptr;
-        //return VulkanGraphicsPipeline::Make(_CreateNewDevHandle(), description);
+        //return nullptr;
+        return DXCGraphicsPipeline::Make(_CreateNewDevHandle(), description);
     }
         
     sp<Pipeline> DXCResourceFactory::CreateComputePipeline(
         const ComputePipelineDescription& description
     ) {
-        return nullptr;
-        //return VulkanComputePipeline::Make(_CreateNewDevHandle(), description);
+        //return nullptr;
+        return DXCComputePipeline::Make(_CreateNewDevHandle(), description);
     }
 
     sp<Texture> DXCResourceFactory::WrapNativeTexture(
@@ -67,19 +104,13 @@ namespace Veldrid
         const sp<Texture>& texture,
         const TextureView::Description& description
     ){
-        return nullptr;
-       // auto vkTex = PtrCast<VulkanTexture>(texture.get());
+        return sp(new DXCTextureView(RefRawPtr(texture.get()), description));
+        // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
     }
 
-    
-    sp<CommandList> DXCResourceFactory::CreateCommandList(){
-        return nullptr;
-        //return VulkanCommandList::Make(_CreateNewDevHandle());
-    }
-
-    sp<Fence> DXCResourceFactory::CreateFence(bool initialSignaled) {
-       return DXCVLDFence::Make(_CreateNewDevHandle(), initialSignaled);
+    sp<Fence> DXCResourceFactory::CreateFence() {
+       return sp(new DXCFence(GetBase()));
     }
 
     sp<Semaphore> DXCResourceFactory::CreateDeviceSemaphore() {

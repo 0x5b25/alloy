@@ -138,12 +138,17 @@ namespace Veldrid
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
-        VulkanCommandList(const sp<GraphicsDevice>& dev) : CommandList(dev){}
 
     public:
+        VulkanCommandList(
+            const sp<VulkanDevice>& dev,
+            VkCommandBuffer cmdBuf,
+            sp<_CmdPoolContainer>&& alloc
+        );
+
         ~VulkanCommandList();
 
-        static sp<CommandList> Make(const sp<VulkanDevice>& dev);
+        //static sp<CommandList> Make(const sp<VulkanDevice>& dev);
         const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
         
         virtual void Begin() override;
@@ -159,14 +164,10 @@ namespace Veldrid
 
         
         virtual void SetGraphicsResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) override;
+            const sp<ResourceSet>& rs) override;
             
         virtual void SetComputeResourceSet(
-            std::uint32_t slot, 
-            const sp<ResourceSet>& rs, 
-            const std::vector<std::uint32_t>& dynamicOffsets) override;
+            const sp<ResourceSet>& rs) override;
 
         virtual void BeginRenderPass(const sp<Framebuffer>& fb) override;
         virtual void EndRenderPass() override;
@@ -191,7 +192,7 @@ namespace Veldrid
 
         void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
         void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
-        void PreDrawCommand();
+        //void PreDrawCommand();
         virtual void Draw(
             std::uint32_t vertexCount, std::uint32_t instanceCount,
             std::uint32_t vertexStart, std::uint32_t instanceStart) override;
@@ -215,12 +216,6 @@ namespace Veldrid
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override;
 
         virtual void ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) override;
-
-        virtual void UpdateBuffer(
-            const sp<Buffer>& buffer,
-            std::uint32_t bufferOffsetInBytes,
-            void* source,
-            std::uint32_t sizeInBytes) override;
 
         virtual void CopyBuffer(
             const sp<Buffer>& source, std::uint32_t sourceOffset,
@@ -274,6 +269,9 @@ namespace Veldrid
         virtual void PopDebugGroup() override;
 
         virtual void InsertDebugMarker(const std::string& name) override;
+
+        
+        virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;
 
     };
     

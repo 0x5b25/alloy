@@ -1,5 +1,5 @@
 #include "veldrid/Shader.hpp"
-
+#if 0
 #include "veldrid/common/RefCnt.hpp"
 
 #include <atomic>
@@ -178,16 +178,17 @@ namespace Veldrid{
 
         sp<_GlslangContainer> _core;
 
-        static inline EShLanguage FindShaderLanguage(Shader::Description::Stage stage)
+        static inline EShLanguage FindShaderLanguage(Shader::Stage stage)
         {
-            if(stage.vertex) return EShLangVertex;
-        	if(stage.tessellationControl) return EShLangTessControl;
-        	if(stage.tessellationEvaluation) return EShLangTessEvaluation;
-        	if(stage.geometry) return EShLangGeometry;
-        	if(stage.fragment) return EShLangFragment;
-        	if(stage.compute) return EShLangCompute;
-        	return EShLangVertex;
-        
+			switch(stage){
+            case Shader::Stage::Vertex: return EShLangVertex;
+        	case Shader::Stage::TessellationControl: return EShLangTessControl;
+        	case Shader::Stage::TessellationEvaluation: return EShLangTessEvaluation;
+        	case Shader::Stage::Geometry: return EShLangGeometry;
+        	case Shader::Stage::Fragment: return EShLangFragment;
+        	case Shader::Stage::Compute: return EShLangCompute;
+        	default: return EShLangVertex;
+			}
         }
 
 
@@ -210,7 +211,7 @@ namespace Veldrid{
             env_target_language_version = (glslang::EShTargetLanguageVersion) 0;
         }
 
-        bool CompileToSPIRV(Shader::Description::Stage    stage,
+        bool CompileToSPIRV(Shader::Stage    stage,
     	                    const std::string &            glslSource,
     	                    const std::string &            entryPoint,
     	                    const ShaderVariant &          shaderVariant,
@@ -371,7 +372,7 @@ std::string Connect(const std::vector<std::string> &lines){
 
 ShaderModule::ShaderModule(
 	//std::shared_ptr<Device>& device,
-	Shader::Description::Stage stage, 
+	Shader::Stage stage, 
 	const std::string &glsl_source, 
 	const std::string &entry_point, 
 	const ShaderVariant &shader_variant
@@ -1046,3 +1047,4 @@ bool SPIRVReflection::reflect_shader_resources(const std::vector<uint32_t> &spir
 	return true;
 }
 }
+#endif

@@ -1,20 +1,22 @@
 #pragma once
 
+#include "veldrid/common/BitFlags.hpp"
 #include "veldrid/common/RefCnt.hpp"
 #include "veldrid/DeviceResource.hpp"
 
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <span>
 #include <unordered_map>
 
 //#include "common/error.h"
 //#include "common/macros.h"
 
 //VKBP_DISABLE_WARNINGS()
-#include <glslang/Public/ShaderLang.h>
+//#include <glslang/Public/ShaderLang.h>
 //#include <vulkan/vulkan.h>
-#include <spirv_glsl.hpp>
+//#include <spirv_glsl.hpp>
 //VKBP_ENABLE_WARNINGS()
 
 //#include "common/vk_common.h"
@@ -29,33 +31,34 @@
 
 namespace Veldrid
 {
-    
 
     class Shader : public DeviceResource
     {
 
     public:
 
+		enum class Stage {
+			// The vertex shader stage.
+			Vertex,
+			// The geometry shader stage.
+			Geometry,
+			// The tessellation control (or hull) shader stage.
+			TessellationControl,
+			// The tessellation evaluation (or domain) shader stage.
+			TessellationEvaluation,
+			// The fragment (or pixel) shader stage.
+			Fragment,
+			// The compute shader stage.
+			Compute,
+
+			MAX_VALUE
+		};
+
+		using Stages = alloy::BitFlags<Stage>;
+
         struct Description{
 
-            union Stage {
-                struct {
-                    // The vertex shader stage.
-                    std::uint8_t vertex : 1;
-                    // The geometry shader stage.
-                    std::uint8_t geometry : 1;
-                    // The tessellation control (or hull) shader stage.
-                    std::uint8_t tessellationControl : 1;
-                    // The tessellation evaluation (or domain) shader stage.
-                    std::uint8_t tessellationEvaluation : 1;
-                    // The fragment (or pixel) shader stage.
-                    std::uint8_t fragment : 1;
-                    // The compute shader stage.
-                    std::uint8_t compute : 1;
-                };
-
-                std::uint8_t value;
-            } stage;
+            Stage stage;
             //std::vector<std::uint8_t> bytes;
             std::string entryPoint;
             bool enableDebug;
@@ -114,7 +117,7 @@ namespace Veldrid
     		NonWritable = 2,
     	};
     };
-
+#if 0
     /// Store shader resource data.
     /// Used by the shader module.
     struct ShaderResource
@@ -250,7 +253,7 @@ namespace Veldrid
     public:
     	ShaderModule(
     		//std::shared_ptr<Device>& device,
-    	    Shader::Description::Stage stage,
+    	    Shader::Stage stage,
     		const std::string &   glsl_source,
     		const std::string &   entry_point = "main",
     		const ShaderVariant & shader_variant = {});
@@ -260,7 +263,7 @@ namespace Veldrid
 
     	static std::shared_ptr<ShaderModule> Make(
     		//std::shared_ptr<Device>& device,
-    		Shader::Description::Stage stage,
+    		Shader::Stage stage,
     		const std::string& glsl_source,
     		const std::string& entry_point = "main",
     		const ShaderVariant& shader_variant = {}
@@ -286,7 +289,7 @@ namespace Veldrid
 
     	size_t GetID() const {return id;}
 
-    	Shader::Description::Stage GetStage() const{return stage;}
+    	Shader::Stage GetStage() const{return stage;}
 
     	const std::string& GetEntryPoint() const{return entry_point;}
 
@@ -322,7 +325,7 @@ namespace Veldrid
     	size_t id;
 
     	/// Stage of the shader (vertex, fragment, etc)
-    	Shader::Description::Stage stage;
+    	Shader::Stage stage;
 
     	/// Name of the main function
     	std::string entry_point;
@@ -368,7 +371,7 @@ namespace Veldrid
     	 * @param[out] spirv The generated SPIRV code
     	 * @param[out] info_log Stores any log messages during the compilation process
     	 */
-        virtual bool CompileToSPIRV(Shader::Description::Stage     stage,
+        virtual bool CompileToSPIRV(Shader::Stage     stage,
     	                            const std::string &            glslSource,
     	                            const std::string &            entryPoint,
     	                            const ShaderVariant &          shaderVariant,
@@ -406,7 +409,7 @@ namespace Veldrid
     	//                                    const ShaderVariant &        variant);
     };
 
-
+#endif
 
 
 } // namespace Veldrid

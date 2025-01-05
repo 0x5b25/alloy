@@ -1,8 +1,8 @@
 
 
-cmake_minimum_required(VERSION 3.13)
+#cmake_minimum_required(VERSION 3.13)
 
-project(vk_third_party LANGUAGES C CXX)
+#project(vk_third_party LANGUAGES C CXX)
 
 # glm
 
@@ -84,11 +84,11 @@ target_compile_definitions(vulkan INTERFACE VK_NO_PROTOTYPES)
 
 
 if(ANDROID)
-    target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_ANDROID_KHR)
+    set(VULKAN_WSI_DEF VK_USE_PLATFORM_ANDROID_KHR)
 elseif(WIN32)
-    target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_WIN32_KHR)
+    set(VULKAN_WSI_DEF VK_USE_PLATFORM_WIN32_KHR)
 elseif(APPLE)
-	target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_METAL_EXT)
+	set(VULKAN_WSI_DEF VK_USE_PLATFORM_METAL_EXT)
 elseif(UNIX)
     # Choose WSI based on VKB_WSI_SELECTION
     if (VKB_WSI_SELECTION STREQUAL XCB OR VKB_WSI_SELECTION STREQUAL XLIB OR VKB_WSI_SELECTION STREQUAL WAYLAND)
@@ -97,39 +97,38 @@ elseif(UNIX)
     if (VKB_WSI_SELECTION STREQUAL XCB)
         pkg_check_modules(XCB xcb REQUIRED)
         if (XCB_FOUND)
-            target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_XCB_KHR)
+            set(VULKAN_WSI_DEF VK_USE_PLATFORM_XCB_KHR)
         endif()
     elseif (VKB_WSI_SELECTION STREQUAL XLIB)
         pkg_check_modules(X11 x11 REQUIRED)
         if (X11_FOUND)
-            target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_XLIB_KHR)
+            set(VULKAN_WSI_DEF VK_USE_PLATFORM_XLIB_KHR)
         endif()
     elseif (VKB_WSI_SELECTION STREQUAL WAYLAND)
         pkg_check_modules(WAYLAND wayland-client REQUIRED)
         if (WAYLAND_FOUND)
-            target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_WAYLAND_KHR)
+            set(VULKAN_WSI_DEF VK_USE_PLATFORM_WAYLAND_KHR)
         endif()
     elseif (VKB_WSI_SELECTION STREQUAL D2D)
         set(DIRECT_TO_DISPLAY TRUE)
         set(DIRECT_TO_DISPLAY TRUE PARENT_SCOPE)
-        target_compile_definitions(vulkan INTERFACE VK_USE_PLATFORM_DISPLAY_KHR)
+        set(VULKAN_WSI_DEF VK_USE_PLATFORM_DISPLAY_KHR)
     else()
         message(FATAL_ERROR "Unknown WSI")
     endif()
-endif() 
+endif()
 
+
+target_compile_definitions(vulkan INTERFACE ${VULKAN_WSI_DEF})
+
+set_property(TARGET vulkan PROPERTY FOLDER "3rd-party/vk")
 
 # volk
-set(VOLK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/volk")
-set(VOLK_FILES
-    "${VOLK_DIR}/volk.c"
-    "${VOLK_DIR}/volk.h")
-
-add_library(volk STATIC ${VOLK_FILES})
-
+set(VOLK_STATIC_DEFINES ${VULKAN_WSI_DEF})
+add_subdirectory(volk)
 target_link_libraries(volk PUBLIC vulkan)
 
-target_include_directories(volk PUBLIC ${VOLK_DIR})
+#target_include_directories(volk PUBLIC ${VOLK_DIR})
 if (VKB_WSI_SELECTION STREQUAL XCB)
     target_include_directories(volk PUBLIC ${XCB_INCLUDE_DIRS})
 elseif (VKB_WSI_SELECTION STREQUAL XLIB)
@@ -138,7 +137,7 @@ elseif (VKB_WSI_SELECTION STREQUAL WAYLAND)
     target_include_directories(volk PUBLIC ${WAYLAND_INCLUDE_DIRS})
 endif()
 
-set_property(TARGET volk PROPERTY FOLDER "Veldrid/vk/3rd-party")
+set_property(TARGET volk PROPERTY FOLDER "3rd-party/vk")
 
 
 # spdlog
@@ -153,3 +152,14 @@ set(VMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vma/include")
 target_sources(vma INTERFACE ${VMA_DIR}/vk_mem_alloc.h)
 target_include_directories(vma INTERFACE ${VMA_DIR})
 #target_link_libraries(vma PUBLIC vulkan)
+
+set_property(TARGET vma PROPERTY FOLDER "3rd-party/vk")
+# dxil-spirv
+
+set(DXIL_SPIRV_CLI OFF CACHE BOOL "" FORCE)
+add_subdirectory(dxil-spirv)
+set_property(TARGET dxil-spirv-c-static PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-spirv-c-shared PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-converter PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-debug PROPERTY FOLDER "3rd-party/vk/dxil-spv")
+set_property(TARGET dxil-utils PROPERTY FOLDER "3rd-party/vk/dxil-spv")

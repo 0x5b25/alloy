@@ -10,7 +10,7 @@ namespace Veldrid{
 
     #define VK_DECL_RF_CREATE_WITH_DESC(ResType) \
         virtual sp<ResType> Create##ResType ( \
-            const ResType ::Description& description);
+            const ResType ::Description& description) override;
 
     class VulkanResourceFactory : public ResourceFactory{
 
@@ -25,6 +25,9 @@ namespace Veldrid{
         ~VulkanResourceFactory() = default;
 
         
+        virtual void* GetHandle() const override {return nullptr;}
+
+        
         VLD_RF_FOR_EACH_RES(VK_DECL_RF_CREATE_WITH_DESC)
 
         sp<Pipeline> CreateGraphicsPipeline(
@@ -33,9 +36,9 @@ namespace Veldrid{
         sp<Pipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) override;
 
-        sp<Shader> VulkanResourceFactory::CreateShader(
+        sp<Shader> CreateShader(
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spv
+            const std::span<std::uint8_t>& il
         ) override;
 
         sp<Texture> WrapNativeTexture(
@@ -46,10 +49,7 @@ namespace Veldrid{
             const sp<Texture>& texture,
             const TextureView::Description& description) override;
 
-       
-        virtual sp<CommandList> CreateCommandList() override;
-
-        virtual sp<Fence> CreateFence(bool initialSignaled) override;
+        virtual sp<Fence> CreateFence() override;
         virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };
 

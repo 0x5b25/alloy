@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.28)
 
 project(veldridcpp
     DESCRIPTION "A C++ port of the legendary veldrid library"
@@ -13,6 +13,7 @@ set(VLD_MISC_HEADERS
 
 set(VLD_IFACE_HEADERS
     "include/veldrid/BindableResource.hpp"
+    "include/veldrid/CommandQueue.hpp"
     "include/veldrid/Buffer.hpp"
     "include/veldrid/CommandList.hpp"
     "include/veldrid/DeviceResource.hpp"
@@ -49,7 +50,6 @@ add_subdirectory("3rd-party")
 
 #platform detection
 if(WIN32)
-    add_definitions(-DNOMINMAX)
     set(VLD_BACKEND_DXC true)
     set(VLD_BACKEND_VK  true)
     set(VLD_BACKEND_MTL false)
@@ -122,18 +122,32 @@ target_link_libraries(Veldrid
     PUBLIC
     #    common
     #    glm
-        glslang
-        OGLCompiler
-        SPIRV
-        spirv-cross-glsl
+    #    glslang
+    #    OGLCompiler
+    #    SPIRV
+    #    spirv-cross-glsl
     #    spdlog
     )
 
+if(WIN32)
+    target_compile_definitions(Veldrid PUBLIC NOMINMAX)
+    #add_definitions(-DNOMINMAX)
+endif()
 
 target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
-target_compile_features(Veldrid PUBLIC cxx_std_17)
+target_compile_features(Veldrid PUBLIC cxx_std_20)
+
+function(link_with_veldrid TARGET)
+
+    target_link_libraries(${TARGET} PRIVATE Veldrid)
+
+    if(${VLD_BACKEND_DXC})
+        agility_sdk_copy_binaries(${TARGET})
+    endif()
+
+endfunction()
 
 add_subdirectory("demo")
 
-add_executable("APITest" "demo.cpp")
-target_link_libraries(APITest PRIVATE Veldrid)
+#add_executable("APITest" "demo.cpp")
+#target_link_libraries(APITest PRIVATE Veldrid)

@@ -31,10 +31,16 @@ namespace Veldrid
         {
             // The <see cref="SwapchainSource"/> which will be used as the target of rendering operations.
             // This is a window-system-specific object which differs by platform.
-            // Currently surface is bound to the acutal device, this source has no effect.
             SwapChainSource* source;
+
+            //#TODO: add surface format selection. Currently default to RGBA8_UNORM as it's supported
+            //on most devices.
             
             std::uint32_t initialWidth, initialHeight;
+
+            //How many images inside this swapchain. Can't go below 2
+            //#TODO: add swapchain capability query interface
+            uint32_t backBufferCnt;
             
             // The optional format of the depth target of the Swapchain's Framebuffer.
             // If non-null, this must be a valid depth Texture format.
@@ -60,7 +66,7 @@ namespace Veldrid
 
     public:
 
-        virtual sp<Framebuffer> GetFramebuffer() = 0;
+        virtual sp<Framebuffer> GetBackBuffer() = 0;
 
         virtual void Resize(
             std::uint32_t width, 
@@ -73,11 +79,6 @@ namespace Veldrid
         virtual std::uint32_t GetHeight() const = 0;
 
         //virtual State SwapBuffers() = 0;
-
-        virtual State SwitchToNextFrameBuffer(
-            //Semaphore* signalSemaphore,
-            //Fence* fence
-        ) = 0;
 
     };
     

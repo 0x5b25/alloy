@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <set>
+#include <cstring>
 
 #include "VkTypeCvt.hpp"
 #include "VkCommon.hpp"
@@ -12,7 +13,223 @@
 #include "VulkanShader.hpp"
 #include "VulkanBindableResource.hpp"
 
+
+template <>
+struct std::hash<Veldrid::VertexInputSemantic>
+{
+    std::size_t operator()(const Veldrid::VertexInputSemantic& k) const
+    {
+        return std::hash<uint32_t>()((uint32_t)k.name)
+             ^ (std::hash<uint32_t>()(k.slot) << 1);
+    }
+};
+
 namespace Veldrid{
+class VkShaderRAII {
+    VkDevice _dev;
+    VkShaderModule _mod;
+public:
+    VkShaderRAII(VkDevice dev) : _dev(dev), _mod(VK_NULL_HANDLE) {}
+    ~VkShaderRAII() { 
+        if(_mod != VK_NULL_HANDLE)
+        vkDestroyShaderModule(_dev, _mod, nullptr);
+    }
+    VkShaderModule* operator&() {return &_mod;}
+    VkShaderModule operator*() {return _mod;}
+    VkShaderModule Reset() { 
+        auto res = _mod;  _mod = VK_NULL_HANDLE; return res;
+    }
+};
+
+class VkPipelineLayoutRAII {
+    VkDevice _dev;
+    VkPipelineLayout _obj;
+public:
+    VkPipelineLayoutRAII(VkDevice dev) : _dev(dev), _obj(VK_NULL_HANDLE) {}
+    ~VkPipelineLayoutRAII() { 
+        if(_obj != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(_dev, _obj, nullptr);
+    }
+    VkPipelineLayout* operator&() {return &_obj;}
+    VkPipelineLayout operator*() {return _obj;}
+    VkPipelineLayout Reset() { 
+        auto res = _obj;  _obj = VK_NULL_HANDLE; return res;
+    }
+};
+
+    static bool Str2Semantic(const char* str, VertexInputSemantic::Name& semantic){
+
+        static const struct {
+            const char* str;
+            VertexInputSemantic::Name enumVal;
+        } lut[] {
+            {"BINORMAL",     VertexInputSemantic::Name::Binormal},
+            {"BLENDINDICES", VertexInputSemantic::Name::BlendIndices},
+            {"BLENDWEIGHT",  VertexInputSemantic::Name::BlendWeight},
+            {"COLOR",        VertexInputSemantic::Name::Color},
+            {"NORMAL",       VertexInputSemantic::Name::Normal},
+            {"POSITION",     VertexInputSemantic::Name::Position},
+            {"PSIZE",        VertexInputSemantic::Name::PointSize},
+            {"TANGENT",      VertexInputSemantic::Name::Tangent},
+            {"TEXCOORD",     VertexInputSemantic::Name::TextureCoordinate},
+        };
+
+        for(auto& entry : lut) {
+            if(std::strcmp(entry.str, str) == 0) {
+                semantic = entry.enumVal;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    class PipelineRemapper : public alloy::vk::SPVRemapper {
+    public:
+        using BindingRemapInfo = std::vector<VulkanResourceLayout::ResourceBindInfo>;
+        using IAMappingInfo = std::unordered_map<VertexInputSemantic, uint32_t>;
+
+    private:
+        const BindingRemapInfo* _bindingRemappings;
+        const IAMappingInfo* _iaMappings;
+
+        bool FindVkBindingSet(
+            VulkanResourceLayout::BindType type,
+            uint32_t d3dRegSpace,
+            uint32_t& vkSetOut
+        ) {
+            if(!_bindingRemappings) return false;
+
+            for(auto& b: *_bindingRemappings) {
+                if(b.type == type) {
+                    uint32_t allocatedSetIdx = b.baseSetIndex;
+                    for(auto& set : b.sets) {
+                        if(set.regSpaceDesignated == d3dRegSpace) {
+                            vkSetOut = set.setIndexAllocated;
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+    public:
+        PipelineRemapper (
+            const BindingRemapInfo& bindingRemappings
+        )
+            : _bindingRemappings(&bindingRemappings)
+            , _iaMappings(nullptr)
+        { }
+
+        PipelineRemapper (
+            const BindingRemapInfo& bindingRemappings,
+            const IAMappingInfo& iaMappings
+        )
+            : _bindingRemappings(&bindingRemappings)
+            , _iaMappings(&iaMappings)
+        { }
+
+        bool RemapSRV( const dxil_spv_d3d_binding& binding,
+                              dxil_spv_srv_vulkan_binding& vk_binding
+        ) override {
+            vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
+            vk_binding.offset_binding = {};
+            uint32_t set;
+            if(FindVkBindingSet(VulkanResourceLayout::BindType::ShaderResourceReadOnly,
+                                binding.register_space,
+                                set)){
+			    vk_binding.buffer_binding.set = set;
+			    vk_binding.buffer_binding.binding = binding.register_index;
+			    //vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
+                if(    binding.kind == DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER
+                    || binding.kind == DXIL_SPV_RESOURCE_KIND_RAW_BUFFER )
+                    vk_binding.buffer_binding.descriptor_type = DXIL_SPV_VULKAN_DESCRIPTOR_TYPE_SSBO;
+			    
+                return true;
+            }
+            return false;
+        }
+
+        bool RemapSampler( const dxil_spv_d3d_binding& binding,
+                                  dxil_spv_vulkan_binding& vk_binding
+        ) override {
+            uint32_t set;
+            if(FindVkBindingSet(VulkanResourceLayout::BindType::Sampler,
+                                binding.register_space,
+                                set))
+            {
+                vk_binding.bindless.use_heap = DXIL_SPV_FALSE;
+		        vk_binding.set = set;
+		        vk_binding.binding = binding.register_index;
+			    return true;
+            }
+            return false;
+        }
+
+        bool RemapUAV ( const dxil_spv_uav_d3d_binding& binding,
+                               dxil_spv_uav_vulkan_binding& vk_binding
+        ) override {
+            uint32_t set;
+            if(FindVkBindingSet(VulkanResourceLayout::BindType::ShaderResourceReadWrite,
+                                binding.d3d_binding.register_space,
+                                set))
+            {
+                vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
+		        vk_binding.buffer_binding.set = set;
+		        vk_binding.buffer_binding.binding = binding.d3d_binding.register_index;
+			    return true;
+            }
+            return false;
+        }
+
+        bool RemapCBV( const dxil_spv_d3d_binding& binding,
+                              dxil_spv_cbv_vulkan_binding& vk_binding
+        ) override {
+
+            vk_binding.vulkan.uniform_binding.bindless.use_heap = DXIL_SPV_FALSE;
+            uint32_t set;
+            if(FindVkBindingSet(VulkanResourceLayout::BindType::UniformBuffer,
+                                binding.register_space,
+                                set))
+            {
+                vk_binding.vulkan.uniform_binding.set = set;
+                vk_binding.vulkan.uniform_binding.binding = binding.register_index;
+                return true;
+            }
+            return false;
+        }
+
+
+        bool RemapVertexInput( const dxil_spv_d3d_vertex_input& d3dIn,
+                                      dxil_spv_vulkan_vertex_input& vkOut
+        ) override {
+            if(!_iaMappings) {
+                assert(false, "IA input isn't supported by this pipeline type!");
+                return false;
+            }
+            VertexInputSemantic d3dSemantic {};
+            VertexInputSemantic::Name d3dSemanticName;
+            if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
+                return false;
+            
+            d3dSemantic.name = d3dSemanticName;
+            d3dSemantic.slot = d3dIn.semantic_index;
+
+            auto findRes = _iaMappings->find(d3dSemantic);
+            if(findRes == _iaMappings->end()) {
+                assert(false, "IA input element not found");
+                return false;
+            }
+            vkOut.location = findRes->second;
+
+            return true;
+        }
+    };
+
+    
+
 
     VkRenderPass CreateFakeRenderPassForCompat(
         VulkanDevice* dev,
@@ -119,7 +336,7 @@ namespace Veldrid{
         auto vkDev = _Dev();
         if (!IsComputePipeline())
         {
-            vkDestroyRenderPass(vkDev->LogicalDev(), _renderPass, nullptr);
+            //vkDestroyRenderPass(vkDev->LogicalDev(), _renderPass, nullptr);
         }
     }
 
@@ -403,6 +620,26 @@ namespace Veldrid{
         inputAssemblyCI.primitiveRestartEnable = VK_FALSE;
         pipelineCI.pInputAssemblyState = &inputAssemblyCI;
 
+        // Pipeline Layout
+        auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+        //refCnts.push_back(desc.resourceLayout);
+        auto& bindInfo = resourceLayout->GetBindings();
+        std::vector<VkDescriptorSetLayout> dsls{};
+        for(auto& b : bindInfo) {
+            for(auto& s : b.sets) {
+                dsls.push_back(s.layout);
+            }
+        }
+
+        VkPipelineLayoutCreateInfo pipelineLayoutCI {};
+        pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCI.setLayoutCount = dsls.size();
+        pipelineLayoutCI.pSetLayouts = dsls.data();
+        
+        VkPipelineLayoutRAII pipelineLayout{dev->LogicalDev()};
+        VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
+        pipelineCI.layout = *pipelineLayout;
+
         // Vertex Input State
         VkPipelineVertexInputStateCreateInfo vertexInputCI{};
         vertexInputCI.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -416,6 +653,8 @@ namespace Veldrid{
         }
         std::vector<VkVertexInputBindingDescription> bindingDescs(bindingCount);
         std::vector<VkVertexInputAttributeDescription> attributeDescs(attributeCount);
+
+        std::unordered_map<VertexInputSemantic, uint32_t> iaMappings;
 
         int targetIndex = 0;
         int targetLocation = 0;
@@ -432,10 +671,13 @@ namespace Veldrid{
             for (int location = 0; location < inputDesc.elements.size(); location++)
             {
                 auto& inputElement = inputDesc.elements[location];
+                auto thisLocation = targetLocation + location;
+
+                iaMappings.insert({inputElement.semantic, thisLocation});
 
                 attributeDescs[targetIndex].format = VK::priv::VdToVkShaderDataType(inputElement.format);
                 attributeDescs[targetIndex].binding = binding;
-                attributeDescs[targetIndex].location = targetLocation + location;
+                attributeDescs[targetIndex].location = thisLocation;
                 attributeDescs[targetIndex].offset = inputElement.offset != 0 
                     ? inputElement.offset 
                     : currentOffset;
@@ -486,24 +728,92 @@ namespace Veldrid{
             specializationInfo.pMapEntries = mapEntries.data();
         }
 
-        auto& shaders = desc.shaderSet.shaders;
-        std::vector<VkPipelineShaderStageCreateInfo> stageCIs(shaders.size());
-        for (unsigned i = 0; i < shaders.size(); i++){
-            auto& shader = shaders[i];
-            auto vkShader = reinterpret_cast<VulkanShader*>(shader.get());
-            auto& stageCI = stageCIs[i];
-            stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stageCI.module = vkShader->GetHandle();
-            stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
-            // stageCI.pName = CommonStrings.main; // Meh
-            stageCI.pName = shader->GetDesc().entryPoint.c_str(); // TODO: DONT ALLOCATE HERE
-            stageCI.pSpecializationInfo = &specializationInfo;
+        PipelineRemapper remapper {
+            bindInfo,
+            iaMappings
+        };
+        //alloy::vk::SPVRemapper remapper{
+        //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
+        //        VertexInputSemantic d3dSemantic {};
+        //        VertexInputSemantic::Name d3dSemanticName;
+        //        if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
+        //            return false;
+        //        
+        //        d3dSemantic.name = d3dSemanticName;
+        //        d3dSemantic.slot = d3dIn.semantic_index;
+        //
+        //        auto findRes = iaMappings.find(d3dSemantic);
+        //        if(findRes == iaMappings.end())
+        //            return false;
+        //        vkOut.location = findRes->second;
+        //
+        //        return true;
+        //    }
+        //};
 
-            refCnts.push_back(shader);
+        VkShaderRAII vs{dev->LogicalDev()}, fs{dev->LogicalDev()};
+        
+        VkPipelineShaderStageCreateInfo stageCIs[2] = {};
+
+        {
+            auto& shader = desc.shaderSet.vertexShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_VERTEX_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            
+            remapper.SetStage(Veldrid::Shader::Stage::Vertex);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size();
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &vs));
+
+            stageCIs[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCIs[0].module = *vs;
+            stageCIs[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCIs[0].pName = "main";//Don't have a way to convince dxil-spv to change this name
         }
 
-        pipelineCI.stageCount = stageCIs.size();
-        pipelineCI.pStages = stageCIs.data();
+        {
+            auto& shader = desc.shaderSet.fragmentShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            
+            remapper.SetStage(Veldrid::Shader::Stage::Fragment);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size();//Although pCode is uint32_t*, this is byte size
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &fs));
+
+            stageCIs[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCIs[1].module = *fs;
+            stageCIs[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCIs[1].pName = "main";//Don't have a way to convince dxil-spv to change this name
+            
+        }
+
+        pipelineCI.stageCount = 2;
+        pipelineCI.pStages = stageCIs;
 
         // ViewportState
         // Vulkan spec specifies that there must be 1 viewport no matter
@@ -515,31 +825,40 @@ namespace Veldrid{
 
         pipelineCI.pViewportState = &viewportStateCI;
 
-        // Pipeline Layout
-        auto& resourceLayouts = desc.resourceLayouts;
-        VkPipelineLayoutCreateInfo pipelineLayoutCI {};
-        pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutCI.setLayoutCount = resourceLayouts.size();
-        std::vector<VkDescriptorSetLayout> dsls (resourceLayouts.size());
-        for (int i = 0; i < resourceLayouts.size(); i++)
-        {
-            dsls[i] = PtrCast<VulkanResourceLayout>(resourceLayouts[i].get())->GetHandle();
-
-            refCnts.push_back(resourceLayouts[i]);            
-        }
-        pipelineLayoutCI.pSetLayouts = dsls.data();
         
-        VkPipelineLayout pipelineLayout;
-        VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
-        pipelineCI.layout = pipelineLayout;
         
         // Create fake RenderPass for compatibility.
         auto& outputDesc = desc.outputs;
         
+        //We have dynamic rendering now
         //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, VK_SAMPLE_COUNT_1_BIT);
-        auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, vkSampleCount);
-        
-        pipelineCI.renderPass = compatRenderPass;
+        //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, vkSampleCount);
+        //pipelineCI.renderPass = compatRenderPass;
+
+        // Provide information for dynamic rendering
+        std::vector<VkFormat> colorAttachmentFormats{};
+        colorAttachmentFormats.reserve(outputDesc.colorAttachment.size());
+
+        for(auto& a : outputDesc.colorAttachment)
+            colorAttachmentFormats.push_back(VK::priv::VdToVkPixelFormat(a.format, false));
+
+        VkPipelineRenderingCreateInfoKHR dynRenderingCI{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .pNext                   = nullptr,
+            .colorAttachmentCount    = (uint32_t)colorAttachmentFormats.size(),
+            .pColorAttachmentFormats = colorAttachmentFormats.data(),
+        };
+
+        if(outputDesc.depthAttachment.has_value()) {
+            PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
+            auto vkFormat = VK::priv::VdToVkPixelFormat(depthFormat, true);
+            dynRenderingCI.depthAttachmentFormat  = vkFormat;
+            if(Helpers::FormatHelpers::IsStencilFormat(depthFormat))
+                dynRenderingCI.stencilAttachmentFormat = vkFormat;
+        }
+        // Use the pNext to point to the rendering create struct
+        pipelineCI.pNext               = &dynRenderingCI; // reference the new dynamic structure
+        pipelineCI.renderPass          = nullptr; // previously required non-null
         
         VkPipeline devicePipeline;
         VK_CHECK(vkCreateGraphicsPipelines(dev->LogicalDev(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &devicePipeline));
@@ -553,18 +872,18 @@ namespace Veldrid{
         //    pipelineLayout, devicePipeline
         //    );
 
-        std::uint32_t resourceSetCount = desc.resourceLayouts.size();
+        std::uint32_t resourceSetCount = dsls.size();
         std::uint32_t dynamicOffsetsCount = 0;
-        for(auto& layout : desc.resourceLayouts)
-        {
-            auto vkLayout = PtrCast<VulkanResourceLayout>(layout.get());
-            dynamicOffsetsCount += vkLayout->GetDynamicBufferCount();
-        }
+        //for(auto& layout : desc.resourceLayouts)
+        //{
+        //    auto vkLayout = PtrCast<VulkanResourceLayout>(layout.get());
+        //    dynamicOffsetsCount += vkLayout->GetDynamicBufferCount();
+        //}
 
         auto rawPipe = new VulkanGraphicsPipeline(dev);
         rawPipe->_devicePipeline = devicePipeline;
-        rawPipe->_pipelineLayout = pipelineLayout;
-        rawPipe->_renderPass = compatRenderPass;
+        rawPipe->_pipelineLayout = pipelineLayout.Reset();
+        //rawPipe->_renderPass = compatRenderPass;
         rawPipe->scissorTestEnabled = rsDesc.scissorTestEnabled;
         rawPipe->resourceSetCount = resourceSetCount;
         rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
@@ -582,18 +901,24 @@ namespace Veldrid{
         VkComputePipelineCreateInfo pipelineCI {};
 
         // Pipeline Layout
-        auto& resourceLayouts = desc.resourceLayouts;
-        VkPipelineLayoutCreateInfo pipelineLayoutCI{};
-        pipelineLayoutCI.setLayoutCount = resourceLayouts.size();
-        std::vector<VkDescriptorSetLayout> dsls{resourceLayouts.size()};
-        for (int i = 0; i < resourceLayouts.size(); i++)
-        {
-            dsls[i] = PtrCast<VulkanResourceLayout>(resourceLayouts[i].get())->GetHandle();
+        auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+        //refCnts.push_back(desc.resourceLayout);
+        auto& bindInfo = resourceLayout->GetBindings();
+        std::vector<VkDescriptorSetLayout> dsls{};
+        for(auto& b : bindInfo) {
+            for(auto& s : b.sets) {
+                dsls.push_back(s.layout);
+            }
         }
+
+        VkPipelineLayoutCreateInfo pipelineLayoutCI {};
+        pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCI.setLayoutCount = dsls.size();
         pipelineLayoutCI.pSetLayouts = dsls.data();
 
-        VkPipelineLayout pipelineLayout;
+        VkPipelineLayoutRAII pipelineLayout{dev->LogicalDev()};
         VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
+        pipelineCI.layout = *pipelineLayout;
 
         // Shader Stage
 
@@ -627,13 +952,42 @@ namespace Veldrid{
             specializationInfo.pMapEntries = mapEntries.data();
         }
 
-        auto& shader = desc.computeShader;
-        auto* vkShader = PtrCast<VulkanShader>(shader.get());
-        VkPipelineShaderStageCreateInfo stageCI{};
-        stageCI.module = vkShader->GetHandle();
-        stageCI.stage = VK::priv::VdToVkShaderStageSingle(shader->GetDesc().stage);
-        stageCI.pName = "main"; // Meh
-        stageCI.pSpecializationInfo = &specializationInfo;
+        PipelineRemapper remapper {
+            bindInfo
+        };
+
+        VkShaderRAII cs{dev->LogicalDev()};
+        
+        VkPipelineShaderStageCreateInfo stageCI;
+
+        {
+            auto& shader = desc.computeShader;
+            auto vkShader = PtrCast<VulkanShader>(shader.get());
+            auto dxil = vkShader->GetDXIL();
+
+            alloy::vk::ConverterCompilerArgs compiler_args{};
+            compiler_args.shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;
+            compiler_args.entryPoint = shader->GetDesc().entryPoint;
+
+            remapper.SetStage(Veldrid::Shader::Stage::Compute);
+
+            alloy::vk::SPIRVBlob spvBlob;
+            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
+
+            VkShaderModuleCreateInfo shaderModuleCI {};
+            shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            shaderModuleCI.codeSize = spvBlob.code.size() / 4;
+            shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
+            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &cs));
+
+            stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageCI.module = *cs;
+            stageCI.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            // stageCI.pName = CommonStrings.main; // Meh
+            stageCI.pName = "main";//Don't have a way to convince dxil-spv to change this name
+        }
+
         pipelineCI.stage = stageCI;
 
         VkPipeline devicePipeline;
@@ -642,19 +996,19 @@ namespace Veldrid{
         ));
 
         
-        std::uint32_t resourceSetCount = desc.resourceLayouts.size();
-        std::uint32_t dynamicOffsetsCount = 0;
-        for(auto& layout : desc.resourceLayouts)
-        {
-            auto vkLayout = PtrCast<VulkanResourceLayout>(layout.get());
-            dynamicOffsetsCount += vkLayout->GetDynamicBufferCount();
-        }
+        std::uint32_t resourceSetCount = dsls.size();
+        //std::uint32_t dynamicOffsetsCount = 0;
+        //for(auto& layout : desc.resourceLayouts)
+        //{
+        //    auto vkLayout = PtrCast<VulkanResourceLayout>(layout.get());
+        //    dynamicOffsetsCount += vkLayout->GetDynamicBufferCount();
+        //}
 
         auto rawPipe = new VulkanComputePipeline(dev);
         rawPipe->_devicePipeline = devicePipeline;
-        rawPipe->_pipelineLayout = pipelineLayout;
+        rawPipe->_pipelineLayout = *pipelineLayout;
         rawPipe->resourceSetCount = resourceSetCount;
-        rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
+        //rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
 
         return sp(rawPipe);
     }

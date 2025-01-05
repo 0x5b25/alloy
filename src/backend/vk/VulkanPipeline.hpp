@@ -163,10 +163,8 @@ namespace Veldrid
     
     class VulkanGraphicsPipeline : public VulkanPipelineBase{
 
+        //VkRenderPass _renderPass;
 
-        VkRenderPass _renderPass;
-
-        
         bool scissorTestEnabled;
 
         VulkanGraphicsPipeline(

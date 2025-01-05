@@ -12,19 +12,31 @@ namespace Veldrid{
         virtual sp<ResType> Create##ResType ( \
             const ResType ::Description& description);
 
-    class DXCResourceFactory : public ResourceFactory{
+    template<class Base>
+    class DXCResourceFactoryThunk : public ResourceFactory{
+
+    protected:
+        const Base* GetBase() const { return static_cast<const Base*>(this); }
+        Base* GetBase() { return static_cast<Base*>(this); }
+
+    };
+
+
+    class DXCResourceFactory : public DXCResourceFactoryThunk<DXCDevice>{
 
         DISABLE_COPY_AND_ASSIGN(DXCResourceFactory);
 
-        DXCDevice* _dev;
+        //DXCDevice* _dev;
 
         sp<DXCDevice> _CreateNewDevHandle();
 
     public:
-        DXCResourceFactory(DXCDevice* dev) : _dev(dev){}
+        //DXCResourceFactory(DXCDevice* dev) : _dev(dev){}
+        DXCResourceFactory() = default;
         ~DXCResourceFactory() = default;
 
-        
+        virtual void* GetHandle() const override;
+
         VLD_RF_FOR_EACH_RES(DXC_DECL_RF_CREATE_WITH_DESC)
 
         sp<Pipeline> CreateGraphicsPipeline(
@@ -35,7 +47,7 @@ namespace Veldrid{
 
         sp<Shader> CreateShader(
             const Shader::Description& desc,
-            const std::vector<std::uint32_t>& spv
+            const std::span<std::uint8_t>& spv
         ) override;
 
         sp<Texture> WrapNativeTexture(
@@ -47,9 +59,9 @@ namespace Veldrid{
             const TextureView::Description& description) override;
 
        
-        virtual sp<CommandList> CreateCommandList() override;
+        //virtual sp<CommandList> CreateCommandList() override;
 
-        virtual sp<Fence> CreateFence(bool initialSignaled) override;
+        virtual sp<Fence> CreateFence() override;
         virtual sp<Semaphore> CreateDeviceSemaphore() override;
     };
 

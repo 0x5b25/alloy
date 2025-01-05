@@ -1,9 +1,3 @@
-[submodule "3rd-party/glslang"]
-	path = 3rd-party/glslang
-	url = https://github.com/KhronosGroup/glslang.git
-[submodule "3rd-party/spirv-cross"]
-	path = 3rd-party/spirv-cross
-	url = https://github.com/KhronosGroup/SPIRV-Cross.git
 [submodule "src/backend/vk/3rd-party/vma"]
 	path = src/backend/vk/3rd-party/vma
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
@@ -23,6 +17,6 @@
 [submodule "src/backend/dx12/3rd-party/D3D12MemoryAllocator"]
 	path = src/backend/dx12/3rd-party/D3D12MemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
-[submodule "src/backend/dx12/3rd-party/Mesa/Mesa"]
-	path = src/backend/dx12/3rd-party/Mesa/Mesa
-	url = https://gitlab.freedesktop.org/mesa/mesa.git
+[submodule "src/backend/vk/3rd-party/dxil-spirv"]
+	path = src/backend/vk/3rd-party/dxil-spirv
+	url = https://github.com/HansKristian-Work/dxil-spirv.git

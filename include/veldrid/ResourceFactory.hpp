@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "veldrid/common/RefCnt.hpp"
 #include "veldrid/Shader.hpp"
 #include "veldrid/Texture.hpp"
@@ -15,7 +17,6 @@
 
 namespace Veldrid
 {
-
     #define VLD_RF_CREATE_WITH_DESC(ResType) \
         virtual sp<ResType> Create##ResType ( \
             const ResType ::Description& description) = 0;
@@ -34,12 +35,13 @@ namespace Veldrid
     class ResourceFactory{
 
     public:
+        virtual void* GetHandle() const = 0;
 
         VLD_RF_FOR_EACH_RES(VLD_RF_CREATE_WITH_DESC)
 
         virtual sp<Shader> CreateShader(
             const Shader::Description& description,
-            const std::vector<std::uint32_t>& spvBinary) = 0;
+            const std::span<std::uint8_t>& il) = 0;
 
         virtual sp<Pipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) = 0;
@@ -69,9 +71,9 @@ namespace Veldrid
             const TextureView::Description& description) = 0;
 
        
-        virtual sp<CommandList> CreateCommandList() = 0;
+        //virtual sp<CommandList> CreateCommandList() = 0;
 
-        virtual sp<Fence> CreateFence(bool initialSignaled) = 0;
+        virtual sp<Fence> CreateFence() = 0;
         //Why don't call CreateSemaphore? because there is a WinBase #define 
         // called CreateSemaphore!!!
         virtual sp<Semaphore> CreateDeviceSemaphore() = 0;

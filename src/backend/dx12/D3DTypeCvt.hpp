@@ -22,13 +22,9 @@
 
 namespace Veldrid {
     
-    //VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode);
+    D3D12_TEXTURE_ADDRESS_MODE VdToD3DSamplerAddressMode(Sampler::Description::AddressMode mode);
 
-    //void GetFilterParams(
-    //    Sampler::Description::SamplerFilter filter,
-    //    VkFilter& minFilter,
-    //    VkFilter& magFilter,
-    //    VkSamplerMipmapMode& mipmapMode);
+    D3D12_FILTER VdToD3DFilter(Sampler::Description::SamplerFilter filter, bool enableComparison);
 
     //VkDescriptorType VdToVkDescriptorType(
     //    ResourceLayout::Description::ElementDescription::ResourceKind kind, 
@@ -55,14 +51,14 @@ namespace Veldrid {
     DXGI_FORMAT VdToD3DShaderDataType(ShaderDataType format);
 
     //VkShaderStageFlags VdToVkShaderStages(
-    //    Shader::Description::Stage stage);
+    //    Shader::Stage stage);
 
     //VkShaderStageFlagBits VdToVkShaderStageSingle(
-    //    Shader::Description::Stage stage);
+    //    Shader::Stage stage);
      
     //VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor);
 
-    //VkIndexType VdToVkIndexFormat(IndexFormat format);
+    DXGI_FORMAT VdToD3DIndexFormat(IndexFormat format);
 
     D3D12_BLEND VdToD3DBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor);
 

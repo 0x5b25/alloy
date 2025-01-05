@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+#cmake_minimum_required(VERSION 3.13)
 #project(vk_backend VERSION 0.1.0)
 
 
@@ -32,16 +32,16 @@ set(VLD_BACKEND_DXC_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/DXCDevice.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanFramebuffer.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanFramebuffer.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanSwapChain.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanSwapChain.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCTexture.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCTexture.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCFrameBuffer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCFrameBuffer.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCSwapChain.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCSwapChain.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCShader.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCShader.hpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanCommandList.cpp"
-    #"${CMAKE_CURRENT_LIST_DIR}/VulkanCommandList.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCCommandList.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCCommandList.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCBindableResource.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCBindableResource.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCPipeline.hpp"
@@ -65,9 +65,11 @@ target_sources(Veldrid
 target_link_libraries(Veldrid 
     PRIVATE
         D3D12MemoryAllocator
+        AgilitySDK
+    #    DirectX-Headers
         d3d12.lib
         dxgi.lib
-        dxguid.lib
+    #    dxguid.lib
     #    common
     #    glm
     #    vulkan
@@ -79,7 +81,7 @@ target_link_libraries(Veldrid
     #    volk
     #    vma
     #    spdlog
-        spirv_to_dxil
-        vtn
-        dxil_compiler
+    #    spirv_to_dxil
+    #    vtn
+    #    dxil_compiler
     )

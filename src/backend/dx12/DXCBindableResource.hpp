@@ -16,9 +16,10 @@
 #include <vector>
 
 //backend specific headers
+#include <d3d12.h>
 
 //platform specific headers
-#include <d3d12.h>
+
 #include <dxgi1_4.h> //Guaranteed by DX12
 #include <wrl/client.h> // for ComPtr
 
@@ -30,63 +31,74 @@ namespace Veldrid{
     class DXCDevice;
     class DXCTexture;
 
-    class VulkanResourceLayout : public ResourceLayout{
+    class DXCResourceLayout : public ResourceLayout{
+    
+        enum {
+            MAX_ROOT_SIGNATURE_SIZE_DW = 64
+        };
 
+        Microsoft::WRL::ComPtr<ID3D12RootSignature> _rootSig;
 
-        VkDescriptorSetLayout _dsl;
-
+    
+        //VkDescriptorSetLayout _dsl;
+    
         std::uint32_t _dynamicBufferCount;
-        DescriptorResourceCounts _drcs;
-
-        VulkanResourceLayout(
+        //DescriptorResourceCounts _drcs;
+    
+        DXCResourceLayout(
             const sp<GraphicsDevice>& dev,
             const Description& desc
         ) : ResourceLayout(dev, desc){}
-
+    
     public:
-        ~VulkanResourceLayout();
-
+        virtual ~DXCResourceLayout() override {}
+    
         static sp<ResourceLayout> Make(
-            const sp<VulkanDevice>& dev,
+            const sp<DXCDevice>& dev,
             const Description& desc
         );
 
-        const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
-        std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
-        const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+        void* GetNativeHandle() const override {return _rootSig.Get(); }
+        ID3D12RootSignature* GetHandle() const {return _rootSig.Get(); }
+    
+        //const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
+        //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
+        //const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
     };
-
+    
     class DXCResourceSet : public ResourceSet{ //Actually d3d12 descriptor heap?
     public:
-        using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
+        //using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
-
-        _DescriptorSet _descSet;
-
-        std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
+//
+    //    _DescriptorSet _descSet;
+//
+    //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
+//
+        
+        std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
             const sp<GraphicsDevice>& dev,
-            _DescriptorSet&& set,
             const Description& desc
         ) 
             : ResourceSet(dev, desc)
-            , _descSet(std::move(set))
-        
         {}
 
     public:
-        ~DXCResourceSet();
+        virtual ~DXCResourceSet() override;
 
         static sp<ResourceSet> Make(
-            const sp<VulkanDevice>& dev,
+            const sp<DXCDevice>& dev,
             const Description& desc
         );
-
-        const VkDescriptorSet& GetHandle() const { return _descSet.GetHandle(); }
-
-
-        void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
-        void VisitElements(ElementVisitor visitor);
+//
+    //    //const VkDescriptorSet& GetHandle() const { return _descSet.GetHandle(); }
+//
+//
+    //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
+    //    void VisitElements(ElementVisitor visitor);
+        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const {return _descHeap;}
+        virtual void* GetNativeHandle() const override {return (void*)_descHeap.data(); }
     };
 }

@@ -28,8 +28,6 @@
 
 constexpr const char* GetVkPlatformSurfaceExt();
 
-
-
 struct VkInstExtNames {
     static const char* VK_KHR_SURFACE;
     static const char* VK_KHR_WIN32_SURFACE;
@@ -55,7 +53,8 @@ struct VkDevExtNames {
     static const char* VK_KHR_DEDICATED_ALLOCATION;
     static const char* VK_KHR_DRIVER_PROPS;
     static const char* VK_EXT_DEPTH_CLIP_ENABLE;
-
+    static const char* VK_KHR_TIMELINE_SEMAPHORE;
+    static const char* VK_KHR_DYNAMIC_RENDERING;
 };
 
 struct VkCommonStrings {

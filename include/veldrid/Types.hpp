@@ -272,5 +272,29 @@ namespace Veldrid
         float maxDepth;
     };
 
+    enum class HostAccess{
+        None,
+
+        //Equivalent to DX12 READ_BACK heap, preferred system memory
+        //Typical usage: GPU write once, host read once
+        PreferRead,
+
+        //Equivalent to DX12 UPLOAD heap, preferred device local memory
+        //Typical usage: Host write once, GPU read once
+        PreferWrite,
+
+        PreferSystemMemory = PreferRead,
+        PreferDeviceMemory = PreferWrite
+    };
+
+    enum class SampleCount{
+        x1 = 1,
+        x2 = 2,
+        x4 = 4,
+        x8 = 8,
+        x16 = 16,
+        x32 = 32
+    };
+
 } // namespace Veldrid
 

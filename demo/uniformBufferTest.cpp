@@ -1,7 +1,12 @@
 #include <veldrid/backend/Backends.hpp>
 #include <veldrid/SwapChainSources.hpp>
+#include <veldrid/SwapChain.hpp>
 #include <veldrid/BindableResource.hpp>
 #include <veldrid/GraphicsDevice.hpp>
+#include <veldrid/CommandQueue.hpp>
+#include <veldrid/ResourceFactory.hpp>
+#include <veldrid/Buffer.hpp>
+#include <veldrid/CommandList.hpp>
 #include <veldrid/Pipeline.hpp>
 #include <veldrid/Shader.hpp>
 
@@ -13,7 +18,7 @@
 #include <type_traits>
 
 #include "app/App.hpp"
-
+#include "app/HLSLCompiler.hpp"
 
 struct VertexData
 {
@@ -77,6 +82,61 @@ void main()
 //}
 )";
 
+const wchar_t HLSLCode[] = LR"AGAN(
+//*********************************************************
+//
+// Copyright (c) Microsoft. All rights reserved.
+// This code is licensed under the MIT License (MIT).
+// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
+// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
+// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
+// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
+//
+//*********************************************************
+
+
+struct SceneDescriptor
+{
+    float4 offset;
+    float4 padding[15];
+};
+SceneDescriptor sceneDesc : register(t0);
+
+struct UniformBufferObject{
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+};
+ConstantBuffer<UniformBufferObject> ubo  : register(b0);
+
+struct PSInput
+{
+    float4 position : SV_POSITION;
+    float4 uv : COLOR0;
+    float4 color : COLOR1;
+};
+
+PSInput VSMain(float4 position : POSITION, float4 uv : TEXCOORD, float4 color : COLOR)
+{
+    PSInput result;
+
+    //result.position = ubo.proj * ubo.view * ubo.model * float4(position.xy, 0.0, 1.0);
+    result.position = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(position.xy, 0.0, 1.0))));
+    result.color = color;
+    //result.uv = uv;
+
+    return result;
+}
+
+float4 PSMain(PSInput input) : SV_TARGET
+{
+    return input.color;
+    //return input.uv;
+}
+)AGAN";
+
+using namespace alloy;
+
 class UniformApp : public AppBase {
 
     Veldrid::sp<Veldrid::GraphicsDevice> dev;
@@ -90,10 +150,16 @@ class UniformApp : public AppBase {
 
     Veldrid::sp<Veldrid::Pipeline> pipeline;
 
-    Veldrid::sp<Veldrid::Semaphore> renderFinishSemaphore;
     Veldrid::sp<Veldrid::Fence> renderFinishFence;
 
     Veldrid::sp<Veldrid::CommandList> cmd;
+
+    uint64_t renderFinishFenceValue = 0;
+
+    //Swapchain backbuffers requires image layout transitions
+    //from undefined to target layout. This counter corresponds
+    //to swapchain backbuffer count
+    uint32_t _initSubmissionCnt = 2;
 
     template<typename T>
     void UpdateBuffer(
@@ -105,14 +171,17 @@ class UniformApp : public AppBase {
 
         Veldrid::Buffer::Description desc{};
         desc.sizeInBytes = stagingBufferSizeInBytes;
-        desc.usage.staging = 1;
+        desc.hostAccess = Veldrid::HostAccess::PreferWrite;
+        //desc.usage.staging = 1;
         auto transferBuffer = dev->GetResourceFactory()->CreateBuffer(desc);
 
-        auto fence = dev->GetResourceFactory()->CreateFence(false);
+        auto fence = dev->GetResourceFactory()->CreateFence();
+        uint64_t signalValue = 1;
 
         unsigned remainingSize = transferSizeInBytes;
         auto readPtr = (const std::uint8_t*)data.data();
         auto writePtr = transferBuffer->MapToCPU();
+        assert(writePtr != nullptr);
 
         while (remainingSize > 0)
         {
@@ -122,15 +191,16 @@ class UniformApp : public AppBase {
             memcpy(writePtr, readPtr + transferedSize, batchSize);
             
             //Record the command buffer
-            auto cmd = dev->GetResourceFactory()->CreateCommandList();
+            auto cmd = dev->GetGfxCommandQueue()->CreateCommandList();
             cmd->Begin();
             cmd->CopyBuffer(transferBuffer, 0, buffer, transferedSize, batchSize);
             cmd->End();
 
             //submit and wait
-            dev->SubmitCommand({{{ cmd.get() }, {}, {}}}, fence.get());
-            fence->WaitForSignal();
-            fence->Reset();
+            dev->GetGfxCommandQueue()->SubmitCommand(cmd.get());
+            dev->GetGfxCommandQueue()->EncodeSignalFence(fence.get(), signalValue);
+            fence->WaitFromCPU(signalValue);
+            signalValue++;
 
             //Advance counters
             remainingSize -= batchSize;
@@ -140,24 +210,48 @@ class UniformApp : public AppBase {
 
     }
 
-    void CreateSwapChain(unsigned surfaceWidth, unsigned surfaceHeight) {
-
+    void CreateSwapChain(
+        Veldrid::SwapChainSource* swapChainSrc,
+        unsigned surfaceWidth,
+        unsigned surfaceHeight
+    ) {
         Veldrid::SwapChain::Description swapChainDesc{};
+        swapChainDesc.source = swapChainSrc;
         swapChainDesc.initialWidth = surfaceWidth;
         swapChainDesc.initialHeight = surfaceHeight;
         swapChainDesc.depthFormat = Veldrid::PixelFormat::D24_UNorm_S8_UInt;
+        swapChainDesc.backBufferCnt = _initSubmissionCnt;
         swapChain = dev->GetResourceFactory()->CreateSwapChain(swapChainDesc);
     }
 
     void CreateShaders() {
-        auto spvCompiler = Veldrid::IGLSLCompiler::Get();
+        auto pComplier = IHLSLCompiler::Create();
+
+        //auto spvCompiler = Veldrid::IGLSLCompiler::Get();
         std::string compileInfo;
 
         std::cout << "Compiling vertex shader...\n";
-        std::vector<std::uint32_t> vertexSpv;
+        std::vector<std::uint8_t> vertexSpv;
+        
+        std::vector<std::uint8_t> fragSpv;
 
-        Veldrid::Shader::Description::Stage stage{};
-        stage.vertex = 1;
+        try {
+            vertexSpv = pComplier->Compile(HLSLCode, L"VSMain", ShaderType::VS);
+        } catch (const ShaderCompileError& e){
+            std::cout << "Vertex shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+
+        try {
+            fragSpv = pComplier->Compile(HLSLCode, L"PSMain", ShaderType::PS);
+        } catch (const ShaderCompileError& e){
+            std::cout << "Fragment shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+/*
+        Veldrid::Shader::Stage stage = Veldrid::Shader::Stage::Vertex;
         if (!spvCompiler->CompileToSPIRV(
             stage,
             VertexCode,
@@ -170,10 +264,8 @@ class UniformApp : public AppBase {
         }
 
         std::cout << "Compiling fragment shader...\n";
-        std::vector<std::uint32_t> fragSpv;
 
-        stage = {};
-        stage.fragment = 1;
+        stage = Veldrid::Shader::Stage::Fragment;
         if (!spvCompiler->CompileToSPIRV(
             stage,
             FragmentCode,
@@ -184,18 +276,19 @@ class UniformApp : public AppBase {
         )) {
             std::cout << compileInfo << "\n";
         }
-
+*/
         auto factory = dev->GetResourceFactory();
         Veldrid::Shader::Description vertexShaderDesc{};
-        vertexShaderDesc.stage.vertex = 1;
-        vertexShaderDesc.entryPoint = "main";
+        vertexShaderDesc.stage = Veldrid::Shader::Stage::Vertex;
+        vertexShaderDesc.entryPoint = "VSMain";
         Veldrid::Shader::Description fragmentShaderDesc{};
-        fragmentShaderDesc.stage.fragment = 1;
-        fragmentShaderDesc.entryPoint = "main";
+        fragmentShaderDesc.stage = Veldrid::Shader::Stage::Fragment;
+        fragmentShaderDesc.entryPoint = "PSMain";
 
-        fragmentShader = factory->CreateShader(fragmentShaderDesc, fragSpv);
-        vertexShader = factory->CreateShader(vertexShaderDesc, vertexSpv);
+        fragmentShader = factory->CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size()});
+        vertexShader = factory->CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size()});
 
+        delete pComplier;
     }
 
     void CreateBuffers() {
@@ -228,7 +321,8 @@ class UniformApp : public AppBase {
         Veldrid::Buffer::Description _ubDesc{};
         _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
         _ubDesc.usage.uniformBuffer = 1;
-        _ubDesc.usage.staging = 1;
+        //_ubDesc.usage.staging = 1;
+        _ubDesc.hostAccess = Veldrid::HostAccess::PreferWrite;
         uniformBuffer = factory->CreateBuffer(_ubDesc);
 
         Veldrid::Buffer::Description _tbDesc{};
@@ -242,20 +336,18 @@ class UniformApp : public AppBase {
         auto factory = dev->GetResourceFactory();
 
         Veldrid::ResourceLayout::Description resLayoutDesc{};
-        using ElemKind = Veldrid::ResourceLayout::Description::ElementDescription::ResourceKind;
+        using ElemKind = Veldrid::IBindableResource::ResourceKind;
         resLayoutDesc.elements.resize(2, {});
         {
             resLayoutDesc.elements[0].name = "ObjectUniform";
             resLayoutDesc.elements[0].kind = ElemKind::UniformBuffer;
-            resLayoutDesc.elements[0].stages.vertex = 1;
-            resLayoutDesc.elements[0].stages.fragment = 1;
+            resLayoutDesc.elements[0].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
         }
 
         {
             resLayoutDesc.elements[1].name = "Struct";
-            resLayoutDesc.elements[1].kind = ElemKind::StructuredBufferReadOnly;
-            resLayoutDesc.elements[1].stages.vertex = 1;
-            resLayoutDesc.elements[1].stages.fragment = 1;
+            resLayoutDesc.elements[1].kind = ElemKind::StorageBuffer;
+            resLayoutDesc.elements[1].stages = Veldrid::Shader::Stage::Vertex | Veldrid::Shader::Stage::Fragment;
         }
 
         auto _layout = factory->CreateResourceLayout(resLayoutDesc);
@@ -263,13 +355,13 @@ class UniformApp : public AppBase {
         Veldrid::ResourceSet::Description resSetDesc{};
         resSetDesc.layout = _layout;
         resSetDesc.boundResources = {
-            Veldrid::BufferRange::Make(uniformBuffer), 
-            Veldrid::BufferRange::Make(structBuffer)
+            Veldrid::BufferRange::MakeByteBuffer(uniformBuffer), 
+            Veldrid::BufferRange::MakeByteBuffer(structBuffer)
         };
         shaderResources = factory->CreateResourceSet(resSetDesc);
         
         Veldrid::GraphicsPipelineDescription pipelineDescription{};
-        pipelineDescription.resourceLayouts = { _layout };
+        pipelineDescription.resourceLayout = _layout;
         pipelineDescription.blendState = {};
         pipelineDescription.blendState.attachments = { Veldrid::BlendStateDescription::Attachment::MakeOverrideBlend() };
         //pipelineDescription.blendState.attachments[0].blendEnabled = true;
@@ -290,21 +382,21 @@ class UniformApp : public AppBase {
         using VL = Veldrid::GraphicsPipelineDescription::ShaderSet::VertexLayout;
         pipelineDescription.shaderSet.vertexLayouts = { {} };
         pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
-            {"Position", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float2},
-            {"UV", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float2},
-            {"Color", VL::Element::Semantic::TextureCoordinate, Veldrid::ShaderDataType::Float4}
+            {"POSITION", {Veldrid::VertexInputSemantic::Name::Position, 0}, Veldrid::ShaderDataType::Float2},
+            {"TEXCOORD", {Veldrid::VertexInputSemantic::Name::TextureCoordinate, 0}, Veldrid::ShaderDataType::Float2},
+            {"COLOR", {Veldrid::VertexInputSemantic::Name::Color, 0}, Veldrid::ShaderDataType::Float4}
             });
-        pipelineDescription.shaderSet.shaders = { vertexShader, fragmentShader };
+        pipelineDescription.shaderSet.vertexShader = vertexShader;
+        pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
-        pipelineDescription.outputs = swapChain->GetFramebuffer()->GetOutputDescription();
+        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetOutputDescription();
         //pipelineDescription.outputs = fb->GetOutputDescription();
         pipeline = factory->CreateGraphicsPipeline(pipelineDescription);
     }
 
     void CreateSyncObjects() {
         auto factory = dev->GetResourceFactory();
-        renderFinishFence = factory->CreateFence(true);
-        renderFinishSemaphore = factory->CreateDeviceSemaphore();
+        renderFinishFence = factory->CreateFence();
     }
 
     void* ubMapped = nullptr;
@@ -314,15 +406,38 @@ class UniformApp : public AppBase {
         unsigned surfaceHeight
     ) override {
         Veldrid::GraphicsDevice::Options opt{};
+        opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
-        dev = Veldrid::CreateVulkanGraphicsDevice(opt, swapChainSrc);
+        //dev = Veldrid::CreateVulkanGraphicsDevice(opt, swapChainSrc);
+        dev = Veldrid::CreateVulkanGraphicsDevice(opt);
+        //dev = Veldrid::CreateDX12GraphicsDevice(opt);
+
+        auto& adpInfo = dev->GetAdapterInfo();
+
+        std::cout << "Picked device:\n";
+        std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";
+        std::cout << "    Device ID   : " << std::hex << adpInfo.deviceID << "\n";
+        std::cout << "    Name        : " <<             adpInfo.deviceName << "\n";
+        std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
+                                    std::cout << "." << adpInfo.apiVersion.minor;
+                                    std::cout << "." << adpInfo.apiVersion.subminor;
+                                    std::cout << "." << adpInfo.apiVersion.patch << std::endl;
+
         
         //CreateResources
-        CreateSwapChain(surfaceWidth, surfaceHeight);
+        std::cout << "Creating swapchain...\n";
+        CreateSwapChain(swapChainSrc, surfaceWidth, surfaceHeight);
+        std::cout << "Compiling shaders...\n";
         CreateShaders();
+        std::cout << "Creating buffers...\n";
         CreateBuffers();
+        std::cout << "Creating pipeline...\n";
         CreatePipeline();
+        std::cout << "Creating sync objects...\n";
         CreateSyncObjects();
+
+        
+        std::cout << "Resource creation completed." << std::endl;
 
         ubMapped = uniformBuffer->MapToCPU();
     }
@@ -348,48 +463,94 @@ class UniformApp : public AppBase {
             swapChain->GetWidth() / (float)swapChain->GetHeight(),
             0.1f, 10.0f);
 
-        /* Render here */
-        auto factory = dev->GetResourceFactory();
-        //Get one drawable
-        auto res = swapChain->SwitchToNextFrameBuffer();
-        switch (res)
-        {
-        case Veldrid::SwapChain::State::Optimal: {
-
-        } break;
-        case Veldrid::SwapChain::State::Suboptimal:
-        case Veldrid::SwapChain::State::OutOfDate: {
-            int width = 0, height = 0;
-            glfwGetFramebufferSize(window, &width, &height);
-            while (width == 0 || height == 0) {
-                glfwGetFramebufferSize(window, &width, &height);
+        int currWidth, currHeight;
+        GetFramebufferSize(currWidth, currHeight);
+        if( (currWidth != initialWidth) || (currHeight != initialHeight) ) {
+            while (currWidth == 0 || currHeight == 0) {
+                GetFramebufferSize(currWidth, currHeight);
                 glfwWaitEvents();
             }
             dev->WaitForIdle();
-            swapChain->Resize(width, height);
-            swapChain->SwitchToNextFrameBuffer();
-        } break;
-        case Veldrid::SwapChain::State::Error: {
-            return false;
-            //assert(false);
-        }
+            swapChain->Resize(currWidth, currHeight);
+            initialWidth = currWidth;
+            initialHeight = currHeight;
+            _initSubmissionCnt = 2;
         }
 
+        /* Render here */
+        auto factory = dev->GetResourceFactory();
+        //Get one drawable
+        auto backBuffer = swapChain->GetBackBuffer();
+        
 
-        auto _commandList = factory->CreateCommandList();
+        auto gfxQ = dev->GetGfxCommandQueue();
+        auto _commandList = gfxQ->CreateCommandList();
         //Record command buffer
         _commandList->Begin();
 
-        _commandList->BeginRenderPass(swapChain->GetFramebuffer());
+        
+
+        {
+            auto initialLayout = alloy::TextureLayout::UNDEFINED;
+            
+            bool isInitSubmission = false;
+            if(_initSubmissionCnt > 0) {
+                _initSubmissionCnt--;
+                isInitSubmission = true;
+            }
+
+            // Indicate that the back buffer will be used as a render target.
+            //auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            //m_commandList->ResourceBarrier(1, &barrier);
+            alloy::BarrierDescription texBarrier{
+                .memBarrier = {
+                    .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
+                    .stagesAfter = alloy::PipelineStage::RENDER_TARGET,
+                    .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
+                    .accessAfter = alloy::ResourceAccess::RENDER_TARGET,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::PRESENT,
+                    .toLayout = alloy::TextureLayout::RENDER_TARGET,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                }
+                //.barriers = { texBarrier, dsBarrier }
+            };
+
+
+            //if(_isFirstSubmission) {
+            alloy::BarrierDescription dsBarrier{
+                .memBarrier = {
+                    .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
+                    .stagesAfter = alloy::PipelineStage::DEPTH_STENCIL,
+                    .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
+                    .accessAfter = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::COMMON,
+                    .toLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                }
+            };
+                //_isFirstSubmission = false;
+            //}
+            
+            _commandList->Barrier({ texBarrier, dsBarrier });
+        }
+
+        _commandList->BeginRenderPass(swapChain->GetBackBuffer());
         //_commandList->BeginRenderPass(fb);
-        _commandList->ClearDepthStencil(0, 0);
-        _commandList->ClearColorTarget(0, 0.1, 0.1, 0.3, 1);
         _commandList->SetPipeline(pipeline);
-        _commandList->SetVertexBuffer(0, vertexBuffer);
-        _commandList->SetIndexBuffer(indexBuffer, Veldrid::IndexFormat::UInt32);
-        _commandList->SetGraphicsResourceSet(0, shaderResources, {});
         _commandList->SetFullViewports();
         _commandList->SetFullScissorRects();
+
+        _commandList->ClearDepthStencil(0, 0);
+        _commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);
+        _commandList->SetVertexBuffer(0, vertexBuffer);
+        _commandList->SetIndexBuffer(indexBuffer, Veldrid::IndexFormat::UInt32);
+        _commandList->SetGraphicsResourceSet(shaderResources);
         //_commandList->Draw(3);
         _commandList->DrawIndexed(
             /*indexCount:    */4,
@@ -397,31 +558,69 @@ class UniformApp : public AppBase {
             /*indexStart:    */0,
             /*vertexOffset:  */0,
             /*instanceStart: */0);
+
         _commandList->EndRenderPass();
+        // Indicate that the back buffer will now be used to present.
+        {
+            //auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+            //m_commandList->ResourceBarrier(1, &barrier);
+            alloy::BarrierDescription texBarrier{
+                .memBarrier = {
+                    .stagesBefore = alloy::PipelineStage::RENDER_TARGET,
+                    .stagesAfter = alloy::PipelineStage::All,
+                    .accessBefore = alloy::ResourceAccess::RENDER_TARGET,
+                    .accessAfter = alloy::ResourceAccess::COMMON,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = alloy::TextureLayout::RENDER_TARGET,
+                    .toLayout = alloy::TextureLayout::PRESENT,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                }
+                //.barriers = { texBarrier, dsBarrier }
+            };
+
+
+            //if(_isFirstSubmission) {
+            alloy::BarrierDescription dsBarrier{
+                .memBarrier = {
+                    .stagesBefore = alloy::PipelineStage::DEPTH_STENCIL,
+                    .stagesAfter = alloy::PipelineStage::All,
+                    .accessBefore = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessAfter = alloy::ResourceAccess::COMMON,
+                },
+
+                .resourceInfo = alloy::TextureBarrierResource {
+                    .fromLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
+                    .toLayout = alloy::TextureLayout::COMMON,
+                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                }
+            };
+
+            _commandList->Barrier({ texBarrier, dsBarrier });
+        }
+
         _commandList->End();
 
         //Wait for previous render to complete
-        renderFinishFence->WaitForSignal();
-        renderFinishFence->Reset();
+        //renderFinishFence->WaitFromCPU(renderFinishFenceValue);
+        //renderFinishFenceValue++;
+        renderFinishFenceValue++;
         //Update uniformbuffer
         memcpy(ubMapped, &ubo, sizeof(ubo));
-        dev->SubmitCommand(
-            {
-                {
-                    { _commandList.get() },
-                    {},
-                    { renderFinishSemaphore.get() },
-                }
-            },
-            renderFinishFence.get());
-        cmd = _commandList;
+        
+        gfxQ->SubmitCommand(_commandList.get());
+        gfxQ->EncodeSignalFence(renderFinishFence.get(), renderFinishFenceValue );
+        // /cmd = _commandList;
+        //Wait for render to complete
+        renderFinishFence->WaitFromCPU(renderFinishFenceValue);
 
         //StopCapture();
 
         /* Swap front and back buffers */
         //glfwSwapBuffers(window);
-        res = dev->PresentToSwapChain(
-            { renderFinishSemaphore.get() },
+        dev->PresentToSwapChain(
+            {  },
             swapChain.get());
 
         return true;

@@ -22,7 +22,7 @@ namespace Veldrid::VK::priv {
         IBindableResource::ResourceKind kind, 
         ResourceLayout::Description::ElementDescription::Options options);
 
-    VkSampleCountFlagBits VdToVkSampleCount(Texture::Description::SampleCount sampleCount);
+    VkSampleCountFlagBits VdToVkSampleCount(SampleCount sampleCount);
 
     VkStencilOp VdToVkStencilOp(DepthStencilStateDescription::StencilBehavior::Operation op);
 
@@ -43,10 +43,10 @@ namespace Veldrid::VK::priv {
     VkFormat VdToVkShaderDataType(ShaderDataType format);
 
     VkShaderStageFlags VdToVkShaderStages(
-        Shader::Description::Stage stage);
+        Shader::Stages stages);
 
     VkShaderStageFlagBits VdToVkShaderStageSingle(
-        Shader::Description::Stage stage);
+        Shader::Stage stage);
      
     VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor);
 

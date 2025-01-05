@@ -75,16 +75,23 @@ namespace Veldrid
                 Texture1D, Texture2D, Texture3D
             } type;
 
-            enum class SampleCount : uint8_t{
-                x1 = 1,
-                x2 = 2,
-                x4 = 4,
-                x8 = 8,
-                x16 = 16,
-                x32 = 32
-            } sampleCount;
+            SampleCount sampleCount;
+
+            
+            HostAccess hostAccess;
         };
         
+        struct SubresourceLayout {
+            uint64_t offset; //The offset from start address
+            uint64_t rowPitch;
+            uint64_t depthPitch;
+            uint64_t arrayPitch;
+        };
+
+        enum class SubresourceAspect {
+            Color, Depth, Stencil
+        };
+
     protected:
         Description description;
 
@@ -99,6 +106,31 @@ namespace Veldrid
 
     public:
         const Description& GetDesc() const {return description;}
+
+        virtual void WriteSubresource(
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            uint32_t dstX, uint32_t dstY, uint32_t dstZ,
+            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+            const void* src,
+            uint32_t srcRowPitch,
+            uint32_t srcDepthPitch
+        ) = 0;
+
+        virtual void ReadSubresource(
+            void* dst,
+            uint32_t dstRowPitch,
+            uint32_t dstDepthPitch,
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            uint32_t srcX, uint32_t srcY, uint32_t srcZ,
+            std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        ) = 0;
+
+        virtual SubresourceLayout GetSubresourceLayout(
+            uint32_t mipLevel,
+            uint32_t arrayLayer,
+            SubresourceAspect aspect = SubresourceAspect::Color) = 0;
 
     };
 
@@ -134,7 +166,7 @@ namespace Veldrid
             return description;
         }
 
-        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Sampler; }
+        virtual ResourceKind GetResourceKind() const override { return ResourceKind::Texture; }
 
         const sp<Texture>& GetTarget() const { return target; }
 

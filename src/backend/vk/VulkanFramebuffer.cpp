@@ -36,8 +36,8 @@ namespace Veldrid
             auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
             auto& texDesc = vkColorTex->GetDesc();
             VkAttachmentDescription colorAttachmentDesc{};
-            colorAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
-            colorAttachmentDesc.samples = VdToVkSampleCount(texDesc.sampleCount);
+            colorAttachmentDesc.format = Veldrid::VK::priv::VdToVkPixelFormat(texDesc.format);
+            colorAttachmentDesc.samples = Veldrid::VK::priv::VdToVkSampleCount(texDesc.sampleCount);
             colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
             colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
             colorAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -63,8 +63,8 @@ namespace Veldrid
             auto vkDepthTex = PtrCast<VulkanTexture>(desc.depthTarget.target.get());
             auto& texDesc = vkDepthTex->GetDesc();
             bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(texDesc.format);
-            depthAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
-            depthAttachmentDesc.samples = VdToVkSampleCount(texDesc.sampleCount);
+            depthAttachmentDesc.format = Veldrid::VK::priv::VdToVkPixelFormat(texDesc.format);
+            depthAttachmentDesc.samples = Veldrid::VK::priv::VdToVkSampleCount(texDesc.sampleCount);
             depthAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
             depthAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
             depthAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -164,11 +164,11 @@ namespace Veldrid
 
     VulkanFramebuffer::~VulkanFramebuffer(){
         auto vkDev = PtrCast<VulkanDevice>(dev.get());
-        vkDestroyFramebuffer(vkDev->LogicalDev(), _fb, nullptr);
+        //vkDestroyFramebuffer(vkDev->LogicalDev(), _fb, nullptr);
 
-        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClear, nullptr);
-        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClearLoad, nullptr);
-        vkDestroyRenderPass(vkDev->LogicalDev(), renderPassClear, nullptr);
+        //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClear, nullptr);
+        //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClearLoad, nullptr);
+        //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassClear, nullptr);
 
         for (VkImageView view : _attachmentViews)
         {
@@ -187,8 +187,8 @@ namespace Veldrid
         unsigned colorAttachmentCount = desc.colorTargets.size();
 
         //Actually create the framebuffer
-        VkFramebufferCreateInfo fbCI {};
-        fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        //VkFramebufferCreateInfo fbCI {};
+        //fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         unsigned fbAttachmentsCount = colorAttachmentCount;
         if(desc.HasDepthTarget()) fbAttachmentsCount += 1;
 
@@ -199,7 +199,7 @@ namespace Veldrid
             VkImageViewCreateInfo imageViewCI{};
             imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             imageViewCI.image = vkColorTarget->GetHandle();
-            imageViewCI.format = VdToVkPixelFormat(vkColorTarget->GetDesc().format);
+            imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(vkColorTarget->GetDesc().format);
             imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
             imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
             imageViewCI.subresourceRange.baseMipLevel = desc.colorTargets[i].mipLevel;
@@ -220,7 +220,7 @@ namespace Veldrid
             VkImageViewCreateInfo depthViewCI{};
             depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             depthViewCI.image = vkDepthTarget->GetHandle();
-            depthViewCI.format = VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
+            depthViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
             depthViewCI.viewType = desc.depthTarget.target->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
@@ -260,18 +260,18 @@ namespace Veldrid
         std::uint32_t mipWidth, mipHeight, mipDepth;
         Helpers::GetMipDimensions(dimTex->GetDesc(), mipLevel, mipWidth, mipHeight, mipDepth);
 
-        fbCI.width = mipWidth;
-        fbCI.height = mipHeight;
-
-        fbCI.attachmentCount = fbAttachmentsCount;
-        fbCI.pAttachments = fbAttachments.data();
-        fbCI.layers = 1;
-        fbCI.renderPass = framebuffer->renderPassNoClear;
-
-        VkFramebuffer fb;
-        VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
-
-        framebuffer->_fb = fb;
+        //fbCI.width = mipWidth;
+        //fbCI.height = mipHeight;
+        //
+        //fbCI.attachmentCount = fbAttachmentsCount;
+        //fbCI.pAttachments = fbAttachments.data();
+        //fbCI.layers = 1;
+        //fbCI.renderPass = framebuffer->renderPassNoClear;
+        //
+        //VkFramebuffer fb;
+        //VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
+        //
+        //framebuffer->_fb = fb;
         framebuffer->_attachmentViews = std::move(fbAttachments);
 
         return sp<Framebuffer>(framebuffer);
@@ -325,6 +325,89 @@ namespace Veldrid
 
             visitor(vkDepthTarget, type);
         }
+    }
+
+    
+    void VulkanFramebuffer::InsertCmdBeginDynamicRendering(VkCommandBuffer cb) {
+
+
+        unsigned colorAttachmentCount = GetDesc().colorTargets.size();
+        std::vector<VkRenderingAttachmentInfoKHR> colorAttachmentRefs{};
+        for (int i = 0; i < colorAttachmentCount; i++)
+        {
+            auto vkColorTex = PtrCast<VulkanTexture>(GetDesc().colorTargets[i].target.get());
+            auto& texDesc = vkColorTex->GetDesc();
+            auto& colorAttachmentDesc 
+                = colorAttachmentRefs.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+
+            colorAttachmentDesc.imageView = _attachmentViews[i];
+            colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
+            colorAttachmentDesc.resolveImageView = nullptr;
+            colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+            colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachmentDesc.clearValue = {};
+        }
+
+        VkRenderingAttachmentInfoKHR dsAttachment{
+            VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+        };
+
+        bool hasDepth = false, hasStencil = false;
+
+        if (GetDesc().HasDepthTarget())
+        {
+            assert(colorAttachmentCount + 1 == _attachmentViews.size());
+            hasDepth = true;
+
+            auto vkDepthTex = PtrCast<VulkanTexture>(GetDesc().depthTarget.target.get());
+            auto& texDesc = vkDepthTex->GetDesc();
+            
+            hasStencil = Helpers::FormatHelpers::IsStencilFormat(texDesc.format);
+
+            dsAttachment.imageView = _attachmentViews.back();
+            dsAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            dsAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            dsAttachment.resolveImageView = nullptr;
+            dsAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            dsAttachment.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+            dsAttachment.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+            dsAttachment.clearValue = {};
+        }
+
+        /*
+        typedef struct VkRenderingInfo {
+            VkStructureType                     sType;
+            const void*                         pNext;
+            VkRenderingFlags                    flags;
+            VkRect2D                            renderArea;
+            uint32_t                            layerCount;
+            uint32_t                            viewMask;
+            uint32_t                            colorAttachmentCount;
+            const VkRenderingAttachmentInfo*    pColorAttachments;
+            const VkRenderingAttachmentInfo*    pDepthAttachment;
+            const VkRenderingAttachmentInfo*    pStencilAttachment;
+        } VkRenderingInfo;
+        */
+
+        //VkRenderPassBeginInfo renderPassBI{};
+        //renderPassBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        //renderPassBI.renderArea = VkRect2D{ {0, 0}, {vkfb->GetDesc().GetWidth(), vkfb->GetDesc().GetHeight()} };
+        //renderPassBI.framebuffer = vkfb->GetHandle();
+
+
+        const VkRenderingInfoKHR render_info {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+            .renderArea = VkRect2D{ {0, 0}, {GetDesc().GetWidth(), GetDesc().GetHeight()} },
+            .layerCount = 1,
+            .colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+            .pColorAttachments = colorAttachmentRefs.data(),
+            .pDepthAttachment = hasDepth ? &dsAttachment : nullptr,
+            .pStencilAttachment = hasStencil ? &dsAttachment : nullptr,   
+        };
+
+        vkCmdBeginRenderingKHR(cb, &render_info);
     }
 
 } // namespace Veldrid

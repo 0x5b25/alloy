@@ -66,7 +66,7 @@ namespace Veldrid::Helpers
         std::int32_t GetElementCount(ShaderDataType format);
 
         std::uint32_t GetSampleCountUInt32(
-            Veldrid::Texture::Description::SampleCount sampleCount);
+            Veldrid::SampleCount sampleCount);
 
         bool IsStencilFormat(PixelFormat format);
 
@@ -92,7 +92,7 @@ namespace Veldrid::Helpers
 
         std::uint32_t GetRegionSize(std::uint32_t width, std::uint32_t height, std::uint32_t depth, PixelFormat format);
 
-        Veldrid::Texture::Description::SampleCount GetSampleCount(
+        Veldrid::SampleCount GetSampleCount(
             std::uint32_t samples);
 
         PixelFormat GetViewFamilyFormat(const PixelFormat& format);
