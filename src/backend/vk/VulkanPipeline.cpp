@@ -1,7 +1,7 @@
 #include "VulkanPipeline.hpp"
 
-#include "veldrid/common/Common.hpp"
-#include "veldrid/Helpers.hpp"
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 #include <vector>
 #include <set>
@@ -15,16 +15,16 @@
 
 
 template <>
-struct std::hash<Veldrid::VertexInputSemantic>
+struct std::hash<alloy::VertexInputSemantic>
 {
-    std::size_t operator()(const Veldrid::VertexInputSemantic& k) const
+    std::size_t operator()(const alloy::VertexInputSemantic& k) const
     {
         return std::hash<uint32_t>()((uint32_t)k.name)
              ^ (std::hash<uint32_t>()(k.slot) << 1);
     }
 };
 
-namespace Veldrid{
+namespace alloy::vk{
 class VkShaderRAII {
     VkDevice _dev;
     VkShaderModule _mod;
@@ -252,7 +252,7 @@ public:
         for (unsigned i = 0; i < outputDesc.colorAttachment.size(); i++)
         {
             VkAttachmentDescription colorAttachmentDesc{};
-            colorAttachmentDesc.format = VK::priv::VdToVkPixelFormat(outputDesc.colorAttachment[i].format);
+            colorAttachmentDesc.format = VdToVkPixelFormat(outputDesc.colorAttachment[i].format);
             colorAttachmentDesc.samples = sampleCnt;
             colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
@@ -271,8 +271,8 @@ public:
         {
             VkAttachmentDescription depthAttachmentDesc{};
             PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
-            bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(depthFormat);
-            depthAttachmentDesc.format = VK::priv::VdToVkPixelFormat(depthFormat, true);
+            bool hasStencil = FormatHelpers::IsStencilFormat(depthFormat);
+            depthAttachmentDesc.format = VdToVkPixelFormat(depthFormat, true);
             depthAttachmentDesc.samples = sampleCnt;
             depthAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             depthAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
@@ -322,9 +322,8 @@ public:
 
 
     VulkanPipelineBase::~VulkanPipelineBase() {
-        auto vkDev = _Dev();
-        vkDestroyPipelineLayout(vkDev->LogicalDev(), _pipelineLayout, nullptr);
-        vkDestroyPipeline(vkDev->LogicalDev(), _devicePipeline, nullptr);
+        vkDestroyPipelineLayout(dev->LogicalDev(), _pipelineLayout, nullptr);
+        vkDestroyPipeline(dev->LogicalDev(), _devicePipeline, nullptr);
     }
 
     VulkanComputePipeline::~VulkanComputePipeline(){
@@ -333,11 +332,6 @@ public:
 
     VulkanGraphicsPipeline::~VulkanGraphicsPipeline(){
 
-        auto vkDev = _Dev();
-        if (!IsComputePipeline())
-        {
-            //vkDestroyRenderPass(vkDev->LogicalDev(), _renderPass, nullptr);
-        }
     }
 
     void _CreateStandardPipeline(
@@ -479,12 +473,12 @@ public:
         return;
     }
 
-    sp<Pipeline> VulkanGraphicsPipeline::Make(
-        const sp<VulkanDevice>& dev,
+    common::sp<IGfxPipeline> VulkanGraphicsPipeline::Make(
+        const common::sp<VulkanDevice>& dev,
         const GraphicsPipelineDescription& desc
     )
     {
-        std::vector<sp<RefCntBase>> refCnts;
+        std::vector<common::sp<common::RefCntBase>> refCnts;
 
         VkGraphicsPipelineCreateInfo pipelineCI{};
         pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -505,13 +499,13 @@ public:
         {
             auto vdDesc = desc.blendState.attachments[i];
             auto& attachmentState = attachments[i];
-            attachmentState.srcColorBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.sourceColorFactor);
-            attachmentState.dstColorBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.destinationColorFactor);
-            attachmentState.colorBlendOp = VK::priv::VdToVkBlendOp(vdDesc.colorFunction);
-            attachmentState.srcAlphaBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
-            attachmentState.dstAlphaBlendFactor = VK::priv::VdToVkBlendFactor(vdDesc.destinationAlphaFactor);
-            attachmentState.alphaBlendOp = VK::priv::VdToVkBlendOp(vdDesc.alphaFunction);
-            attachmentState.colorWriteMask = VK::priv::VdToVkColorWriteMask(vdDesc.colorWriteMask);
+            attachmentState.srcColorBlendFactor = VdToVkBlendFactor(vdDesc.sourceColorFactor);
+            attachmentState.dstColorBlendFactor = VdToVkBlendFactor(vdDesc.destinationColorFactor);
+            attachmentState.colorBlendOp = VdToVkBlendOp(vdDesc.colorFunction);
+            attachmentState.srcAlphaBlendFactor = VdToVkBlendFactor(vdDesc.sourceAlphaFactor);
+            attachmentState.dstAlphaBlendFactor = VdToVkBlendFactor(vdDesc.destinationAlphaFactor);
+            attachmentState.alphaBlendOp = VdToVkBlendOp(vdDesc.alphaFunction);
+            attachmentState.colorWriteMask = VdToVkColorWriteMask(vdDesc.colorWriteMask);
             attachmentState.blendEnable = vdDesc.blendEnabled;
         }
         
@@ -530,8 +524,8 @@ public:
         auto& rsDesc = desc.rasterizerState;
         VkPipelineRasterizationStateCreateInfo rsCI{};
         rsCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rsCI.cullMode = VK::priv::VdToVkCullMode(rsDesc.cullMode);
-        rsCI.polygonMode = VK::priv::VdToVkPolygonMode(rsDesc.fillMode);
+        rsCI.cullMode = VdToVkCullMode(rsDesc.cullMode);
+        rsCI.polygonMode = VdToVkPolygonMode(rsDesc.fillMode);
 
         //depthClampEnable controls whether to clamp the fragment’s depth values
         // as described in Depth Test. If the pipeline is not created with
@@ -584,21 +578,21 @@ public:
         dssCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         dssCI.depthWriteEnable = vdDssDesc.depthWriteEnabled;
         dssCI.depthTestEnable = vdDssDesc.depthTestEnabled;
-        dssCI.depthCompareOp = VK::priv::VdToVkCompareOp(vdDssDesc.depthComparison);
+        dssCI.depthCompareOp = VdToVkCompareOp(vdDssDesc.depthComparison);
         dssCI.stencilTestEnable = vdDssDesc.stencilTestEnabled;
 
-        dssCI.front.failOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.fail);
-        dssCI.front.passOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.pass);
-        dssCI.front.depthFailOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilFront.depthFail);
-        dssCI.front.compareOp = VK::priv::VdToVkCompareOp(vdDssDesc.stencilFront.comparison);
+        dssCI.front.failOp = VdToVkStencilOp(vdDssDesc.stencilFront.fail);
+        dssCI.front.passOp = VdToVkStencilOp(vdDssDesc.stencilFront.pass);
+        dssCI.front.depthFailOp = VdToVkStencilOp(vdDssDesc.stencilFront.depthFail);
+        dssCI.front.compareOp = VdToVkCompareOp(vdDssDesc.stencilFront.comparison);
         dssCI.front.compareMask = vdDssDesc.stencilReadMask;
         dssCI.front.writeMask = vdDssDesc.stencilWriteMask;
         dssCI.front.reference = vdDssDesc.stencilReference;
 
-        dssCI.back.failOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.fail);
-        dssCI.back.passOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.pass);
-        dssCI.back.depthFailOp = VK::priv::VdToVkStencilOp(vdDssDesc.stencilBack.depthFail);
-        dssCI.back.compareOp = VK::priv::VdToVkCompareOp(vdDssDesc.stencilBack.comparison);
+        dssCI.back.failOp = VdToVkStencilOp(vdDssDesc.stencilBack.fail);
+        dssCI.back.passOp = VdToVkStencilOp(vdDssDesc.stencilBack.pass);
+        dssCI.back.depthFailOp = VdToVkStencilOp(vdDssDesc.stencilBack.depthFail);
+        dssCI.back.compareOp = VdToVkCompareOp(vdDssDesc.stencilBack.comparison);
         dssCI.back.compareMask = vdDssDesc.stencilReadMask;
         dssCI.back.writeMask = vdDssDesc.stencilWriteMask;
         dssCI.back.reference = vdDssDesc.stencilReference;
@@ -608,7 +602,7 @@ public:
         // Multisample
         VkPipelineMultisampleStateCreateInfo multisampleCI{};
         multisampleCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        VkSampleCountFlagBits vkSampleCount = VK::priv::VdToVkSampleCount(desc.outputs.sampleCount);
+        VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.outputs.sampleCount);
         multisampleCI.rasterizationSamples = vkSampleCount;
         multisampleCI.alphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
         pipelineCI.pMultisampleState = &multisampleCI;
@@ -616,7 +610,7 @@ public:
         // Input Assembly
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI{};
         inputAssemblyCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssemblyCI.topology = VK::priv::VdToVkPrimitiveTopology(desc.primitiveTopology);
+        inputAssemblyCI.topology = VdToVkPrimitiveTopology(desc.primitiveTopology);
         inputAssemblyCI.primitiveRestartEnable = VK_FALSE;
         pipelineCI.pInputAssemblyState = &inputAssemblyCI;
 
@@ -675,7 +669,7 @@ public:
 
                 iaMappings.insert({inputElement.semantic, thisLocation});
 
-                attributeDescs[targetIndex].format = VK::priv::VdToVkShaderDataType(inputElement.format);
+                attributeDescs[targetIndex].format = VdToVkShaderDataType(inputElement.format);
                 attributeDescs[targetIndex].binding = binding;
                 attributeDescs[targetIndex].location = thisLocation;
                 attributeDescs[targetIndex].offset = inputElement.offset != 0 
@@ -683,7 +677,7 @@ public:
                     : currentOffset;
                 
                 targetIndex += 1;
-                currentOffset += Helpers::FormatHelpers::GetSizeInBytes(inputElement.format);
+                currentOffset += FormatHelpers::GetSizeInBytes(inputElement.format);
             }
 
             targetLocation += inputDesc.elements.size();
@@ -704,7 +698,7 @@ public:
         {
             unsigned specDataSize = 0;
             for (auto& spec : specDescs) {
-                specDataSize += VK::priv::GetSpecializationConstantSize(spec.type);
+                specDataSize += GetSpecializationConstantSize(spec.type);
             }
             std::vector<std::uint8_t> fullSpecData(specDataSize);
             int specializationCount = specDescs.size();
@@ -714,7 +708,7 @@ public:
             {
                 auto data = specDescs[i].data;
                 auto srcData = (byte*)&data;
-                auto dataSize = VK::priv::GetSpecializationConstantSize(specDescs[i].type);
+                auto dataSize = GetSpecializationConstantSize(specDescs[i].type);
                 //Unsafe.CopyBlock(fullSpecData + specOffset, srcData, dataSize);
                 memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
                 mapEntries[i].constantID = specDescs[i].id;
@@ -764,7 +758,7 @@ public:
             compiler_args.shaderStage = VK_SHADER_STAGE_VERTEX_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
             
-            remapper.SetStage(Veldrid::Shader::Stage::Vertex);
+            remapper.SetStage(alloy::IShader::Stage::Vertex);
 
             alloy::vk::SPIRVBlob spvBlob;
             auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
@@ -792,7 +786,7 @@ public:
             compiler_args.shaderStage = VK_SHADER_STAGE_FRAGMENT_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
             
-            remapper.SetStage(Veldrid::Shader::Stage::Fragment);
+            remapper.SetStage(alloy::IShader::Stage::Fragment);
 
             alloy::vk::SPIRVBlob spvBlob;
             auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
@@ -840,7 +834,7 @@ public:
         colorAttachmentFormats.reserve(outputDesc.colorAttachment.size());
 
         for(auto& a : outputDesc.colorAttachment)
-            colorAttachmentFormats.push_back(VK::priv::VdToVkPixelFormat(a.format, false));
+            colorAttachmentFormats.push_back(VdToVkPixelFormat(a.format, false));
 
         VkPipelineRenderingCreateInfoKHR dynRenderingCI{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
@@ -851,9 +845,9 @@ public:
 
         if(outputDesc.depthAttachment.has_value()) {
             PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
-            auto vkFormat = VK::priv::VdToVkPixelFormat(depthFormat, true);
+            auto vkFormat = VdToVkPixelFormat(depthFormat, true);
             dynRenderingCI.depthAttachmentFormat  = vkFormat;
-            if(Helpers::FormatHelpers::IsStencilFormat(depthFormat))
+            if(FormatHelpers::IsStencilFormat(depthFormat))
                 dynRenderingCI.stencilAttachmentFormat = vkFormat;
         }
         // Use the pNext to point to the rendering create struct
@@ -889,13 +883,13 @@ public:
         rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
         rawPipe->_refCnts = std::move(refCnts);
 
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
 
 
-    sp<Pipeline> VulkanComputePipeline::Make(
-        const sp<VulkanDevice>& dev,
+    common::sp<IComputePipeline> VulkanComputePipeline::Make(
+        const common::sp<VulkanDevice>& dev,
         const ComputePipelineDescription& desc
     ){
         VkComputePipelineCreateInfo pipelineCI {};
@@ -929,7 +923,7 @@ public:
             unsigned specDataSize = 0;
             for(auto& spec : specDescs)
             {
-                specDataSize += VK::priv::GetSpecializationConstantSize(spec->type);
+                specDataSize += GetSpecializationConstantSize(spec->type);
             }
             std::vector<std::uint8_t> fullSpecData(specDataSize);
             unsigned specializationCount = specDescs.size();
@@ -939,7 +933,7 @@ public:
             {
                 auto data = specDescs[i]->data;
                 byte* srcData = (byte*)&data;
-                unsigned dataSize = VK::priv::GetSpecializationConstantSize(specDescs[i]->type);
+                unsigned dataSize = GetSpecializationConstantSize(specDescs[i]->type);
                 memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
                 mapEntries[i].constantID = specDescs[i]->id;
                 mapEntries[i].offset = specOffset;
@@ -969,7 +963,7 @@ public:
             compiler_args.shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
 
-            remapper.SetStage(Veldrid::Shader::Stage::Compute);
+            remapper.SetStage(alloy::IShader::Stage::Compute);
 
             alloy::vk::SPIRVBlob spvBlob;
             auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
@@ -1010,7 +1004,7 @@ public:
         rawPipe->resourceSetCount = resourceSetCount;
         //rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
 
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
 }

@@ -1,11 +1,11 @@
 #include "VkTypeCvt.hpp"
 
 
-namespace Veldrid::VK::priv {
+namespace alloy::vk {
 
-    VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode)
+    VkSamplerAddressMode VdToVkSamplerAddressMode(ISampler::Description::AddressMode mode)
     {
-        using SamplerAddressMode = typename Sampler::Description::AddressMode;
+        using SamplerAddressMode = typename ISampler::Description::AddressMode;
         switch (mode)
         {
         case SamplerAddressMode::Wrap:
@@ -22,12 +22,12 @@ namespace Veldrid::VK::priv {
     }
 
     void GetFilterParams(
-        Sampler::Description::SamplerFilter filter,
+        ISampler::Description::SamplerFilter filter,
         VkFilter& minFilter,
         VkFilter& magFilter,
         VkSamplerMipmapMode& mipmapMode)
     {
-        using SamplerFilter = typename Sampler::Description::SamplerFilter;
+        using SamplerFilter = typename ISampler::Description::SamplerFilter;
         switch (filter)
         {
         case SamplerFilter::Anisotropic:
@@ -84,7 +84,7 @@ namespace Veldrid::VK::priv {
 
     VkDescriptorType VdToVkDescriptorType(
         IBindableResource::ResourceKind kind, 
-        ResourceLayout::Description::ElementDescription::Options options)
+        IResourceLayout::Description::ElementDescription::Options options)
     {
         using ResourceKind = typename IBindableResource::ResourceKind;
         bool dynamicBinding = false;//(options.dynamicBinding) != 0;
@@ -338,34 +338,34 @@ namespace Veldrid::VK::priv {
         }
     }
 
-    VkShaderStageFlags VdToVkShaderStages(Shader::Stages stages){
+    VkShaderStageFlags VdToVkShaderStages(IShader::Stages stages){
         VkShaderStageFlags flag = 0;
-        if (stages[Shader::Stage::Vertex])                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
-        if (stages[Shader::Stage::Geometry])               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
-        if (stages[Shader::Stage::TessellationControl])    flag |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        if (stages[Shader::Stage::TessellationEvaluation]) flag |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        if (stages[Shader::Stage::Fragment])               flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
-        if (stages[Shader::Stage::Compute])                flag |= VK_SHADER_STAGE_COMPUTE_BIT;
+        if (stages[IShader::Stage::Vertex])                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
+        if (stages[IShader::Stage::Geometry])               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
+        if (stages[IShader::Stage::TessellationControl])    flag |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        if (stages[IShader::Stage::TessellationEvaluation]) flag |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        if (stages[IShader::Stage::Fragment])               flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (stages[IShader::Stage::Compute])                flag |= VK_SHADER_STAGE_COMPUTE_BIT;
         return flag;
 
     }
 
-    VkShaderStageFlagBits VdToVkShaderStageSingle(Shader::Stage stage) {
+    VkShaderStageFlagBits VdToVkShaderStageSingle(IShader::Stage stage) {
         switch(stage) {
-        case Shader::Stage::Vertex:                 return VK_SHADER_STAGE_VERTEX_BIT;
-        case Shader::Stage::Geometry:               return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case Shader::Stage::TessellationControl:    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case Shader::Stage::TessellationEvaluation: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case Shader::Stage::Fragment:               return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case Shader::Stage::Compute:                return VK_SHADER_STAGE_COMPUTE_BIT;
+        case IShader::Stage::Vertex:                 return VK_SHADER_STAGE_VERTEX_BIT;
+        case IShader::Stage::Geometry:               return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case IShader::Stage::TessellationControl:    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case IShader::Stage::TessellationEvaluation: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case IShader::Stage::Fragment:               return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case IShader::Stage::Compute:                return VK_SHADER_STAGE_COMPUTE_BIT;
         default: return VkShaderStageFlagBits::VK_SHADER_STAGE_ALL;
         }
     }
 
      
-    VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor)
+    VkBorderColor VdToVkSamplerBorderColor(ISampler::Description::BorderColor borderColor)
     {
-        using SamplerBorderColor = typename Sampler::Description::BorderColor;
+        using SamplerBorderColor = typename ISampler::Description::BorderColor;
         switch (borderColor)
         {
         case SamplerBorderColor::TransparentBlack:
@@ -393,9 +393,9 @@ namespace Veldrid::VK::priv {
         }
     }
 
-    VkBlendFactor VdToVkBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor)
+    VkBlendFactor VdToVkBlendFactor(alloy::BlendStateDescription::BlendFactor factor)
     {
-        using BlendFactor = typename Veldrid::BlendStateDescription::BlendFactor;
+        using BlendFactor = typename alloy::BlendStateDescription::BlendFactor;
         switch (factor)
         {
         case BlendFactor::Zero:
@@ -598,7 +598,7 @@ namespace Veldrid::VK::priv {
             return VkFormat::VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 
         default:
-            //throw new VeldridException($"Invalid {nameof(PixelFormat)}: {format}");
+            //throw new alloyException($"Invalid {nameof(PixelFormat)}: {format}");
             return VkFormat::VK_FORMAT_UNDEFINED;
         }
     }
@@ -745,7 +745,7 @@ namespace Veldrid::VK::priv {
             return PixelFormat::R11_G11_B10_Float;
 
         default:
-            //throw new VeldridException($"Invalid {nameof(PixelFormat)}: {format}");
+            //throw new alloyException($"Invalid {nameof(PixelFormat)}: {format}");
             return (PixelFormat)0;
 
         }

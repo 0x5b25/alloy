@@ -2,9 +2,9 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/Common.hpp"
-#include "veldrid/backend/Backends.hpp"
+//alloy public headers
+#include "alloy/common/Common.hpp"
+#include "alloy/backend/Backends.hpp"
 
 //standard library headers
 #include <codecvt>
@@ -21,7 +21,7 @@
 #include <Windows.h> // For HRESULT
 
 //Import DX12 agility SDK
-extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 614; }
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = AGILITY_SDK_VERSION_EXPORT; }
 
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
 
@@ -98,7 +98,15 @@ HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAda
     return S_OK;
 }
 
-namespace Veldrid {
+namespace alloy {
+    
+    common::sp<IGraphicsDevice> CreateDX12GraphicsDevice(
+        const IGraphicsDevice::Options& options
+    ) {
+        return alloy::dxc::DXCDevice::Make(options);
+    }
+}
+namespace alloy::dxc {
 
     
     void D3D12DevCaps::ReadFromDevice(ID3D12Device* pdev)
@@ -177,14 +185,7 @@ namespace Veldrid {
     }
 
 
-    sp<GraphicsDevice> CreateDX12GraphicsDevice(
-        const GraphicsDevice::Options& options
-    ) {
-        return DXCDevice::Make(options);
-    }
-
-
-    sp<DXCQueue> DXCQueue::Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType){
+    common::sp<DXCQueue> DXCQueue::Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType){
 
         ComPtr<ID3D12CommandQueue> cmdQueue;
         D3D12_COMMAND_QUEUE_DESC queueDesc {};
@@ -206,7 +207,7 @@ namespace Veldrid {
             return nullptr;
         }
 
-        auto dxcQueue = sp<DXCQueue>(new DXCQueue());
+        auto dxcQueue = common::sp<DXCQueue>(new DXCQueue());
         dxcQueue->_queue = std::move(cmdQueue);
         dxcQueue->_queueType = commandType;
         dxcQueue->_fence = std::move(fence);
@@ -391,7 +392,7 @@ namespace Veldrid {
         delete _copyQ;
     }
 
-    sp<GraphicsDevice> DXCDevice::Make(const GraphicsDevice::Options &options)
+    common::sp<IGraphicsDevice> DXCDevice::Make(const IGraphicsDevice::Options &options)
     {
 
         UINT dxgiFactoryFlags = 0;
@@ -465,7 +466,7 @@ namespace Veldrid {
         }
 
         
-        auto dev = sp<DXCDevice>(new DXCDevice(device));
+        auto dev = common::sp<DXCDevice>(new DXCDevice(device));
         
 
         dev->_adp = std::move(adp);
@@ -561,22 +562,19 @@ namespace Veldrid {
     //    GetImplicitQueue()->ExecuteCommandLists(1, &pRawCmdList);
     //}
 
-    SwapChain::State DXCDevice::PresentToSwapChain(const std::vector<Semaphore *> &waitSemaphores, SwapChain *sc)
+    ISwapChain::State DXCDevice::PresentToSwapChain(ISwapChain *sc)
     {
-        for(auto* sem : waitSemaphores){
-            //auto dxcSem = static_cast<DXCVLDFence*>(sem);
-        }
 
         auto rawHandle = PtrCast<DXCSwapChain>(sc)->GetHandle();
 
         rawHandle->Present(1, 0);
-        return SwapChain::State::Optimal;
+        return ISwapChain::State::Optimal;
     }
 
-    CommandQueue* DXCDevice::GetGfxCommandQueue() {
+    ICommandQueue* DXCDevice::GetGfxCommandQueue() {
         return _gfxQ;
     }
-    CommandQueue* DXCDevice::GetCopyCommandQueue() {
+    ICommandQueue* DXCDevice::GetCopyCommandQueue() {
         return _copyQ;
     }
 
@@ -592,9 +590,9 @@ namespace Veldrid {
         DEBUGCODE(_buffer = nullptr);
     }
 
-    sp<Buffer> DXCBuffer::Make(
-        const sp<DXCDevice> &dev,
-        const Buffer::Description &desc)
+    common::sp<IBuffer> DXCBuffer::Make(
+        const common::sp<DXCDevice> &dev,
+        const IBuffer::Description &desc)
     {
         
         D3D12_RESOURCE_DESC resourceDesc = {};
@@ -659,7 +657,7 @@ namespace Veldrid {
         buf->_buffer = allocation;
         buf->description.sizeInBytes = byteCnt;
 
-        return sp(buf);
+        return common::sp(buf);
     }
 
     void *DXCBuffer::MapToCPU() {
@@ -687,9 +685,9 @@ namespace Veldrid {
         _q->Release();
     }
 
-    sp<CommandList> DXCCommandQueue::CreateCommandList() {
+    common::sp<ICommandList> DXCCommandQueue::CreateCommandList() {
         _dev->ref();
-        return DXCCommandList::Make(sp(_dev), _qType);
+        return DXCCommandList::Make(common::sp(_dev), _qType);
     }
 
     //virtual bool WaitForSignal(std::uint64_t timeoutNs) = 0;
@@ -700,17 +698,17 @@ namespace Veldrid {
 
     //virtual void Reset() = 0;
 
-    void DXCCommandQueue::EncodeSignalFence(Fence* fence, uint64_t value) {
-        auto dxcFence = PtrCast<DXCFence>(fence);
+    void DXCCommandQueue::EncodeSignalEvent(IEvent* evt, uint64_t value) {
+        auto dxcFence = PtrCast<DXCFence>(evt);
         _q->Signal(dxcFence->GetHandle(), value);
     }
 
-    void DXCCommandQueue::EncodeWaitForFence(Fence* fence, uint64_t value) {
-        auto dxcFence = PtrCast<DXCFence>(fence);
+    void DXCCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
+        auto dxcFence = PtrCast<DXCFence>(evt);
         _q->Wait(dxcFence->GetHandle(), value);
     }
 
-    void DXCCommandQueue::SubmitCommand(CommandList* cmd) {
+    void DXCCommandQueue::SubmitCommand(ICommandList* cmd) {
         auto dxcCmdList = PtrCast<DXCCommandList>(cmd);
         auto rawCmdList = dxcCmdList->GetHandle();
         _q->ExecuteCommandLists(1, &rawCmdList);
@@ -723,7 +721,7 @@ namespace Veldrid {
     }
 
     DXCFence::DXCFence(DXCDevice* dev) 
-        : Fence(sp(dev))
+        : _dev(dev)
     {
         dev->ref();
 
@@ -761,22 +759,6 @@ namespace Veldrid {
         _f->Release();
     }
     
-    sp<Semaphore> DXCVLDSemaphore::Make(const sp<DXCDevice> &dev) {
-
-        ComPtr<ID3D12Fence> fence;
-        D3D12_FENCE_FLAGS fenceFlags {};
-        if(FAILED(dev->GetDevice()->CreateFence(0, fenceFlags, IID_PPV_ARGS(&fence)))){
-            return nullptr;
-        }
-
-
-        auto sem = sp<DXCVLDSemaphore>{new DXCVLDSemaphore(dev)};
-        if(!sem->_fence.Init(std::move(fence))){
-            return nullptr;
-        }
-
-        return sem;
-    }
 
 
 }

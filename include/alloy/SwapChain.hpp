@@ -1,19 +1,18 @@
 #pragma once
 
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/Framebuffer.hpp"
-#include "veldrid/SwapChainSources.hpp"
-#include "veldrid/SyncObjects.hpp"
+#include "alloy/Framebuffer.hpp"
+#include "alloy/SwapChainSources.hpp"
+#include "alloy/SyncObjects.hpp"
 
 #include <cstdint>
 #include <optional>
 
-namespace Veldrid
+namespace alloy
 {
     
 
     
-    class SwapChain : public DeviceResource{
+    class ISwapChain : public common::RefCntBase{
 
     public:
         enum class State {
@@ -33,13 +32,13 @@ namespace Veldrid
             // This is a window-system-specific object which differs by platform.
             SwapChainSource* source;
 
-            //#TODO: add surface format selection. Currently default to RGBA8_UNORM as it's supported
+            ///#TODO: add surface format selection. Currently default to RGBA8_UNORM as it's supported
             //on most devices.
             
             std::uint32_t initialWidth, initialHeight;
 
             //How many images inside this swapchain. Can't go below 2
-            //#TODO: add swapchain capability query interface
+            ///#TODO: add swapchain capability query interface
             uint32_t backBufferCnt;
             
             // The optional format of the depth target of the Swapchain's Framebuffer.
@@ -57,16 +56,11 @@ namespace Veldrid
     protected:
         Description description;
 
-        SwapChain(
-            const sp<GraphicsDevice>& dev,
-            const Description& desc
-        ) 
-            : DeviceResource(dev)
-            , description(desc) {}
+        ISwapChain(const Description& desc) : description(desc) {}
 
     public:
 
-        virtual sp<Framebuffer> GetBackBuffer() = 0;
+        virtual common::sp<IFrameBuffer> GetBackBuffer() = 0;
 
         virtual void Resize(
             std::uint32_t width, 
@@ -82,5 +76,5 @@ namespace Veldrid
 
     };
     
-} // namespace Veldrid
+} // namespace alloy
 

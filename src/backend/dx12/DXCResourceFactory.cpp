@@ -11,13 +11,13 @@
 #include "DXCFramebuffer.hpp"
 #include "DXCDevice.hpp"
 
-namespace Veldrid
+namespace alloy::dxc
 {
 
     
 #define DXC_IMPL_RF_CREATE_WITH_DESC(ResType) \
-    sp<ResType> DXCResourceFactory::Create##ResType ( \
-        const ResType ::Description& description \
+    common::sp<I##ResType> DXCResourceFactory::Create##ResType ( \
+        const I##ResType ::Description& description \
     ){ \
         return DXC##ResType ::Make(_CreateNewDevHandle(), description); \
         /*return nullptr;*/ \
@@ -27,17 +27,17 @@ namespace Veldrid
     /*V(Framebuffer)*/\
     V(Texture)\
     V(Buffer)\
-    /*V(Sampler)*/\
+    V(Sampler)\
     /*V(Shader)*/\
     V(ResourceSet)\
     V(ResourceLayout)\
-    /*V(SwapChain)*/
+    V(SwapChain)
 
-    sp<DXCDevice> DXCResourceFactory::_CreateNewDevHandle(){
+    common::sp<DXCDevice> DXCResourceFactory::_CreateNewDevHandle(){
         //assert(_dev != nullptr);
         auto dev = GetBase();
         dev->ref();
-        return sp<DXCDevice>(dev);
+        return common::sp<DXCDevice>(dev);
     }
 
     
@@ -46,53 +46,41 @@ namespace Veldrid
         return dev->GetDxgiAdp();
     }
 
-    sp<Sampler> DXCResourceFactory::CreateSampler (
-        const Sampler ::Description& description
-    ){
-        return sp(new Sampler(description));
-    }
-
-    sp<Framebuffer> DXCResourceFactory::CreateFramebuffer (
-        const Framebuffer ::Description& description
+    common::sp<IFrameBuffer> DXCResourceFactory::CreateFrameBuffer (
+        const IFrameBuffer ::Description& description
     ){
         return nullptr;
-    }
-
-    sp<SwapChain> DXCResourceFactory::CreateSwapChain (
-        const SwapChain ::Description& description
-    ){
-        return DXCSwapChain::Make(_CreateNewDevHandle(), description);
     }
 
     //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
 
     DXC_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
 
-    sp<Shader> DXCResourceFactory::CreateShader(
-        const Shader::Description& desc,
+    common::sp<IShader> DXCResourceFactory::CreateShader(
+        const IShader::Description& desc,
         const std::span<std::uint8_t>& il
     ){
         //return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
         return DXCShader::Make(_CreateNewDevHandle(), desc, il);
     }
 
-    sp<Pipeline> DXCResourceFactory::CreateGraphicsPipeline(
+    common::sp<IGfxPipeline> DXCResourceFactory::CreateGraphicsPipeline(
         const GraphicsPipelineDescription& description
     ) {
         //return nullptr;
         return DXCGraphicsPipeline::Make(_CreateNewDevHandle(), description);
     }
         
-    sp<Pipeline> DXCResourceFactory::CreateComputePipeline(
+    common::sp<IComputePipeline> DXCResourceFactory::CreateComputePipeline(
         const ComputePipelineDescription& description
     ) {
         //return nullptr;
         return DXCComputePipeline::Make(_CreateNewDevHandle(), description);
     }
 
-    sp<Texture> DXCResourceFactory::WrapNativeTexture(
+    common::sp<ITexture> DXCResourceFactory::WrapNativeTexture(
         void* nativeHandle,
-        const Texture::Description& description
+        const ITexture::Description& description
     ){
         return nullptr;
         //return VulkanTexture::WrapNative(_CreateNewDevHandle(), description,
@@ -100,23 +88,18 @@ namespace Veldrid
         //    nativeHandle);
     }
 
-    sp<TextureView> DXCResourceFactory::CreateTextureView(
-        const sp<Texture>& texture,
-        const TextureView::Description& description
+    common::sp<ITextureView> DXCResourceFactory::CreateTextureView(
+        const common::sp<ITexture>& texture,
+        const ITextureView::Description& description
     ){
-        return sp(new DXCTextureView(RefRawPtr(texture.get()), description));
+        return common::sp(new DXCTextureView(RefRawPtr(texture.get()), description));
         // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
     }
 
-    sp<Fence> DXCResourceFactory::CreateFence() {
-       return sp(new DXCFence(GetBase()));
+    common::sp<IEvent> DXCResourceFactory::CreateSyncEvent() {
+       return common::sp(new DXCFence(GetBase()));
     }
 
-    sp<Semaphore> DXCResourceFactory::CreateDeviceSemaphore() {
-        return DXCVLDSemaphore::Make(_CreateNewDevHandle());
-    }
-
-
-} // namespace Veldrid
+} // namespace alloy
 

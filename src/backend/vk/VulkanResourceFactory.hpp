@@ -1,27 +1,34 @@
 #pragma once
 
-#include "veldrid/common/Macros.h"
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/ResourceFactory.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/ResourceFactory.hpp"
 
-namespace Veldrid{
+namespace alloy::vk{
 
     class VulkanDevice;
 
     #define VK_DECL_RF_CREATE_WITH_DESC(ResType) \
-        virtual sp<ResType> Create##ResType ( \
-            const ResType ::Description& description) override;
+        virtual common::sp<I##ResType> Create##ResType ( \
+            const I##ResType ::Description& description) override;
 
-    class VulkanResourceFactory : public ResourceFactory{
+    template<class Base>
+    class VulkanResourceFactoryThunk : public ResourceFactory{
+
+    protected:
+        const Base* GetBase() const { return static_cast<const Base*>(this); }
+        Base* GetBase() { return static_cast<Base*>(this); }
+
+    };
+
+    class VulkanResourceFactory : public VulkanResourceFactoryThunk<VulkanDevice>{
 
         DISABLE_COPY_AND_ASSIGN(VulkanResourceFactory);
 
-        VulkanDevice* _vkDev;
-
-        sp<VulkanDevice> _CreateNewDevHandle();
+        common::sp<VulkanDevice> _CreateNewDevHandle();
 
     public:
-        VulkanResourceFactory(VulkanDevice* dev) : _vkDev(dev){}
+        VulkanResourceFactory() = default;
         ~VulkanResourceFactory() = default;
 
         
@@ -30,27 +37,27 @@ namespace Veldrid{
         
         VLD_RF_FOR_EACH_RES(VK_DECL_RF_CREATE_WITH_DESC)
 
-        sp<Pipeline> CreateGraphicsPipeline(
+        common::sp<IGfxPipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) override;
         
-        sp<Pipeline> CreateComputePipeline(
+        common::sp<IComputePipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) override;
 
-        sp<Shader> CreateShader(
-            const Shader::Description& desc,
-            const std::span<std::uint8_t>& il
+        common::sp<IShader> CreateShader(
+            const IShader::Description& desc,
+            const std::span<std::uint8_t>& spv
         ) override;
 
-        sp<Texture> WrapNativeTexture(
+        common::sp<ITexture> WrapNativeTexture(
             void* nativeHandle,
-            const Texture::Description& description) override;
+            const ITexture::Description& description) override;
 
-        virtual sp<TextureView> CreateTextureView(
-            const sp<Texture>& texture,
-            const TextureView::Description& description) override;
+        virtual common::sp<ITextureView> CreateTextureView(
+            const common::sp<ITexture>& texture,
+            const ITextureView::Description& description) override;
 
-        virtual sp<Fence> CreateFence() override;
-        virtual sp<Semaphore> CreateDeviceSemaphore() override;
+        //virtual sp<Fence> CreateFence() override;
+        virtual common::sp<IEvent> CreateSyncEvent() override;
     };
 
 }

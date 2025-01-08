@@ -1,52 +1,48 @@
 #pragma once
 
-#include "veldrid/Helpers.hpp"
-#include "veldrid/DeviceResource.hpp"
-//#include "veldrid/Pipeline.hpp"
-//#include "veldrid/Buffer.hpp"
-//#include "veldrid/BindableResource.hpp"
-//#include "veldrid/Framebuffer.hpp"
-#include "veldrid/Types.hpp"
-#include "veldrid/ResourceBarrier.hpp"
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
+//#include "alloy/Pipeline.hpp"
+#include "alloy/Buffer.hpp"
+//#include "alloy/BindableResource.hpp"
+#include "alloy/FrameBuffer.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/ResourceBarrier.hpp"
+#include "alloy/RenderPass.hpp"
 
 #include <cstdint>
 #include <vector>
+#include <span>
 #include <type_traits>
 #include <variant>
 
-namespace Veldrid
+namespace alloy
 {
-    class Buffer;
-    class Pipeline;
-    class FrameBuffer;
-    class ResourceLayout;
-    class ResourceSet;
-    
-    class CommandList : public DeviceResource{
+    class IBuffer;
+    class ITexture;
+    class IGfxPipeline;
+    class IComputePipeline;
+    class IResourceLayout;
+    class IResourceSet;
 
-    protected:
-        CommandList(const sp<GraphicsDevice>& dev) : DeviceResource(dev){}
 
+    class IRenderCommandEncoder {
     public:
-
-        virtual void Begin() = 0;
-        virtual void End() = 0;
-
-        virtual void SetPipeline(const sp<Pipeline>&) = 0;
+        virtual void SetPipeline(const common::sp<IGfxPipeline>&) = 0;
 
         // Sets the active <see cref="DeviceBuffer"/> for the given index.
         // When drawing, the bound <see cref="DeviceBuffer"/> objects must be compatible with the bound <see cref="Pipeline"/>.
         // The given buffer must be non-null. It is not necessary to un-bind vertex buffers for Pipelines which will not
         // use them. All extra vertex buffers are simply ignored.
         virtual void SetVertexBuffer(
-            std::uint32_t index, const sp<Buffer>& buffer, std::uint32_t offset = 0) = 0;
+            std::uint32_t index, const common::sp<BufferRange>& buffer) = 0;
     
         // Sets the active <see cref="DeviceBuffer"/>.
         // When drawing, an <see cref="DeviceBuffer"/> must be bound.
         virtual void SetIndexBuffer(
-            const sp<Buffer>& buffer, IndexFormat format, std::uint32_t offset = 0) = 0;
+            const common::sp<BufferRange>& buffer, IndexFormat format) = 0;
 
-        
         // Sets the active <see cref="ResourceSet"/> for the given index. This ResourceSet is only active for the graphics
         // Pipeline.
         // <param name="slot">The resource slot.</param>
@@ -59,17 +55,10 @@ namespace Veldrid
         // <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
         // <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>, depending on the kind of resource.</param>
         virtual void SetGraphicsResourceSet(
-            const sp<ResourceSet>& rs
-            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
-            
-        virtual void SetComputeResourceSet(
-            const sp<ResourceSet>& rs
+            const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
 
-        //#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
-        virtual void EndRenderPass() = 0;
-
+        #if 0 //Subsituted by load actions of renderpass
         // Clears the color target at the given index of the active <see cref="Framebuffer"/>.
         // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
         virtual void ClearColorTarget(
@@ -81,16 +70,16 @@ namespace Veldrid
         // <param name="depth">The value to clear the depth buffer to.</param>
         // <param name="stencil">The value to clear the stencil buffer to.</param>
         virtual void ClearDepthStencil(float depth, std::uint8_t stencil = 0) = 0;
-    
+        #endif
 
         // Sets the active <see cref="Viewport"/> at the given index.
         // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
         // <param name="index">The color target index.</param>
         // <param name="viewport">The new <see cref="Viewport"/>.</param>
-        virtual void SetViewport(std::uint32_t index, const Viewport& viewport) = 0;
+        virtual void SetViewports(const std::span<Viewport>& viewport) = 0;
         // This at least should be inside a renderpass, therefore a framebuffer exists, 
         // then we can get fb sizes
-        virtual void SetFullViewport(std::uint32_t index) = 0;
+        //virtual void SetFullViewport(std::uint32_t index) = 0;
         virtual void SetFullViewports() = 0;
 
         // Sets the active scissor rectangle at the given index.
@@ -100,15 +89,11 @@ namespace Veldrid
         // <param name="y">The Y value of the scissor rectangle.</param>
         // <param name="width">The width of the scissor rectangle.</param>
         // <param name="height">The height of the scissor rectangle.</param>
-        virtual void SetScissorRect(
-            std::uint32_t index, 
-            std::uint32_t x, std::uint32_t y, 
-            std::uint32_t width, std::uint32_t height) = 0;
-        // This at least should be inside a renderpass, therefore a framebuffer exists, 
-        // then we can get fb sizes
-        virtual void SetFullScissorRect(std::uint32_t index) = 0;
+        virtual void SetScissorRects(const std::span<Rect>& ) = 0;
+        
         virtual void SetFullScissorRects() = 0;
 
+        
         // Draws primitives from the currently-bound state in this CommandList. 
         // An index Buffer is not used.
         // <param name="vertexCount">The number of vertices.</param>
@@ -131,7 +116,9 @@ namespace Veldrid
             std::uint32_t indexStart, std::uint32_t vertexOffset, 
             std::uint32_t instanceStart) = 0;
         void DrawIndexed(std::uint32_t indexCount){DrawIndexed(indexCount, 1, 0, 0, 0);}
-        
+
+        ///:TODO: Needs further confirmation about indirect commands
+        #if 0
         // Issues indirect draw commands based on the information contained in the given indirect <see cref="DeviceBuffer"/>.
         // The information stored in the indirect Buffer should conform to the structure of <see cref="IndirectDrawArguments"/>.
         // <param name="indirectBuffer">The indirect Buffer to read from. Must have been created with the
@@ -158,6 +145,21 @@ namespace Veldrid
         virtual void DrawIndexedIndirect(
             const sp<Buffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) = 0;
+        #endif
+
+        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
+    };
+
+    
+    class IComputeCommandEncoder {
+    public:
+        
+        virtual void SetPipeline(const common::sp<IComputePipeline>&) = 0;
+
+        virtual void SetComputeResourceSet(
+            const common::sp<IResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
 
         /// <summary>
         /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.
@@ -167,6 +169,8 @@ namespace Veldrid
         /// <param name="groupCountZ">The Z dimension of the compute thread groups that are dispatched.</param>
         virtual void Dispatch(std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) = 0;
 
+        ///:TODO: Needs further confirmation about indirect commands
+        #if 0
         /// Issues an indirect compute dispatch command based on the information contained in the given indirect
         /// <see cref="DeviceBuffer"/>. The information stored in the indirect Buffer should conform to the structure of
         /// <see cref="IndirectDispatchArguments"/>.
@@ -175,48 +179,17 @@ namespace Veldrid
         /// <param name="offset">An offset, in bytes, from the start of the indirect buffer from which the draw commands will be
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
+        #endif
 
-        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
-        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> > 1).</param>
-        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        virtual void ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) = 0;
+        
+        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
 
-        /// Updates a <see cref="DeviceBuffer"/> region with new data.
-        /// <param name="buffer">The resource to update.</param>
-        /// <param name="bufferOffsetInBytes">An offset, in bytes, from the beginning of the <see cref="DeviceBuffer"/>'s storage, at
-        /// which new data will be uploaded.</param>
-        /// <param name="source">A pointer to the start of the data to upload.</param>
-        /// <param name="sizeInBytes">The total size of the uploaded data, in bytes.</param>
-        //virtual void UpdateBuffer(
-        //    const sp<Buffer>& buffer,
-        //    std::uint32_t bufferOffsetInBytes,
-        //    void* source,
-        //    std::uint32_t sizeInBytes) = 0;
-        //
-        //template<typename T>
-        //void UpdateBuffer(
-        //    const sp<Buffer>& buffer,
-        //    std::uint32_t bufferOffsetInBytes,
-        //    const T& source
-        //){
-        //    UpdateBuffer(buffer, bufferOffsetInBytes,
-        //        &source, sizeof(source));
-        //}
-        //
-        //template<typename T>
-        //void UpdateBuffer(
-        //    const sp<Buffer>& buffer,
-        //    std::uint32_t bufferOffsetInBytes,
-        //    const std::vector<T>& source
-        //){
-        //    auto totalSize = sizeof(T) * source.size();
-        //    UpdateBuffer(buffer, bufferOffsetInBytes,
-        //        source.data(), totalSize);
-        //}
+    };
 
-        /// <summary>
+    class ITransferCommandEncoder {
+    public:
+/// <summary>
         /// Copies a region from the source <see cref="DeviceBuffer"/> to another region in the destination <see cref="DeviceBuffer"/>.
         /// </summary>
         /// <param name="source">The source <see cref="DeviceBuffer"/> from which data will be copied.</param>
@@ -226,37 +199,31 @@ namespace Veldrid
         /// </param>
         /// <param name="sizeInBytes">The number of bytes to copy.</param>
         virtual void CopyBuffer(
-            const sp<Buffer>& source, std::uint32_t sourceOffset,
-            const sp<Buffer>& destination, std::uint32_t destinationOffset, 
+            const common::sp<BufferRange>& source,
+            const common::sp<BufferRange>& destination,
             std::uint32_t sizeInBytes) = 0;
                 
 
         virtual void CopyBufferToTexture(
-            const sp<Buffer>& source,
-            const Texture::Description& sourceDescription,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
-            std::uint32_t srcMipLevel,
-            std::uint32_t srcBaseArrayLayer,
-            const sp<Texture>& destination,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
+            const common::sp<BufferRange>& src,
+            std::uint32_t srcBytesPerRow,
+            std::uint32_t srcBytesPerImage,
+            const common::sp<ITexture>& dst,
+            const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount
+            const Size3D& copySize
         ) = 0;
 
         virtual void CopyTextureToBuffer(
-            const sp<Texture>& source,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
+            const common::sp<ITexture>& src,
+            const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const sp<Buffer>& destination,
-            const Texture::Description& destinationDescription,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
-            std::uint32_t dstMipLevel,
-            std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount
+            const common::sp<BufferRange>& dst,
+            std::uint32_t srcBytesPerRow,
+            std::uint32_t srcBytesPerImage,
+            const Size3D& copySize
         ) = 0;
         /// Copies a region from one <see cref="Texture"/> into another.
         /// <param name="source">The source <see cref="Texture"/> from which data is copied.</param>
@@ -276,23 +243,22 @@ namespace Veldrid
         /// <param name="depth">The depth in texels of the copy region.</param>
         /// <param name="layerCount">The number of array layers to copy.</param>
         virtual void CopyTexture(
-            const sp<Texture>& source,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
+            const common::sp<ITexture>& src,
+            const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const sp<Texture>& destination,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
+            const common::sp<ITexture>& dst,
+            const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount) = 0;
-
+            const Size3D& copySize) = 0;
+#if 0
         /// <summary>
         /// Copies all subresources from one <see cref="Texture"/> to another.
         /// </summary>
         /// <param name="source">The source of Texture data.</param>
         /// <param name="destination">The destination of Texture data.</param>
-        void CopyTexture(const sp<Texture>& source, const sp<Texture>& destination)
+        void CopyTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination)
         {
             auto& desc = source->GetDesc();
 
@@ -308,7 +274,7 @@ namespace Veldrid
                 || source.Height != destination.Height || source.Depth != destination.Depth
                 || source.Format != destination.Format)
             {
-                throw new VeldridException("Source and destination Textures are not compatible to be copied.");
+                throw new alloyException("Source and destination Textures are not compatible to be copied.");
             }
 #endif
 
@@ -316,12 +282,12 @@ namespace Veldrid
             {
                 std::uint32_t mipWidth, mipHeight, mipDepth;
                 
-                Helpers::GetMipDimensions(source->GetDesc(), level, mipWidth, mipHeight, mipDepth);
+                alloy::GetMipDimensions(source->GetDesc(), level, mipWidth, mipHeight, mipDepth);
                 CopyTexture(
-                    source, 0, 0, 0, level, 0,
-                    destination, 0, 0, 0, level, 0,
-                    mipWidth, mipHeight, mipDepth,
-                    effectiveSrcArrayLayers);
+                    source, {}, level, 0,
+                    destination, {}, level, 0,
+                    {mipWidth, mipHeight, mipDepth},
+                );
             }
         }
 
@@ -341,31 +307,68 @@ namespace Veldrid
                 || source.Height != destination.Height || source.Depth != destination.Depth
                 || source.Format != destination.Format)
             {
-                throw new VeldridException("Source and destination Textures are not compatible to be copied.");
+                throw new alloyException("Source and destination Textures are not compatible to be copied.");
             }
             if (mipLevel >= source.MipLevels || mipLevel >= destination.MipLevels || arrayLayer >= effectiveSrcArrayLayers || arrayLayer >= effectiveDstArrayLayers)
             {
-                throw new VeldridException(
+                throw new alloyException(
                     $"{nameof(mipLevel)} and {nameof(arrayLayer)} must be less than the given Textures' mip level count and array layer count.");
             }
 #endif
             std::uint32_t width, height, depth;
-            Helpers::GetMipDimensions(source->GetDesc(), mipLevel, width, height, depth);
+            alloy::GetMipDimensions(source->GetDesc(), mipLevel, width, height, depth);
             CopyTexture(
                 source, 0, 0, 0, mipLevel, arrayLayer,
                 destination, 0, 0, 0, mipLevel, arrayLayer,
                 width, height, depth,
                 1);
         }
+        #endif
+
+        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
+        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> > 1).</param>
+        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> == 1).</param>
+        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) = 0;
+        
 
         // Generates mipmaps for the given <see cref="Texture"/>. The largest mipmap is used to generate all of the lower mipmap
         // levels contained in the Texture. The previous contents of all lower mipmap levels are overwritten by this operation.
         // The target Texture must have been created with <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.
         // <param name="texture">The <see cref="Texture"/> to generate mipmaps for. This Texture must have been created with
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
-        virtual void GenerateMipmaps(const sp<Texture>& texture) = 0;
+        virtual void GenerateMipmaps(const common::sp<ITexture>& texture) = 0;
+
 
         
+        virtual void WaitForFence(const common::sp<IFence>&) = 0;
+        virtual void UpdateFence(const common::sp<IFence>&) = 0;
+
+    };
+
+    class ICommandList : public common::RefCntBase{
+
+
+    public:
+
+        virtual ~ICommandList() { }
+
+        virtual void Begin() = 0;
+        virtual void End() = 0;
+
+        /////#TODO: add load, store and clearcolor handling for more efficient operation
+        virtual IRenderCommandEncoder& BeginRenderPass(const common::sp<IFrameBuffer>&,
+                                                       const RenderPassAction&) = 0;
+        virtual IComputeCommandEncoder& BeginComputePass() = 0;
+        virtual ITransferCommandEncoder& BeginTransferPass() = 0;
+        //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+        virtual void EndPass() = 0;
+
+        //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
+        //virtual void EndRenderPass() = 0;
+
         virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) = 0;
 
         // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
@@ -385,6 +388,6 @@ namespace Veldrid
         virtual void InsertDebugMarker(const std::string& name) = 0;
     };
 
-} // namespace Veldrid
+} // namespace alloy
 
 

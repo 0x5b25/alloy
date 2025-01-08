@@ -1,17 +1,16 @@
 #pragma once
 
-#include "veldrid/Helpers.hpp"
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/FixedFunctions.hpp"
-#include "veldrid/Shader.hpp"
-#include "veldrid/Framebuffer.hpp"
+#include "alloy/Helpers.hpp"
+#include "alloy/BindableResource.hpp"
+#include "alloy/FixedFunctions.hpp"
+#include "alloy/Shader.hpp"
+#include "alloy/Framebuffer.hpp"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace Veldrid
+namespace alloy
 {
 
     struct SpecializationConstant{
@@ -72,9 +71,7 @@ namespace Veldrid
                     std::string name;
 
                     /// The semantic type of the element.
-                    /// NOTE: When using Veldrid.SPIRV, all vertex elements will use
-                    /// <see cref="VertexElementSemantic.TextureCoordinate"/>.
-                    //#TODO: Use real semantic name and index in shader converter/dxcpipeline
+                    ///#TODO: Use real semantic name and index in shader converter/dxcpipeline
                     VertexInputSemantic semantic;
                     
                     // The format of the element.
@@ -104,7 +101,7 @@ namespace Veldrid
                     for (int i = 0; i < elements.size(); i++)
                     {
                         auto& thisElem = this->elements[i];
-                        unsigned elementSize = Helpers::FormatHelpers::GetSizeInBytes(thisElem.format);
+                        unsigned elementSize = alloy::FormatHelpers::GetSizeInBytes(thisElem.format);
                         if (thisElem.offset != 0){
                             computedStride = thisElem.offset + elementSize;
                         } else {
@@ -119,14 +116,14 @@ namespace Veldrid
 
             std::vector<VertexLayout> vertexLayouts;
             //std::vector<sp<Shader>> shaders;
-            sp<Shader> vertexShader;
-            sp<Shader> fragmentShader;
+            common::sp<IShader> vertexShader;
+            common::sp<IShader> fragmentShader;
             std::vector<SpecializationConstant> specializations;
 
         } shaderSet;
         
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resources in the <see cref="Pipeline"/>.
-        sp<ResourceLayout> resourceLayout;
+        common::sp<IResourceLayout> resourceLayout;
         
         // A description of the output attachments used by the <see cref="Pipeline"/>.
         OutputDescription outputs;
@@ -142,10 +139,10 @@ namespace Veldrid
     {
         // The compute <see cref="Shader"/> to be used in the Pipeline. This must be a Shader with
         // <see cref="ShaderStages.Compute"/>.
-        sp<Shader> computeShader;
+        common::sp<IShader> computeShader;
         
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resoruces in the <see cref="Pipeline"/>.
-        sp<ResourceLayout> resourceLayout;
+        common::sp<IResourceLayout> resourceLayout;
         
         // The X dimension of the thread group size.
         std::uint32_t threadGroupSizeX;
@@ -165,19 +162,29 @@ namespace Veldrid
     };
     
 
-    class Pipeline : public DeviceResource{
+    class IGfxPipeline : public common::RefCntBase{
 
     protected:
-        Pipeline(const sp<GraphicsDevice>& dev) : DeviceResource(dev){}
+        IGfxPipeline() {}
 
     public:
         
     public:
 
-        virtual bool IsComputePipeline() const = 0;
 
-        virtual void* GetNativeHandle() const {return nullptr;}
 
     };
-} // namespace Veldrid
+
+    class IComputePipeline : public common::RefCntBase{
+
+    protected:
+        IComputePipeline() {}
+
+    public:
+        
+    public:
+
+
+    };
+} // namespace alloy
 

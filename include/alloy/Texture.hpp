@@ -1,18 +1,17 @@
 #pragma once
 
-#include "veldrid/common/Macros.h"
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/Types.hpp"
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/BindableResource.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/BindableResource.hpp"
 
 #include <cstdint>
 
-namespace Veldrid
+namespace alloy
 {
     
 
-    class Texture : public DeviceResource{
+    class ITexture : public common::RefCntBase{
 
     public:
         struct Description
@@ -96,11 +95,7 @@ namespace Veldrid
         Description description;
 
     protected:
-        Texture(
-            const sp<GraphicsDevice>& dev,
-            const Texture::Description& desc
-        ) : 
-            DeviceResource(std::move(dev)),
+        ITexture( const ITexture::Description& desc ) : 
             description(desc)
         {}
 
@@ -135,7 +130,7 @@ namespace Veldrid
     };
 
 
-    class TextureView : public IBindableResource{
+    class ITextureView : public IBindableResource{
 
 
     public:
@@ -145,31 +140,33 @@ namespace Veldrid
             std::uint32_t mipLevels;
             std::uint32_t baseArrayLayer;
             std::uint32_t arrayLayers;
-            PixelFormat format;
+            //PixelFormat format;
         };
     
     protected:
         Description description;
-        sp<Texture> target;
+        common::sp<ITexture> target;
 
     protected:
-        TextureView(
-            sp<Texture>&& target,
-            const TextureView::Description& desc
+        ITextureView(
+            common::sp<ITexture>&& target,
+            const ITextureView::Description& desc
         ) :
             description(desc),
             target(std::move(target))
         {}
 
     public:
+        virtual ~ITextureView() {}
+
         const Description& GetDesc() const {
             return description;
         }
 
         virtual ResourceKind GetResourceKind() const override { return ResourceKind::Texture; }
 
-        const sp<Texture>& GetTarget() const { return target; }
+        const common::sp<ITexture>& GetTarget() const { return target; }
 
     };
 
-} // namespace Veldrid
+} // namespace alloy

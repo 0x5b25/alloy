@@ -2,7 +2,7 @@
 
 #include "common/RefCnt.hpp"
 #include "common/BitFlags.hpp"
-#include "GraphicsDevice.hpp"
+//#include "GraphicsDevice.hpp"
 #include "FixedFunctions.hpp"
 #include "Buffer.hpp"
 #include "Texture.hpp"
@@ -13,7 +13,7 @@
 //  alloy   Vulkan    DX12    Metal
 //
 
-//#TODO: have separation between in-renderpass memory barriers & inter-pass barriers
+///#TODO: have separation between in-renderpass memory barriers & inter-pass barriers
 //According to metal development guide: 
 //    https://developer.apple.com/documentation/metal/resource_synchronization
 //
@@ -62,6 +62,16 @@
 //    Vulkan barriers >> D3D12 barriers >> Metal. Developers seem to prefer
 //    D3D12 style (TODO: confirm with more developers!).
 //```
+
+//enum class RenderStage : std::uint32_t {
+//    Object,
+//    Mesh,
+//    Vertex,
+//    Fragment,
+//    Tile,
+//
+//    MAX_VALUE
+//};
 
 namespace alloy
 {
@@ -136,9 +146,9 @@ namespace alloy
     };
 
 
-    using PipelineStages = BitFlags<PipelineStage>;
+    using PipelineStages = common::BitFlags<PipelineStage>;
 
-    using ResourceAccesses = BitFlags<ResourceAccess>;
+    using ResourceAccesses = common::BitFlags<ResourceAccess>;
 
     struct MemoryBarrierDescription {
         //Sync stages
@@ -152,13 +162,13 @@ namespace alloy
     struct MemoryBarrierResource {};
     
     struct BufferBarrierResource {
-        Veldrid::sp<Veldrid::Buffer> resource;
+        common::sp<alloy::IBuffer> resource;
     };
 
     struct TextureBarrierResource {
         TextureLayout fromLayout;
         TextureLayout toLayout;
-        Veldrid::sp<Veldrid::Texture> resource;
+        common::sp<ITexture> resource;
     };
 
     struct BarrierDescription {

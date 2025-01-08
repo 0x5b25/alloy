@@ -1,8 +1,7 @@
 #pragma once
 
-#include "veldrid/common/BitFlags.hpp"
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/DeviceResource.hpp"
+#include "alloy/common/BitFlags.hpp"
+#include "alloy/common/RefCnt.hpp"
 
 #include <cstdint>
 #include <string>
@@ -29,10 +28,10 @@
 #	undef None
 #endif
 
-namespace Veldrid
+namespace alloy
 {
 
-    class Shader : public DeviceResource
+    class IShader : public common::RefCntBase
     {
 
     public:
@@ -54,7 +53,7 @@ namespace Veldrid
 			MAX_VALUE
 		};
 
-		using Stages = alloy::BitFlags<Stage>;
+		using Stages = alloy::common::BitFlags<Stage>;
 
         struct Description{
 
@@ -68,12 +67,9 @@ namespace Veldrid
 
         Description description;
 
-        Shader(
-            const sp<GraphicsDevice>& dev,
-            const Description& desc
+        IShader(const Description& desc
         ) : 
-            description(desc),
-            DeviceResource(dev){}
+            description(desc){}
 
     public: 
         const Description& GetDesc() const {return description;}
@@ -412,6 +408,6 @@ namespace Veldrid
 #endif
 
 
-} // namespace Veldrid
+} // namespace alloy
 
 

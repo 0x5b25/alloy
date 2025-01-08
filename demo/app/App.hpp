@@ -1,7 +1,7 @@
 #pragma once
 
-#include <veldrid/SwapChainSources.hpp>
-#include <veldrid/common/Macros.h>
+#include <alloy/SwapChainSources.hpp>
+#include <alloy/common/Macros.h>
 #include <GLFW/glfw3.h>
 #include <string>
 
@@ -27,7 +27,7 @@ public:
 protected:
 
 	virtual void OnAppStart(
-		Veldrid::SwapChainSource* swapChainSrc,
+		alloy::SwapChainSource* swapChainSrc,
 		unsigned surfaceWidth,
 		unsigned surfaceHeight) = 0;
 

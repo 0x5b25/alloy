@@ -2,9 +2,9 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/Common.hpp"
-#include "veldrid/Helpers.hpp"
+//alloy public headers
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 //standard library headers
 #include <string>
@@ -36,14 +36,14 @@
 using Microsoft::WRL::ComPtr;
 
 
-namespace Veldrid::VK::priv
+namespace alloy::VK::priv
 {
 
-} // namespace Veldrid::VK::priv
+} // namespace alloy::VK::priv
 
 
 
-namespace Veldrid
+namespace alloy::dxc
 {
 
     
@@ -56,9 +56,10 @@ namespace Veldrid
     }
 
 
-    DXCDevice* DXCPipelineBase::_Dev() {return static_cast<DXCDevice*>(dev.get());}
-
-    sp<Pipeline> DXCGraphicsPipeline::Make(const sp<DXCDevice> &dev, const GraphicsPipelineDescription &desc) {
+    common::sp<IGfxPipeline> DXCGraphicsPipeline::Make(
+        const common::sp<DXCDevice> &dev, 
+        const GraphicsPipelineDescription &desc
+    ) {
         // Define the vertex input layout.
         //D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         //{
@@ -94,7 +95,7 @@ namespace Veldrid
         */
 
         // Describe and create the graphics pipeline state object (PSO).
-        std::unordered_set<sp<RefCntBase>> refCnts;
+        std::unordered_set<common::sp<RefCntBase>> refCnts;
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc {};
         //psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
@@ -115,7 +116,7 @@ namespace Veldrid
 
         psoDesc.pRootSignature = dxcResLayout->GetHandle();
 
-        auto _FillShaderDesc = [&](sp<Veldrid::Shader> shader, D3D12_SHADER_BYTECODE& desc){
+        auto _FillShaderDesc = [&](common::sp<IShader> shader, D3D12_SHADER_BYTECODE& desc){
             auto dxcShader = static_cast<DXCShader*>(shader.get());
             desc.BytecodeLength = dxcShader->GetDataSizeInBytes();
             desc.pShaderBytecode = dxcShader->GetData();
@@ -130,11 +131,11 @@ namespace Veldrid
         //
         //    switch (desc.stage)
         //    {
-        //    case Veldrid::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
-        //    case Veldrid::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
-        //    case Veldrid::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
-        //    case Veldrid::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
-        //    case Veldrid::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
+        //    case alloy::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
+        //    case alloy::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
+        //    case alloy::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
+        //    case alloy::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
+        //    case alloy::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
         //    
         //    default: {
         //        //TODO: report unsupported shader stages
@@ -475,7 +476,7 @@ namespace Veldrid
                 iaDescs[targetIndex]./*UINT*/ InstanceDataStepRate = 0;
                 
                 targetIndex += 1;
-                currentOffset += Helpers::FormatHelpers::GetSizeInBytes(inputElement.format);
+                currentOffset += FormatHelpers::GetSizeInBytes(inputElement.format);
             }
 
             targetLocation += inputDesc.elements.size();
@@ -670,9 +671,9 @@ namespace Veldrid
         rawPipe->_refCnts = std::move(refCnts);
 
         dxcResLayout->ref();
-        rawPipe->_rootSig = sp(dxcResLayout);
+        rawPipe->_rootSig = common::sp(dxcResLayout);
 
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
     
@@ -691,15 +692,15 @@ namespace Veldrid
 
     }
 
-    sp<Pipeline> DXCComputePipeline::Make(
-        const sp<DXCDevice>& dev,
+    common::sp<IComputePipeline> DXCComputePipeline::Make(
+        const common::sp<DXCDevice>& dev,
         const ComputePipelineDescription& desc
     ) {
         assert(false);
 
         
         // Describe and create the graphics pipeline state object (PSO).
-        std::unordered_set<sp<RefCntBase>> refCnts;
+        std::unordered_set<common::sp<RefCntBase>> refCnts;
         D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc {};
 
         auto dxcShader = static_cast<DXCShader*>(desc.computeShader.get());
@@ -720,9 +721,9 @@ namespace Veldrid
         rawPipe->_refCnts = std::move(refCnts);
         
         dxcResLayout->ref();
-        rawPipe->_rootSig = sp(dxcResLayout);
+        rawPipe->_rootSig = common::sp(dxcResLayout);
         
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
     void DXCComputePipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
@@ -735,4 +736,4 @@ namespace Veldrid
         //pCmdList->OMSetBlendFactor(_blendConstants);
     }
 
-} // namespace Veldrid
+} // namespace alloy

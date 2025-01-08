@@ -4,18 +4,18 @@
 #include <sstream>
 #include <vector>
 
-#include "veldrid/common/Macros.h"
-#include "veldrid/common/RefCnt.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/Types.hpp"
-//#include "veldrid/ResourceFactory.hpp"
-//#include "veldrid/CommandQueue.hpp"
-#include "veldrid/SwapChain.hpp"
+#include "alloy/Types.hpp"
+//#include "alloy/ResourceFactory.hpp"
+//#include "alloy/CommandQueue.hpp"
+#include "alloy/SwapChain.hpp"
 
-namespace Veldrid
+namespace alloy
 {
     class ResourceFactory;
-    class CommandQueue;
+    class ICommandQueue;
     //class SwapChain;
 
     struct GraphicsApiVersion
@@ -39,8 +39,8 @@ namespace Veldrid
         
     };
 
-    class GraphicsDevice : public RefCntBase{
-        DISABLE_COPY_AND_ASSIGN(GraphicsDevice);
+    class IGraphicsDevice : public common::RefCntBase{
+        DISABLE_COPY_AND_ASSIGN(IGraphicsDevice);
 
     public:
         struct AdapterInfo{
@@ -114,7 +114,7 @@ typedef struct VkPhysicalDeviceProperties {
         //};
 
     protected:
-        GraphicsDevice() = default;
+        IGraphicsDevice() = default;
 
     public:
         virtual const AdapterInfo& GetAdapterInfo() const = 0;
@@ -126,16 +126,15 @@ typedef struct VkPhysicalDeviceProperties {
 
         virtual void* GetNativeHandle() const = 0;
 
-        virtual Veldrid::ResourceFactory* GetResourceFactory() = 0;
+        virtual alloy::ResourceFactory& GetResourceFactory() = 0;
         //virtual void SubmitCommand(const CommandList* cmd) = 0;
-        virtual SwapChain::State PresentToSwapChain(
-            const std::vector<Semaphore*>& waitSemaphores,
-            SwapChain* sc) = 0;
+        virtual ISwapChain::State PresentToSwapChain(
+            ISwapChain* sc) = 0;
 
-        virtual CommandQueue* GetGfxCommandQueue() = 0;
-        virtual CommandQueue* GetCopyCommandQueue() = 0;
+        virtual ICommandQueue* GetGfxCommandQueue() = 0;
+        virtual ICommandQueue* GetCopyCommandQueue() = 0;
                
         virtual void WaitForIdle() = 0;
 
     };
-} // namespace Veldrid
+} // namespace alloy

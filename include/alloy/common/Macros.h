@@ -99,6 +99,6 @@
 #endif
 
 #ifndef VLD_PLATFORM
-    #error "Unknown veldrid platform"
+    #error "Unknown alloy platform"
 #endif
 

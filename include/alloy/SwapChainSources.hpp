@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include "veldrid/common/Macros.h"
+#include "alloy/common/Macros.h"
 
-namespace Veldrid
+namespace alloy
 {
 
     struct SwapChainSource {

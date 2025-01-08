@@ -7,7 +7,7 @@
  */
 
 
-#include "veldrid/common/Macros.h"
+#include "alloy/common/Macros.h"
 //#include "include/private/Templates.h"
 
 #include <atomic>       // std::atomic, std::memory_order_*
@@ -18,7 +18,7 @@
 #include <utility>      // std::forward, std::swap
 #include <cassert>
 
-namespace Veldrid{
+namespace alloy::common{
 /** \class RefCntBase
 
     RefCntBase is the base class for objects that may be shared by multiple
@@ -392,9 +392,9 @@ template <typename T> sp<T> ref_sp(const T* obj) {
 }
 
 namespace std {
-  template <typename T> struct hash<Veldrid::sp<T>>
+  template <typename T> struct hash<alloy::common::sp<T>>
   {
-    size_t operator()(const Veldrid::sp<T> & x) const
+    size_t operator()(const alloy::common::sp<T> & x) const
     {
       /* your code here, e.g. "return hash<int>()(x.value);" */
       return hash<void*>()(x.get());

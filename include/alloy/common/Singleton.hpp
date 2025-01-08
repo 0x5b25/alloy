@@ -9,7 +9,7 @@
 #include <utility>      // std::forward, std::swap
 #include <cassert>
 
-namespace Veldrid{
+namespace alloy{
     template<typename T>
     class Singleton{
         static std::atomic<T*> _pinstance;

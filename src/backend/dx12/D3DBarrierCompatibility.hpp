@@ -2,7 +2,7 @@
 
 //3rd-party headers
 
-//veldrid public headers
+//alloy public headers
 
 //standard library headers
 #include <vector>

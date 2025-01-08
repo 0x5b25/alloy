@@ -1,17 +1,16 @@
 #pragma once
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/common/BitFlags.hpp"
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/Shader.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/common/BitFlags.hpp"
+#include "alloy/Shader.hpp"
 
 #include <cstdint>
 #include <vector>
 #include <string>
 
-namespace Veldrid
+namespace alloy
 {
-    class IBindableResource : public RefCntBase{
+    class IBindableResource : public common::RefCntBase{
 
     public:
         enum class ResourceKind {
@@ -33,7 +32,7 @@ namespace Veldrid
             /// </summary>
             Texture,
             /// <summary>
-            /// A <see cref="Veldrid.Sampler"/>.
+            /// A <see cref="alloy.Sampler"/>.
             /// </summary>
             Sampler,
 
@@ -46,7 +45,7 @@ namespace Veldrid
         
     };
 
-    class ResourceLayout : public DeviceResource{
+    class IResourceLayout : public common::RefCntBase{
 
     public:
         struct Description{
@@ -57,7 +56,7 @@ namespace Veldrid
                 std::string name;
                 IBindableResource::ResourceKind kind;
 
-                alloy::BitFlags<Shader::Stage> stages;
+                alloy::common::BitFlags<IShader::Stage> stages;
 
                 union Options
                 {
@@ -92,12 +91,10 @@ namespace Veldrid
     protected:
         Description description;
 
-        ResourceLayout(
-            const sp<GraphicsDevice>& dev,
+        IResourceLayout(
             const Description& desc
         )
-        : DeviceResource(dev)
-        , description(desc){}
+        : description(desc){}
 
     public:
         const Description& GetDesc() const {return description;}
@@ -107,29 +104,27 @@ namespace Veldrid
 
     };
 
-    class ResourceSet : public DeviceResource{
+    class IResourceSet : public common::RefCntBase{
 
     
     public:
         struct Description{
             
             // The <see cref="ResourceLayout"/> describing the number and kind of resources used.
-            sp<ResourceLayout> layout;
+            common::sp<IResourceLayout> layout;
             
             // An array of <see cref="BindableResource"/> objects.
             // The number and type of resources must match those specified in the <see cref="ResourceLayout"/>.
-            std::vector<sp<IBindableResource>> boundResources;
+            std::vector<common::sp<IBindableResource>> boundResources;
         };
 
     protected:
         Description description;
 
-        ResourceSet(
-            const sp<GraphicsDevice>& dev,
+        IResourceSet(
             const Description& desc
         ) 
-            : DeviceResource(dev)
-            , description(desc)
+            : description(desc)
         {}
 
     public:
@@ -138,4 +133,4 @@ namespace Veldrid
         virtual void* GetNativeHandle() const {return nullptr; }
     };
  
-} // namespace Veldrid
+} // namespace alloy

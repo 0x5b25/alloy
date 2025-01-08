@@ -1,8 +1,10 @@
 #include "D3DDescriptorHeapMgr.hpp"
 
-#include "Veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
 
-namespace Veldrid::DXC {
+#include "DXCDevice.hpp"
+
+namespace alloy::dxc {
 
     
 
@@ -81,9 +83,9 @@ namespace Veldrid::DXC {
         return pHeap;
     }
 
-    _DescriptorSet _DescriptorHeapMgr::Allocate(const std::vector<sp<TextureView>>& res) {
+    _DescriptorSet _DescriptorHeapMgr::Allocate(const std::vector<common::sp<ITextureView>>& res) {
 
-        sp<Container> targetPool {nullptr};
+        common::sp<Container> targetPool {nullptr};
         _DescriptorSet allocated {};
 
         {
@@ -130,7 +132,7 @@ namespace Veldrid::DXC {
                     D3D12_RENDER_TARGET_VIEW_DESC desc {};
 
                     switch(texDesc.type) {
-                        case Texture::Description::Type::Texture1D : {
+                        case ITexture::Description::Type::Texture1D : {
                             if(texDesc.arrayLayers > 1) {
                                 desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                                 desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -142,7 +144,7 @@ namespace Veldrid::DXC {
                             }
                         }break;
 
-                        case Texture::Description::Type::Texture2D : {
+                        case ITexture::Description::Type::Texture2D : {
                             if(texDesc.arrayLayers > 1) {
                                 desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
                                 desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -156,9 +158,9 @@ namespace Veldrid::DXC {
                             }
                         }break;
 
-                        case Texture::Description::Type::Texture3D : {
+                        case ITexture::Description::Type::Texture3D : {
                             if(texDesc.arrayLayers > 1) {
-                                //#TODO: handle tex array & texture type mismatch
+                                ///#TODO: handle tex array & texture type mismatch
                             } else {
                                 desc.Texture3D.FirstWSlice = 0;
                                 desc.Texture3D.WSize = -1;
@@ -176,7 +178,7 @@ namespace Veldrid::DXC {
                     D3D12_DEPTH_STENCIL_VIEW_DESC desc {};
 
                     switch(texDesc.type) {
-                        case Texture::Description::Type::Texture1D : {
+                        case ITexture::Description::Type::Texture1D : {
                             if(texDesc.arrayLayers > 1) {
                                 desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                                 desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -188,7 +190,7 @@ namespace Veldrid::DXC {
                             }
                         }break;
 
-                        case Texture::Description::Type::Texture2D : {
+                        case ITexture::Description::Type::Texture2D : {
                             if(texDesc.arrayLayers > 1) {
                                 desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
                                 desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;

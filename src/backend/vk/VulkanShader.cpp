@@ -60,7 +60,7 @@ namespace alloy::vk
         bool SPVRemapper::RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
                                         dxil_spv_vulkan_shader_stage_io& vulkan_variable
         ) {
-            if(currentStage == Veldrid::Shader::Stage::Vertex) return true;
+            if(currentStage == IShader::Stage::Vertex) return true;
             //auto io_map = (const vkd3d_shader_stage_io_map *)userdata;
             //const vkd3d_shader_stage_io_entry *e;
 
@@ -285,7 +285,7 @@ namespace alloy::vk
 
             dxil_spv_converter_set_vertex_input_remapper(converter.converter, SPVRemapper_RemapVertexInput, &remapper);
 
-            //#TODO: support stream output?
+            ///#TODO: support stream output?
             //if (shader_interface_info->xfb_info)
             //    dxil_spv_converter_set_stream_output_remapper(converter, dxil_output_remap, (void *)shader_interface_info->xfb_info);
 
@@ -367,19 +367,16 @@ namespace alloy::vk
         return ret;
     }
 
-} // namespace alloy::vk
 
-namespace Veldrid
-{
     
 
     VulkanShader::~VulkanShader(){
         //vkDestroyShaderModule(_Dev()->LogicalDev(), _shaderModule, nullptr);
     }
 
-    sp<Shader> VulkanShader::Make(
-        const sp<VulkanDevice>& dev,
-        const Shader::Description& desc,
+    common::sp<IShader> VulkanShader::Make(
+        const common::sp<VulkanDevice>& dev,
+        const IShader::Description& desc,
         const std::span<std::uint8_t>& il
     ){
         //VkShaderModuleCreateInfo shaderModuleCI {};
@@ -392,7 +389,7 @@ namespace Veldrid
         auto shader = new VulkanShader(dev, desc, il);
         //shader->_shaderModule = module;
 
-        return sp<Shader>(shader);
+        return common::sp<IShader>(shader);
     }
 
-} // namespace Veldrid
+} // namespace alloy::vk

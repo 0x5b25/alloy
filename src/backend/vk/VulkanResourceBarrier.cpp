@@ -3,9 +3,10 @@
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanCommandList.hpp"
-#include "Veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
+#include "alloy/common/BitFlags.hpp"
 
-namespace Veldrid
+namespace alloy::vk
 {
 
     
@@ -38,23 +39,23 @@ static VkPipelineStageFlags vk_stage_flags_from_d3d12_barrier(
 
     if (sync & alloy::PipelineStage::Draw)
     {
-        sync |= alloy::PipelineStage::INPUT_ASSEMBLER | //Orinially D3D12_BARRIER_SYNC_INDEX_INPUT
-                alloy::PipelineStage::VERTEX_SHADING |
-                alloy::PipelineStage::PIXEL_SHADING |
-                alloy::PipelineStage::DEPTH_STENCIL |
-                alloy::PipelineStage::RENDER_TARGET;
+        sync |= alloy::PipelineStage::INPUT_ASSEMBLER; //Orinially D3D12_BARRIER_SYNC_INDEX_INPUT
+        sync |= alloy::PipelineStage::VERTEX_SHADING;
+        sync |= alloy::PipelineStage::PIXEL_SHADING;
+        sync |= alloy::PipelineStage::DEPTH_STENCIL;
+        sync |= alloy::PipelineStage::RENDER_TARGET;
     }
 
     if (sync & alloy::PipelineStage::AllShading)
     {
-        sync |= alloy::PipelineStage::NonPixelShading |
-                alloy::PipelineStage::PIXEL_SHADING;
+        sync |= alloy::PipelineStage::NonPixelShading;
+        sync |= alloy::PipelineStage::PIXEL_SHADING;
     }
 
     if (sync & alloy::PipelineStage::NonPixelShading)
     {
-        sync |= alloy::PipelineStage::VERTEX_SHADING |
-                alloy::PipelineStage::COMPUTE_SHADING;
+        sync |= alloy::PipelineStage::VERTEX_SHADING;
+        sync |= alloy::PipelineStage::COMPUTE_SHADING;
 
         ///* Ray tracing is not included in this list in docs,
         // * but the example code for legacy UAV barrier mapping
@@ -222,7 +223,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
         if(stages[alloy::PipelineStage::COPY])
             flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
         if(stages[alloy::PipelineStage::RESOLVE])
-            flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;//#TODO: reconfirmation needed
+            flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;///#TODO: reconfirmation needed
         if(stages[alloy::PipelineStage::EXECUTE_INDIRECT])
             flags |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
         //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
@@ -358,7 +359,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                     auto& barrier = bufBarriers.back();
                     auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
 
-                    auto thisBuf = PtrCast<VulkanBuffer>(barrierDesc.resource.get());
+                    auto thisBuf = common::PtrCast<VulkanBuffer>(barrierDesc.resource.get());
                     _PopulateBarrierAccess(desc.memBarrier, cmdBuf, barrier);
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -372,7 +373,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                     auto& barrier = texBarrier.back();
                     auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
 
-                    auto thisTex = PtrCast<VulkanTexture>(texDesc.resource.get());
+                    auto thisTex = common::PtrCast<VulkanTexture>(texDesc.resource.get());
                     auto& vkTexResDesc = thisTex->GetDesc();
                     _PopulateBarrierAccess(desc.memBarrier, cmdBuf, barrier);
                     barrier.oldLayout = _GetTexLayout(texDesc.fromLayout);
@@ -382,7 +383,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                     barrier.image = thisTex->GetHandle();
                     auto& aspectMask = barrier.subresourceRange.aspectMask;
                     if (vkTexResDesc.usage.depthStencil) {
-                        aspectMask = Helpers::FormatHelpers::IsStencilFormat(vkTexResDesc.format)
+                        aspectMask = FormatHelpers::IsStencilFormat(vkTexResDesc.format)
                             ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
                             : VK_IMAGE_ASPECT_DEPTH_BIT;
                     }
@@ -409,5 +410,5 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
     }
 
 
-} // namespace Veldrid
+} // namespace alloy
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "veldrid/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 
 
 //backend specific headers
@@ -11,12 +11,15 @@
 
 //Local headers
 
-namespace Veldrid
+namespace alloy::dxc
 {
     class DXCDevice;
     class DXCTexture;
 
-    class DXCFrameBufferBase : public Framebuffer{
+    class DXCFrameBufferBase : public IFrameBuffer{
+
+        common::sp<DXCDevice> _dev;
+
     public:
         enum class VisitedAttachmentType {
             ColorAttachment, DepthAttachment, DepthStencilAttachment
@@ -27,8 +30,8 @@ namespace Veldrid
         
 
         DXCFrameBufferBase(
-            const sp<GraphicsDevice>& dev
-        ) : Framebuffer(dev)
+            const common::sp<DXCDevice>& dev
+        ) : _dev(dev)
         { 
             //CreateCompatibleRenderPasses(
             //    renderPassNoClear, renderPassNoClearLoad, renderPassClear,
@@ -64,4 +67,4 @@ namespace Veldrid
     };
 
 
-} // namespace Veldrid
+} // namespace alloy

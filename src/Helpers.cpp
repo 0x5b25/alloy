@@ -1,9 +1,9 @@
 
-#include "veldrid/Helpers.hpp"
+#include "alloy/Helpers.hpp"
 
 #include <cassert>
 
-namespace Veldrid::Helpers
+namespace alloy
 {
     std::uint32_t Clamp(std::uint32_t value, std::uint32_t min, std::uint32_t max)
     {
@@ -31,7 +31,7 @@ namespace Veldrid::Helpers
         return std::max(1U, ret);
     }
     void GetMipDimensions(
-        const Veldrid::Texture::Description& texDesc, 
+        const ITexture::Description& texDesc, 
         std::uint32_t mipLevel, 
         std::uint32_t& width, std::uint32_t& height, std::uint32_t& depth)
     {
@@ -42,7 +42,7 @@ namespace Veldrid::Helpers
     }
     
     void GetMipLevelAndArrayLayer(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t subresource, 
+        const ITexture::Description& texDesc, std::uint32_t subresource, 
         std::uint32_t& mipLevel, std::uint32_t& arrayLayer)
     {
         arrayLayer = subresource / texDesc.mipLevels;
@@ -50,14 +50,14 @@ namespace Veldrid::Helpers
     }
 
     std::uint64_t ComputeSubresourceOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer)
+        const ITexture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer)
     {
         //assert(tex->GetDesc().usage.staging == true);
         return ComputeArrayLayerOffset(texDesc, arrayLayer) + ComputeMipOffset(texDesc, mipLevel);
     }
 
     std::uint32_t ComputeArrayLayerOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t arrayLayer)
+        const ITexture::Description& texDesc, std::uint32_t arrayLayer)
     {
         if (arrayLayer == 0)
         {
@@ -80,7 +80,7 @@ namespace Veldrid::Helpers
     }
 
     std::uint32_t ComputeMipOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel)
+        const ITexture::Description& texDesc, std::uint32_t mipLevel)
     {
         std::uint32_t blockSize = FormatHelpers::IsCompressedFormat(texDesc.format) ? 4u : 1u;
         std::uint32_t offset = 0;
@@ -357,20 +357,20 @@ namespace Veldrid::Helpers
             }
         }
 
-        std::uint32_t GetSampleCountUInt32(Veldrid::SampleCount sampleCount){
+        std::uint32_t GetSampleCountUInt32(SampleCount sampleCount){
             switch (sampleCount)
             {
-                case Veldrid::SampleCount::x1:
+                case SampleCount::x1:
                     return 1;
-                case Veldrid::SampleCount::x2:
+                case SampleCount::x2:
                     return 2;
-                case Veldrid::SampleCount::x4:
+                case SampleCount::x4:
                     return 4;
-                case Veldrid::SampleCount::x8:
+                case SampleCount::x8:
                     return 8;
-                case Veldrid::SampleCount::x16:
+                case SampleCount::x16:
                     return 16;
-                case Veldrid::SampleCount::x32:
+                case SampleCount::x32:
                     return 32;
                 default:return 0;
             }
@@ -476,17 +476,17 @@ namespace Veldrid::Helpers
             return viewFormat == realFormat;
         }
 
-        Veldrid::SampleCount GetSampleCount(std::uint32_t samples)
+        SampleCount GetSampleCount(std::uint32_t samples)
         {
             switch (samples)
             {
-                case 1: return  Veldrid::SampleCount::x1;
-                case 2: return  Veldrid::SampleCount::x2;
-                case 4: return  Veldrid::SampleCount::x4;
-                case 8: return  Veldrid::SampleCount::x8;
-                case 16: return Veldrid::SampleCount::x16;
-                case 32: return Veldrid::SampleCount::x32;
-                default: return Veldrid::SampleCount::x1;
+                case 1: return  SampleCount::x1;
+                case 2: return  SampleCount::x2;
+                case 4: return  SampleCount::x4;
+                case 8: return  SampleCount::x8;
+                case 16: return SampleCount::x16;
+                case 32: return SampleCount::x32;
+                default: return SampleCount::x1;
             }
         }
 

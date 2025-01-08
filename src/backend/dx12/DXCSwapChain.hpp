@@ -2,12 +2,12 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/Common.hpp"
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/Helpers.hpp"
-#include "veldrid/SwapChain.hpp"
-#include "veldrid/Framebuffer.hpp"
+//alloy public headers
+#include "alloy/common/Common.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/Helpers.hpp"
+#include "alloy/SwapChain.hpp"
+#include "alloy/Framebuffer.hpp"
 
 //standard library headers
 #include <string>
@@ -26,31 +26,31 @@
 
 
 
-namespace Veldrid {
+namespace alloy::dxc {
 
     class DXCDevice;
     class DXCSwapChain;
 
     struct BackBufferContainer {
         //DXCSwapChain* _sc;
-        sp<Texture> _colorBuffer;
+        common::sp<ITexture> _colorBuffer;
         D3D12_CPU_DESCRIPTOR_HANDLE _rtv;
         
-        sp<Texture> _depthBuffer;
+        common::sp<ITexture> _depthBuffer;
         D3D12_CPU_DESCRIPTOR_HANDLE _dsv;
 
-        Framebuffer::Description _fbDesc;
+        IFrameBuffer::Description _fbDesc;
     };
 
     class DXCSwapChainBackBuffer : public DXCFrameBufferBase {
        
-        sp<DXCSwapChain> _sc;
+        common::sp<DXCSwapChain> _sc;
         const BackBufferContainer& _bb;
 
     public:
         DXCSwapChainBackBuffer(
-            const sp<GraphicsDevice>& dev,
-            sp<DXCSwapChain>&& sc,
+            const common::sp<DXCDevice>& dev,
+            common::sp<DXCSwapChain>&& sc,
             const BackBufferContainer& bb
         );
 
@@ -69,8 +69,10 @@ namespace Veldrid {
 
     };
     
-    class DXCSwapChain : public SwapChain {
+    class DXCSwapChain : public ISwapChain {
         friend class DXCSwapChainBackBuffer;
+
+        common::sp<DXCDevice> _dev;
 
         IDXGISwapChain3* _sc;
 
@@ -90,9 +92,11 @@ namespace Veldrid {
         std::uint32_t _currentImageIndex;
 
         DXCSwapChain(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             const Description& desc
-            ) : SwapChain(dev, desc){
+        ) : ISwapChain(desc)
+          , _dev(dev)    
+        {
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
         }
 
@@ -112,8 +116,8 @@ namespace Veldrid {
 
         ~DXCSwapChain() override;
 
-        static sp<SwapChain> Make(
-            const sp<DXCDevice>& dev,
+        static common::sp<ISwapChain> Make(
+            const common::sp<DXCDevice>& dev,
             const Description& desc
         );
 
@@ -122,7 +126,7 @@ namespace Veldrid {
         std::uint32_t GetCurrentImageIdx() const { return _sc->GetCurrentBackBufferIndex(); }
 
     public:
-        sp<Framebuffer> GetBackBuffer() override;
+        common::sp<IFrameBuffer> GetBackBuffer() override;
 
         void Resize(
             std::uint32_t width, 

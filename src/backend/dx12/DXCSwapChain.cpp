@@ -5,12 +5,12 @@
 #include "DXCTexture.hpp"
 #include "D3DTypeCvt.hpp"
 
-namespace Veldrid {
+namespace alloy::dxc {
 
 
     DXCSwapChainBackBuffer::DXCSwapChainBackBuffer(
-        const sp<GraphicsDevice>& dev,
-        sp<DXCSwapChain>&& sc,
+        const common::sp<DXCDevice>& dev,
+        common::sp<DXCSwapChain>&& sc,
         const BackBufferContainer& bb
     )
         : DXCFrameBufferBase(dev)
@@ -28,7 +28,7 @@ namespace Veldrid {
     
     bool DXCSwapChainBackBuffer::DSVHasStencil() const {
         if(_bb._depthBuffer) {
-            if(Helpers::FormatHelpers::IsStencilFormat(
+            if(FormatHelpers::IsStencilFormat(
                 _bb._depthBuffer->GetDesc().format
             )) return true;
         }
@@ -44,8 +44,8 @@ namespace Veldrid {
         return _bb._dsv;
     }
     
-    sp<SwapChain> DXCSwapChain::Make(
-        const sp<DXCDevice>& dev,
+    common::sp<ISwapChain> DXCSwapChain::Make(
+        const common::sp<DXCDevice>& dev,
         const Description& desc
     ) {
         //IDXGIDevice3 * pDXGIDevice = nullptr;
@@ -59,9 +59,9 @@ namespace Veldrid {
         assert(desc.source->tag == SwapChainSource::Tag::Win32);
         auto swapChainSrc = (const Win32SwapChainSource*)desc.source;
 
-        auto vldSC = sp(new DXCSwapChain(dev, desc));
+        auto vldSC = common::sp(new DXCSwapChain(dev, desc));
 
-        //#TODO: settle for now. Add to swapchain desc later maybe
+        ///#TODO: settle for now. Add to swapchain desc later maybe
         uint32_t backBufferCnt = desc.backBufferCnt;
 
         // Describe and create the swap chain.
@@ -69,7 +69,7 @@ namespace Veldrid {
         swapChainDesc.BufferCount = backBufferCnt; 
         swapChainDesc.Width = desc.initialWidth;
         swapChainDesc.Height = desc.initialHeight;
-        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; //#TODO: add format support
+        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; ///#TODO: add format support
         swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         swapChainDesc.SampleDesc.Count = 1;
@@ -96,7 +96,7 @@ namespace Veldrid {
 
         vldSC->CreateFramebuffers(desc.initialWidth, desc.initialHeight);
 
-        //#TODO: support MSAA
+        ///#TODO: support MSAA
                 
 
         //// Create a RTV for each frame.
@@ -129,7 +129,7 @@ namespace Veldrid {
         //
         //
         //Texture::Description texDesc{};  
-        //texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+        //texDesc.type = alloy::Texture::Description::Type::Texture2D;
         //texDesc.width = desc.initialWidth;
         //texDesc.height = desc.initialHeight;
         //texDesc.depth = 1;
@@ -158,7 +158,7 @@ namespace Veldrid {
         //    if (desc.depthFormat.has_value()) {
         //
         //        Texture::Description dsDesc{};
-        //        dsDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+        //        dsDesc.type = alloy::Texture::Description::Type::Texture2D;
         //        dsDesc.width = desc.initialWidth;
         //        dsDesc.height = desc.initialHeight;
         //        dsDesc.depth = 1;
@@ -194,14 +194,14 @@ namespace Veldrid {
         _sc->Release();
     }
 
-    sp<Framebuffer> DXCSwapChain::GetBackBuffer() {
+    common::sp<IFrameBuffer> DXCSwapChain::GetBackBuffer() {
         //Swapchain image may be 0 when app minimized
         auto nextFrameIdx = GetCurrentImageIdx();
         if (nextFrameIdx >= _fbs.size()) return nullptr;
 
         this->ref();
 
-        return sp(new DXCSwapChainBackBuffer(dev, sp(this), _fbs[nextFrameIdx]));
+        return common::sp(new DXCSwapChainBackBuffer(_dev, common::sp(this), _fbs[nextFrameIdx]));
     }
 
     void DXCSwapChain::Resize(
@@ -237,8 +237,7 @@ namespace Veldrid {
         description.initialHeight = height;
         description.initialWidth = width;
 
-        dev.get()->ref();
-        auto dxcDev = sp(PtrCast<DXCDevice>(dev.get()));
+        auto dxcDev = _dev;
         
         // Create a RTV for each frame.
         ID3D12DescriptorHeap* pRtvHeap = nullptr;
@@ -269,8 +268,8 @@ namespace Veldrid {
 
         
 
-        Texture::Description texDesc{};  
-        texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+        ITexture::Description texDesc{};  
+        texDesc.type = alloy::ITexture::Description::Type::Texture2D;
         texDesc.width = width;
         texDesc.height = height;
         texDesc.depth = 1;
@@ -278,7 +277,7 @@ namespace Veldrid {
         texDesc.arrayLayers = 1;
         texDesc.usage.renderTarget = true;
         texDesc.sampleCount = SampleCount::x1;
-        texDesc.format = D3DToVdPixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM);//#TODO: add format support
+        texDesc.format = D3DToVdPixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM);///#TODO: add format support
             
         for (uint32_t n = 0; n < _fbCnt; n++)
         {
@@ -288,16 +287,16 @@ namespace Veldrid {
 
             auto vldTex = DXCTexture::WrapNative(dxcDev, texDesc, pTex);
 
-            Framebuffer::Description fbDesc;
+            IFrameBuffer::Description fbDesc;
             fbDesc.colorTargets = { 
                 {vldTex, vldTex->GetDesc().arrayLayers, vldTex->GetDesc().mipLevels}
             };
 
-            sp<Texture> vldDepthTex;
+            common::sp<ITexture> vldDepthTex;
             if (description.depthFormat.has_value()) {
 
-                Texture::Description dsDesc{};
-                dsDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+                ITexture::Description dsDesc{};
+                dsDesc.type = alloy::ITexture::Description::Type::Texture2D;
                 dsDesc.width = width;
                 dsDesc.height = height;
                 dsDesc.depth = 1;
@@ -307,7 +306,7 @@ namespace Veldrid {
                 dsDesc.sampleCount = SampleCount::x1;
                 dsDesc.format = description.depthFormat.value();
 
-                vldDepthTex = dev->GetResourceFactory()->CreateTexture(dsDesc);
+                vldDepthTex = _dev->GetResourceFactory().CreateTexture(dsDesc);
 
                 fbDesc.depthTarget = { vldDepthTex, vldDepthTex->GetDesc().arrayLayers, vldDepthTex->GetDesc().mipLevels };
 

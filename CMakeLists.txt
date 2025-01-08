@@ -5,31 +5,31 @@ project(veldridcpp
     LANGUAGES CXX)
 
 set(VLD_MISC_HEADERS
-    "include/veldrid/backend/Backends.hpp"
-    "include/veldrid/common/Common.hpp"
-    "include/veldrid/common/Macros.h"
-    "include/veldrid/common/RefCnt.hpp"
+    "include/alloy/backend/Backends.hpp"
+    "include/alloy/common/Common.hpp"
+    "include/alloy/common/Macros.h"
+    "include/alloy/common/RefCnt.hpp"
 )
 
 set(VLD_IFACE_HEADERS
-    "include/veldrid/BindableResource.hpp"
-    "include/veldrid/CommandQueue.hpp"
-    "include/veldrid/Buffer.hpp"
-    "include/veldrid/CommandList.hpp"
-    "include/veldrid/DeviceResource.hpp"
-    "include/veldrid/SyncObjects.hpp"
-    "include/veldrid/FixedFunctions.hpp"
-    "include/veldrid/Framebuffer.hpp"
-    "include/veldrid/GraphicsDevice.hpp"
-    "include/veldrid/Helpers.hpp"
-    "include/veldrid/Pipeline.hpp"
-    "include/veldrid/ResourceFactory.hpp"
-    "include/veldrid/Sampler.hpp"
-    "include/veldrid/Shader.hpp"
-    "include/veldrid/SwapChain.hpp"
-    "include/veldrid/SwapChainSources.hpp"
-    "include/veldrid/Texture.hpp"
-    "include/veldrid/Types.hpp"
+    "include/alloy/RenderPass.hpp"
+    "include/alloy/CommandQueue.hpp"
+    "include/alloy/Buffer.hpp"
+    "include/alloy/CommandList.hpp"
+    "include/alloy/BindableResource.hpp"
+    "include/alloy/SyncObjects.hpp"
+    "include/alloy/FixedFunctions.hpp"
+    "include/alloy/FrameBuffer.hpp"
+    "include/alloy/GraphicsDevice.hpp"
+    "include/alloy/Helpers.hpp"
+    "include/alloy/Pipeline.hpp"
+    "include/alloy/ResourceFactory.hpp"
+    "include/alloy/Sampler.hpp"
+    "include/alloy/Shader.hpp"
+    "include/alloy/SwapChain.hpp"
+    "include/alloy/SwapChainSources.hpp"
+    "include/alloy/Texture.hpp"
+    "include/alloy/Types.hpp"
 )
 
 
@@ -38,7 +38,7 @@ set(VLD_IFACE_IMP_SRCS
     "src/BindableResource.cpp"
     "src/Shader.cpp"
     "src/Helpers.cpp"
-    "src/DeviceResource.cpp"
+    #"src/DeviceResource.cpp"
     "src/Backends.cpp"
 )
 

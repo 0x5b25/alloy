@@ -1,9 +1,9 @@
-#include "veldrid/BindableResource.hpp"
+#include "alloy/BindableResource.hpp"
 
-namespace Veldrid
+namespace alloy
 {
     
     
 
-} // namespace Veldrid
+} // namespace alloy
 

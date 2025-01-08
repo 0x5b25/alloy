@@ -2,7 +2,7 @@
 
 #include <volk.h>
 
-#include "veldrid/common/Macros.h"
+#include "alloy/common/Macros.h"
 
 #include <cassert>
 
@@ -11,7 +11,7 @@
 #include "VkSurfaceUtil.hpp"
 #include "VulkanDevice.hpp"
 
-namespace Veldrid
+namespace alloy::vk
 {
     bool QueueSupportsPresent(VulkanDevice* dev, std::uint32_t queueFamilyIndex, VkSurfaceKHR surface)
     {
@@ -51,7 +51,7 @@ namespace Veldrid
     //VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
     //VkRenderPass _SCFB::GetRenderPassClear() const {return _sc->GetRenderPassClear();}
 
-    inline const Framebuffer::Description& _SCFB::GetDesc() const { return _fbDesc; }
+    const IFrameBuffer::Description& _SCFB::GetDesc() const { return _fbDesc; }
 
     _SCFB::~_SCFB(){
         auto _gd = PtrCast<VulkanDevice>(dev.get());
@@ -64,11 +64,11 @@ namespace Veldrid
 
 
 
-    sp<_SCFB> _SCFB::Make(
-        VulkanDevice* dev,
-        const sp<VulkanSwapChain>& sc,
-        const sp<VulkanTexture>& colorTarget,
-        const sp<VulkanTexture>& depthTarget
+    common::sp<_SCFB> _SCFB::Make(
+        const common::sp<VulkanDevice>& dev,
+        const common::sp<VulkanSwapChain>& sc,
+        const common::sp<VulkanTexture>& colorTarget,
+        const common::sp<VulkanTexture>& depthTarget
     ){
 
         VkImageView attachments[] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
@@ -79,7 +79,7 @@ namespace Veldrid
             imageViewCI.image = colorTarget->GetHandle();
 
             auto format =  colorTarget->GetDesc().format;
-            imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(format, false); //not a depth format
+            imageViewCI.format = alloy::vk::VdToVkPixelFormat(format, false); //not a depth format
             imageViewCI.viewType = colorTarget->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
@@ -93,11 +93,11 @@ namespace Veldrid
 
         if(depthTarget != nullptr)
         {//depth target
-            bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(depthTarget->GetDesc().format);
+            bool hasStencil = FormatHelpers::IsStencilFormat(depthTarget->GetDesc().format);
             VkImageViewCreateInfo depthViewCI{};
             depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             depthViewCI.image = depthTarget->GetHandle();
-            depthViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(depthTarget->GetDesc().format);
+            depthViewCI.format = alloy::vk::VdToVkPixelFormat(depthTarget->GetDesc().format);
             depthViewCI.viewType = depthTarget->GetDesc().arrayLayers > 1
                 ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
                 : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
@@ -126,9 +126,7 @@ namespace Veldrid
         //VkFramebuffer fb;
         //VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
 
-        dev->ref();
-        auto spDev = sp(dev);
-        auto scfb = new _SCFB(spDev);
+        auto scfb = new _SCFB(dev);
         scfb->_sc = sc;
         //scfb->_fb = fb;
         scfb->_colorTarget = colorTarget;
@@ -138,14 +136,13 @@ namespace Veldrid
         scfb->_fbDesc.colorTargets = { {colorTarget, colorTarget->GetDesc().arrayLayers, colorTarget->GetDesc().mipLevels} };
         if(depthTarget)
             scfb->_fbDesc.depthTarget = {depthTarget, depthTarget->GetDesc().arrayLayers, depthTarget->GetDesc().mipLevels};
-            //VulkanFramebufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
+            //VulkanFrameBufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
             
 
-        return sp(scfb);
+        return common::sp(scfb);
     }
 
     void VulkanSwapChain::ReleaseFramebuffers(){
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClear, nullptr);
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClearLoad, nullptr);
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassClear, nullptr);
@@ -172,19 +169,18 @@ namespace Veldrid
         if(_scExtent.width == 0 || _scExtent.height == 0) return;
 
         //Acquire images -> create image views -> wrap inside framebuffers
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
 
         // Get the images
         std::uint32_t scImageCount = 0;
-        VK_CHECK(vkGetSwapchainImagesKHR(_gd->LogicalDev(), _deviceSwapchain, &scImageCount, nullptr));
+        VK_CHECK(vkGetSwapchainImagesKHR(_dev->LogicalDev(), _deviceSwapchain, &scImageCount, nullptr));
         std::vector<VkImage> scImgs(scImageCount);
-        VK_CHECK(vkGetSwapchainImagesKHR(_gd->LogicalDev(), _deviceSwapchain, &scImageCount, scImgs.data()));
+        VK_CHECK(vkGetSwapchainImagesKHR(_dev->LogicalDev(), _deviceSwapchain, &scImageCount, scImgs.data()));
 
         assert(scImageCount > 0);
-        auto _CreateSCFB = [&](const sp<VulkanTexture>& colorTgt, const sp<VulkanTexture>& dsTgt) {
+        auto _CreateSCFB = [&](const common::sp<VulkanTexture>& colorTgt, const common::sp<VulkanTexture>& dsTgt) {
             this->ref();
-            auto spsc = sp(this);
-            auto fb = _SCFB::Make(_gd, spsc, colorTgt, dsTgt);
+            auto spsc = common::sp(this);
+            auto fb = _SCFB::Make(_dev, spsc, colorTgt, dsTgt);
             assert(fb != nullptr);
             _fbs.push_back(std::move(fb));
         };
@@ -194,7 +190,7 @@ namespace Veldrid
         //CreateDepthTexture();
         if (description.depthFormat.has_value()) {
             Texture::Description texDesc{};
-            texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            texDesc.type = alloy::Texture::Description::Type::Texture2D;
             texDesc.width = _scExtent.width;
             texDesc.height = _scExtent.height;
             texDesc.depth = 1;
@@ -216,7 +212,7 @@ namespace Veldrid
         //Texture::Description texDesc{};
         {
             auto firstTex = scImgs.front();
-            texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            texDesc.type = alloy::Texture::Description::Type::Texture2D;
             texDesc.width = _scExtent.width;
             texDesc.height = _scExtent.height;
             texDesc.depth = 1;
@@ -224,26 +220,26 @@ namespace Veldrid
             texDesc.arrayLayers = 1;
             texDesc.usage.renderTarget = true;
             texDesc.sampleCount = SampleCount::x1;
-            texDesc.format = Veldrid::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
+            texDesc.format = alloy::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
 
-            auto firstColorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,
+            auto firstColorTgt = alloy::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,
                 VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, firstTex
             );
 
             //auto firstColorTgt = _gd->GetResourceFactory()->WrapNativeTexture(firstTex, texDesc);
             auto vkFirstColorTgt = PtrCast<VulkanTexture>(firstColorTgt.get());
             _fbDesc.colorTargets = { {firstColorTgt, firstColorTgt->GetDesc().arrayLayers, firstColorTgt->GetDesc().mipLevels} };
-            //VulkanFramebufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
+            //VulkanFrameBufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
             //    _renderPassNoClear, _renderPassNoClearLoad, _renderPassClear);
 
             _CreateSCFB(vkFirstColorTgt);
         }
 #endif
 
-        Texture::Description colorDesc{}, dsDesc{};
+        ITexture::Description colorDesc{}, dsDesc{};
 
         if (description.depthFormat.has_value()) {
-            dsDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            dsDesc.type = ITexture::Description::Type::Texture2D;
             dsDesc.width = _scExtent.width;
             dsDesc.height = _scExtent.height;
             dsDesc.depth = 1;
@@ -255,7 +251,7 @@ namespace Veldrid
         }
 
         {
-            colorDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+            colorDesc.type = ITexture::Description::Type::Texture2D;
             colorDesc.width = _scExtent.width;
             colorDesc.height = _scExtent.height;
             colorDesc.depth = 1;
@@ -263,25 +259,25 @@ namespace Veldrid
             colorDesc.arrayLayers = 1;
             colorDesc.usage.renderTarget = true;
             colorDesc.sampleCount = SampleCount::x1;
-            colorDesc.format = Veldrid::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
+            colorDesc.format = VkToVdPixelFormat(_surfaceFormat.format);
         }
 
 
 
         for (unsigned i = 0; i < scImgs.size(); i++) {
             auto tex = scImgs[i];
-            auto colorTgt = Veldrid::VulkanTexture::WrapNative(RefRawPtr(_gd), colorDesc,
+            auto colorTgt = VulkanTexture::WrapNative(_dev, colorDesc,
                 VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, tex
             );
 
             auto colorTex = SPCast<VulkanTexture>(colorTgt);
-            sp<VulkanTexture> dsTex {};
+            common::sp<VulkanTexture> dsTex {};
 
             //Create depth stencil target if requested
             if (description.depthFormat.has_value()) {
                 
-                auto dTgt = _gd->GetResourceFactory()
-                    ->CreateTexture(dsDesc);
+                auto dTgt = _dev->GetResourceFactory()
+                    .CreateTexture(dsDesc);
                 dsTex = SPCast<VulkanTexture>(dTgt);
                 dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
                 //_fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
@@ -295,7 +291,7 @@ namespace Veldrid
         //CreateFramebuffers();
         //for(auto& tex : scImgs){
         //    Texture::Description texDesc{};
-        //    texDesc.type = Veldrid::Texture::Description::Type::Texture2D;
+        //    texDesc.type = alloy::Texture::Description::Type::Texture2D;
         //    texDesc.width = _scExtent.width;
         //    texDesc.height = _scExtent.height;
         //    texDesc.depth = 1;
@@ -319,7 +315,6 @@ namespace Veldrid
 
     VkResult VulkanSwapChain::AcquireNextImage(VkSemaphore semaphore, VkFence fence)
     {
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
 
         if (_newSyncToVBlank != _syncToVBlank)
         {
@@ -329,7 +324,7 @@ namespace Veldrid
         }
 
         VkResult result = vkAcquireNextImageKHR(
-            _gd->LogicalDev(),
+            _dev->LogicalDev(),
             _deviceSwapchain,
             UINT64_MAX,
             semaphore,
@@ -345,7 +340,7 @@ namespace Veldrid
         //
         if (result != VkResult::VK_SUCCESS)
         {
-            //throw new VeldridException("Could not acquire next image from the Vulkan swapchain.");
+            //throw new alloyException("Could not acquire next image from the Vulkan swapchain.");
             //assert(false);
             return result;
         }
@@ -372,7 +367,6 @@ namespace Veldrid
     {
         ReleaseFramebuffers();
 
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
         auto surface = _surf.surface;
         if(surface == VK_NULL_HANDLE){
             return false;
@@ -380,13 +374,13 @@ namespace Veldrid
         // Obtain the surface capabilities first -- this will indicate whether the surface has been lost.
         VkSurfaceCapabilitiesKHR surfaceCapabilities;
         VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-            _gd->GetPhyDevInfo().handle, 
+            _dev->GetPhyDevInfo().handle, 
             surface, 
             &surfaceCapabilities);
 
         if (result == VkResult::VK_ERROR_SURFACE_LOST_KHR)
         {
-            //throw new VeldridException($"The Swapchain's underlying surface has been lost.");
+            //throw new alloyException($"The Swapchain's underlying surface has been lost.");
             return false;
         }
 
@@ -400,14 +394,14 @@ namespace Veldrid
 
         if (_deviceSwapchain != VK_NULL_HANDLE)
         {
-            _gd->WaitForIdle();
+            _dev->WaitForIdle();
         }
 
         _currentImageIndex = 0;
         std::uint32_t surfaceFormatCount = 0;
-        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(_gd->PhysicalDev(), surface, &surfaceFormatCount, nullptr));
+        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(_dev->PhysicalDev(), surface, &surfaceFormatCount, nullptr));
         std::vector<VkSurfaceFormatKHR> formats (surfaceFormatCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(_gd->PhysicalDev(), surface, &surfaceFormatCount, formats.data()));
+        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(_dev->PhysicalDev(), surface, &surfaceFormatCount, formats.data()));
 
         VkFormat desiredFormat = description.colorSrgb
             ? VkFormat::VK_FORMAT_B8G8R8A8_SRGB
@@ -433,7 +427,7 @@ namespace Veldrid
             {
                 assert(!description.colorSrgb);
                 {
-                    //throw new VeldridException($"Unable to create an sRGB Swapchain for this surface.");
+                    //throw new alloyException($"Unable to create an sRGB Swapchain for this surface.");
                 }
 
                 _surfaceFormat = formats[0];
@@ -441,9 +435,9 @@ namespace Veldrid
         }
 
         std::uint32_t presentModeCount = 0;
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(_gd->PhysicalDev(), surface, &presentModeCount, nullptr));
+        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(_dev->PhysicalDev(), surface, &presentModeCount, nullptr));
         std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(_gd->PhysicalDev(), surface, &presentModeCount, presentModes.data()));
+        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(_dev->PhysicalDev(), surface, &presentModeCount, presentModes.data()));
         
         VkPresentModeKHR presentMode = VkPresentModeKHR::VK_PRESENT_MODE_FIFO_KHR;
 
@@ -518,11 +512,11 @@ namespace Veldrid
         VkSwapchainKHR oldSwapchain = _deviceSwapchain;
         swapchainCI.oldSwapchain = oldSwapchain;
 
-        VK_CHECK(vkCreateSwapchainKHR(_gd->LogicalDev(), &swapchainCI, nullptr, &_deviceSwapchain));
+        VK_CHECK(vkCreateSwapchainKHR(_dev->LogicalDev(), &swapchainCI, nullptr, &_deviceSwapchain));
 
         if (oldSwapchain != VK_NULL_HANDLE)
         {
-            vkDestroySwapchainKHR(_gd->LogicalDev(), oldSwapchain, nullptr);
+            vkDestroySwapchainKHR(_dev->LogicalDev(), oldSwapchain, nullptr);
         }
 
         _scExtent = {width, height};
@@ -534,21 +528,19 @@ namespace Veldrid
 
     VulkanSwapChain::~VulkanSwapChain(){
         ReleaseFramebuffers();
-        
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
 
-        vkDestroyFence(_gd->LogicalDev(), _imageAvailableFence, nullptr);
+        vkDestroyFence(_dev->LogicalDev(), _imageAvailableFence, nullptr);
         //_framebuffer.Dispose();
-        vkDestroySwapchainKHR(_gd->LogicalDev(), _deviceSwapchain, nullptr);
+        vkDestroySwapchainKHR(_dev->LogicalDev(), _deviceSwapchain, nullptr);
 
         if(_surf.isOwnSurface){
-            vkDestroySurfaceKHR(_gd->GetInstance(), _surf.surface, nullptr);
+            vkDestroySurfaceKHR(_dev->GetInstance(), _surf.surface, nullptr);
         }
     }
 
-    sp<SwapChain> VulkanSwapChain::Make(
-        const sp<VulkanDevice>& dev,
-        const SwapChain::Description& desc
+    common::sp<ISwapChain> VulkanSwapChain::Make(
+        const common::sp<VulkanDevice>& dev,
+        const ISwapChain::Description& desc
     ){
         auto _syncToVBlank = desc.syncToVerticalBlank;
         auto* _swapchainSource = desc.source;
@@ -576,7 +568,7 @@ namespace Veldrid
 
         //if (!GetPresentQueueIndex(out _presentQueueIndex))
         //{
-        //    throw new VeldridException($"The system does not support presenting the given Vulkan surface.");
+        //    throw new alloyException($"The system does not support presenting the given Vulkan surface.");
         //}
         //vkGetDeviceQueue(_gd.Device, _presentQueueIndex, 0, out _presentQueue);
 
@@ -603,14 +595,13 @@ namespace Veldrid
         //vkWaitForFences(_gd.Device, 1, ref _imageAvailableFence, true, ulong.MaxValue);
         //vkResetFences(_gd.Device, 1, ref _imageAvailableFence);
 
-        return sp(sc);
+        return common::sp(sc);
 
     }
 
-    sp<Framebuffer> VulkanSwapChain::GetBackBuffer() {
+    common::sp<IFrameBuffer> VulkanSwapChain::GetBackBuffer() {
 
         //Acquire next frame and wait for ready fence
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
 
         VkResult res = VK_SUCCESS;
 
@@ -619,8 +610,8 @@ namespace Veldrid
 
             if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR)
             {
-                vkWaitForFences(_gd->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
-                vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
+                vkWaitForFences(_dev->LogicalDev(), 1, &_imageAvailableFence, true, UINT64_MAX);
+                vkResetFences(_dev->LogicalDev(), 1, &_imageAvailableFence);
                 res = VK_SUCCESS;
                 _currentImageInUse = false;
             }
@@ -632,7 +623,7 @@ namespace Veldrid
         } else {
             return nullptr;
         }
-        //#TODO: handle case VK_ERROR_OUT_OF_DATE_KHR
+        ///#TODO: handle case VK_ERROR_OUT_OF_DATE_KHR
     }
 
     //Transition color targets from VK_LAYOUT_UNDEFINED to VK_LAYOUT_GENERAL
@@ -655,4 +646,4 @@ namespace Veldrid
     //    vkResetFences(_gd->LogicalDev(), 1, &_imageAvailableFence);
     //}
 
-} // namespace Veldrid
+} // namespace alloy

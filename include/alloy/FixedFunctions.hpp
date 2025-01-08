@@ -1,12 +1,12 @@
 #pragma once
 
-#include "veldrid/Types.hpp"
+#include "alloy/Types.hpp"
 
 #include <cstdint>
 #include <optional>
 #include <vector>
 
-namespace Veldrid
+namespace alloy
 {
     // The <see cref="ComparisonKind"/> used when considering new depth values.
     enum class ComparisonKind{
@@ -337,6 +337,6 @@ namespace Veldrid
 
     
 
-} // namespace Veldrid
+} // namespace alloy
 
 

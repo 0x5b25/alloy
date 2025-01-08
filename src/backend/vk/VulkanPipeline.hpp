@@ -3,13 +3,13 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/Pipeline.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/Pipeline.hpp"
 
 #include <vector>
 
 
-namespace Veldrid
+namespace alloy::vk
 {
     class VulkanDevice;
 
@@ -19,10 +19,10 @@ namespace Veldrid
         VkSampleCountFlagBits sampleCnt
     );
 
-    class VulkanPipelineBase : public Pipeline{
+    class VulkanPipelineBase {
 
     protected:
-        VulkanDevice* _Dev() {return reinterpret_cast<VulkanDevice*>(dev.get());}
+        common::sp<VulkanDevice> dev;
 
         VkPipelineLayout _pipelineLayout;
         VkPipeline _devicePipeline;
@@ -35,10 +35,10 @@ namespace Veldrid
 
         //For bookkeeping, prevent resources used in pipeline from
         //being destroyed if no other references.
-        std::vector<sp<RefCntBase>> _refCnts;
+        std::vector<common::sp<common::RefCntBase>> _refCnts;
 
     protected:
-        VulkanPipelineBase(const sp<GraphicsDevice>& dev) : Pipeline(dev){}
+        VulkanPipelineBase(const common::sp<VulkanDevice>& dev) : dev(dev){}
 /*
         VulkanPipelineBase(VkGraphicsDevice gd, ref ComputePipelineDescription description)
             : base(ref description)
@@ -141,48 +141,45 @@ namespace Veldrid
     
     };
 
-    class VulkanComputePipeline : public VulkanPipelineBase{
+    class VulkanComputePipeline : public IComputePipeline, public VulkanPipelineBase{
 
         VulkanComputePipeline(
-            const sp<GraphicsDevice>& dev
+            const common::sp<VulkanDevice>& dev
         ) : VulkanPipelineBase(dev){}
 
 
     public:
         ~VulkanComputePipeline();
 
-        static sp<Pipeline> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<IComputePipeline> Make(
+            const common::sp<VulkanDevice>& dev,
             const ComputePipelineDescription& desc
         );
 
-        bool IsComputePipeline() const override {return true;}
 
     };
 
     
-    class VulkanGraphicsPipeline : public VulkanPipelineBase{
+    class VulkanGraphicsPipeline : public IGfxPipeline, public VulkanPipelineBase{
 
         //VkRenderPass _renderPass;
 
         bool scissorTestEnabled;
 
         VulkanGraphicsPipeline(
-            const sp<GraphicsDevice>& dev
+            const common::sp<VulkanDevice>& dev
         ) : VulkanPipelineBase(dev){}
 
 
     public:
         ~VulkanGraphicsPipeline();
 
-        static sp<Pipeline> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<IGfxPipeline> Make(
+            const common::sp<VulkanDevice>& dev,
             const GraphicsPipelineDescription& desc
         );
 
-        bool IsComputePipeline() const override {return false;}
-
     };
-} // namespace Veldrid
+} // namespace alloy
 
 

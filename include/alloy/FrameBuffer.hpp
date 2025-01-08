@@ -1,13 +1,12 @@
 #pragma once
 
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/Types.hpp"
-#include "veldrid/Texture.hpp"
-#include "veldrid/FixedFunctions.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/Texture.hpp"
+#include "alloy/FixedFunctions.hpp"
 
 #include <vector>
 
-namespace Veldrid
+namespace alloy
 {
     //class Texture;
 
@@ -24,8 +23,8 @@ namespace Veldrid
 
     };
 
-    //#TODO: Rename framebuffer to rendertarget to more accurately reflect its usage
-    class Framebuffer : public DeviceResource{
+    ///#TODO: Rename framebuffer to rendertarget to more accurately reflect its usage
+    class IFrameBuffer : public common::RefCntBase{
 
     public:
         struct Description{
@@ -33,7 +32,7 @@ namespace Veldrid
                 /// The target texture to render into. For color attachments, this resource must have been created with the
                 /// <see cref="TextureUsage.RenderTarget"/> flag. For depth attachments, this resource must have been created with the
                 /// <see cref="TextureUsage.DepthStencil"/> flag.
-                sp<Texture> target;
+                common::sp<ITexture> target;
                 
                 /// The array layer to render to. This value must be less than <see cref="Texture.ArrayLayers"/> in the target
                 std::uint32_t arrayLayer;
@@ -72,16 +71,24 @@ namespace Veldrid
                 }
                 return 0;
             }
+
+            std::uint32_t GetDepth() const {
+                if(colorTargets.size() > 0){
+                    auto& texDesc = colorTargets.front().target->GetDesc();
+                    return texDesc.depth;
+                } else if(depthTarget.target != nullptr){
+                    auto& texDesc = depthTarget.target->GetDesc();
+                    return texDesc.depth;
+                }
+                return 0;
+            }
         };
 
     protected:
         //Description description;
 
-        Framebuffer(
-            const sp<GraphicsDevice>& dev
-        )
-            : DeviceResource(dev)
-        {}
+        IFrameBuffer( ) { }
+        virtual ~IFrameBuffer( ) { }
 
     public:
         /*TODO: Settle for now*/
@@ -114,4 +121,4 @@ namespace Veldrid
 
     };
 
-} // namespace Veldrid
+} // namespace alloy

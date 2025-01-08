@@ -1,9 +1,9 @@
 #pragma once
 
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SwapChainSources.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SwapChainSources.hpp"
 
-namespace Veldrid
+namespace alloy
 {
 
     enum class GraphicsBackend{
@@ -33,22 +33,20 @@ namespace Veldrid
         //OpenGLES,
     };    
     
-    sp<GraphicsDevice> CreateDX12GraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateDX12GraphicsDevice(
+        const IGraphicsDevice::Options& options
     );
 
-    sp<GraphicsDevice> CreateVulkanGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateVulkanGraphicsDevice(
+        const IGraphicsDevice::Options& options
     );
 
-    sp<GraphicsDevice> CreateMetalGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateMetalGraphicsDevice(
+        const IGraphicsDevice::Options& options
     );
 
-    sp<GraphicsDevice> CreateDefaultGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateDefaultGraphicsDevice(
+        const IGraphicsDevice::Options& options
     );
 
-} // namespace Veldrid
-
-
+} // namespace alloy

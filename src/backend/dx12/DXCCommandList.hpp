@@ -1,7 +1,7 @@
 #pragma once
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/CommandList.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/CommandList.hpp"
 
 #include <vector>
 #include <unordered_map>
@@ -24,56 +24,219 @@
 //Because the unordered nature of command buffer execute order, multiple
 // command buffer referencing the same texture
 
-namespace Veldrid
+namespace alloy::dxc
 {
     class DXCDevice;
     class DXCBuffer;
     class DXCTexture;
     class DXCCommandList;
-
-    sp<CommandList> MakeDXCCmdList(const sp<DXCDevice>& dev);
     //class VulkanPipeline;
 
-    class DXCCommandList: public CommandList{
+    struct DXCCmdEncBase {
+
+        DXCDevice* dev;
+        ID3D12GraphicsCommandList* cmdList;
+        std::unordered_set<common::sp<common::RefCntBase>> resources;
+        
+        DXCCmdEncBase(DXCDevice* dev,
+                      ID3D12GraphicsCommandList* cmdList) 
+            : dev(dev)
+            , cmdList(cmdList) {}
+
+        virtual ~DXCCmdEncBase() {}
+
+        virtual void EndPass() {}
+    };
+
+    struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
+
+        
+        DXCGraphicsPipeline* _currentPipeline;
+
+        common::sp<DXCFrameBufferBase> _fb;
+
+        DXCRenderCmdEnc(DXCDevice* dev,
+                        ID3D12GraphicsCommandList* cmdList,
+                        const common::sp<DXCFrameBufferBase>& fb )
+            : DXCCmdEncBase{dev, cmdList}
+            , _currentPipeline(nullptr)
+            , _fb(fb)
+        { }
+
+        virtual ~DXCRenderCmdEnc() {}
+
+        virtual void SetPipeline(const common::sp<IGfxPipeline>&) override;
+
+        virtual void SetVertexBuffer(
+            std::uint32_t index, const common::sp<BufferRange>& buffer) override;
+    
+        virtual void SetIndexBuffer(
+            const common::sp<BufferRange>& buffer, IndexFormat format) override;
+
+        
+        virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
+
+        virtual void SetViewports(const std::span<Viewport>& viewport) override;
+        virtual void SetFullViewports() override;
+
+        virtual void SetScissorRects(const std::span<Rect>& ) override;
+        virtual void SetFullScissorRects() override;
+
+
+        virtual void Draw(
+            std::uint32_t vertexCount, std::uint32_t instanceCount,
+            std::uint32_t vertexStart, std::uint32_t instanceStart) override;
+        
+        virtual void DrawIndexed(
+            std::uint32_t indexCount, std::uint32_t instanceCount, 
+            std::uint32_t indexStart, std::uint32_t vertexOffset, 
+            std::uint32_t instanceStart) override;
+#if 0
+        virtual void DrawIndirect(
+            const common::sp<IBuffer>& indirectBuffer, 
+            std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
+
+        virtual void DrawIndexedIndirect(
+            const common::sp<IBuffer>& indirectBuffer, 
+            std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
+#endif
+        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
+    
+
+    };
+
+    struct DXCComputeCmdEnc : public IComputeCommandEncoder, public DXCCmdEncBase {
+        
+        DXCComputePipeline* _currentPipeline;
+
+        DXCComputeCmdEnc(DXCDevice* dev, ID3D12GraphicsCommandList* cmdList)
+            : DXCCmdEncBase{ dev, cmdList }
+        { }
+
+        virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
+
+        virtual void SetComputeResourceSet(
+            const common::sp<IResourceSet>& rs
+            /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+
+        /// <summary>
+        /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.
+        /// </summary>
+        /// <param name="groupCountX">The X dimension of the compute thread groups that are dispatched.</param>
+        /// <param name="groupCountY">The Y dimension of the compute thread groups that are dispatched.</param>
+        /// <param name="groupCountZ">The Z dimension of the compute thread groups that are dispatched.</param>
+        virtual void Dispatch(std::uint32_t groupCountX,
+                              std::uint32_t groupCountY,
+                              std::uint32_t groupCountZ) override;
+
+        ///:TODO: Needs further confirmation about indirect commands
+#if 0
+        /// Issues an indirect compute dispatch command based on the information contained in the given indirect
+        /// <see cref="DeviceBuffer"/>. The information stored in the indirect Buffer should conform to the structure of
+        /// <see cref="IndirectDispatchArguments"/>.
+        /// <param name="indirectBuffer">The indirect Buffer to read from. Must have been created with the
+        /// <see cref="BufferUsage.IndirectBuffer"/> flag.</param>
+        /// <param name="offset">An offset, in bytes, from the start of the indirect buffer from which the draw commands will be
+        /// read. This value must be a multiple of 4.</param>
+        virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
+#endif
+
+        
+        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
+    };
+
+    struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {
+        DXCTransferCmdEnc(DXCDevice* dev, ID3D12GraphicsCommandList* cmdList)
+            : DXCCmdEncBase{ dev, cmdList }
+        { }
+
+        virtual void CopyBuffer(
+            const common::sp<BufferRange>& source,
+            const common::sp<BufferRange>& destination,
+            std::uint32_t sizeInBytes) override;
+                
+
+        virtual void CopyBufferToTexture(
+            const common::sp<BufferRange>& src,
+            std::uint32_t srcBytesPerRow,
+            std::uint32_t srcBytesPerImage,
+            const common::sp<ITexture>& dst,
+            const Point3D& dstOrigin,
+            std::uint32_t dstMipLevel,
+            std::uint32_t dstBaseArrayLayer,
+            const Size3D& copySize
+        ) override;
+
+        virtual void CopyTextureToBuffer(
+            const common::sp<ITexture>& src,
+            const Point3D& srcOrigin,
+            std::uint32_t srcMipLevel,
+            std::uint32_t srcBaseArrayLayer,
+            const common::sp<BufferRange>& dst,
+            std::uint32_t dstBytesPerRow,
+            std::uint32_t dstBytesPerImage,
+            const Size3D& copySize
+        ) override;
+
+        virtual void CopyTexture(
+            const common::sp<ITexture>& src,
+            const Point3D& srcOrigin,
+            std::uint32_t srcMipLevel,
+            std::uint32_t srcBaseArrayLayer,
+            const common::sp<ITexture>& dst,
+            const Point3D& dstOrigin,
+            std::uint32_t dstMipLevel,
+            std::uint32_t dstBaseArrayLayer,
+            const Size3D& copySize) override;
+
+        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
+        
+        virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
+
+        virtual void WaitForFence(const common::sp<IFence>&) override {}
+        virtual void UpdateFence(const common::sp<IFence>&) override {}
+    };
+
+
+    class DXCCommandList: public ICommandList{
 
     protected:
-        
+        common::sp<DXCDevice> _dev;
         ID3D12CommandAllocator* _cmdAlloc;
         ID3D12GraphicsCommandList* _cmdList;
         
 
-        struct _ResSetHolder{
-            bool isNewlyChanged;
-            sp<DXCResourceSet> resSet;
-            std::vector<std::uint32_t> offsets;
+        //struct _ResSetHolder{
+        //    
+        //
+        //    common::sp<DXCResourceSet> resSet;
+        //
+        //
+        //    bool IsValid() const {return resSet != nullptr;}
+        //};
+        std::vector<DXCCmdEncBase*> _passes;
+        DXCCmdEncBase* _currentPass;
 
-
-            bool IsValid() const {return resSet != nullptr;}
-        };
-        std::vector<_ResSetHolder> _resourceSets;
-        DXCPipelineBase* _currentPipeline;
-
-        struct _RenderPassInfo{
-            //Pipeline resources
-            sp<DXCFrameBufferBase> fb;
-            //sp<VulkanPipelineBase> pipeline;
-            //std::vector<std::optional<VkClearColorValue>> clearColorTargets;
-            //std::optional<VkClearDepthStencilValue> clearDSTarget;
-
-            //bool IsComputePass() const {
-            //    return pipeline->IsComputePipeline();
-            //}
-        };
+        //struct _RenderPassInfo{
+        //    //Pipeline resources
+        //    sp<DXCFrameBufferBase> fb;
+        //    //sp<VulkanPipelineBase> pipeline;
+        //    //std::vector<std::optional<VkClearColorValue>> clearColorTargets;
+        //    //std::optional<VkClearDepthStencilValue> clearDSTarget;
+        //
+        //    //bool IsComputePass() const {
+        //    //    return pipeline->IsComputePipeline();
+        //    //}
+        //};
         //renderpasses
 
-        std::vector<_RenderPassInfo> _rndPasses;
-        _RenderPassInfo *_currentRenderPass;
+        //std::vector<_RenderPassInfo> _rndPasses;
 
         //Resources used
-        std::unordered_set<sp<DeviceResource>> _devRes;
+        std::unordered_set<common::sp<RefCntBase>> _devRes;
 
-        //_DevResRegistry _resReg;
-        std::unordered_set<sp<DeviceResource>> _miscResReg;
 
         //sp<VulkanPipelineBase> _currentPipeline;
         //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
@@ -83,131 +246,41 @@ namespace Veldrid
 
     public:
         DXCCommandList(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList* pList
         ) 
-            : CommandList(dev)
+            : _dev(dev)
             , _cmdAlloc(pAllocator)
             , _cmdList(pList)
+            , _currentPass(nullptr)
         {}
 
         virtual ~DXCCommandList() override;
 
         
-        static sp<DXCCommandList> Make(const sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
+        static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
         ID3D12CommandList* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
         virtual void End() override;
-
-        virtual void SetPipeline(const sp<Pipeline>&) override;
-
-        virtual void SetVertexBuffer(
-            std::uint32_t index, const sp<Buffer>& buffer, std::uint32_t offset = 0) override;
-    
-        virtual void SetIndexBuffer(
-            const sp<Buffer>& buffer, IndexFormat format, std::uint32_t offset = 0) override;
-
-        
-        virtual void SetGraphicsResourceSet(const sp<ResourceSet>& rs) override;
-            
-        virtual void SetComputeResourceSet(const sp<ResourceSet>& rs) override;
-
-        virtual void BeginRenderPass(const sp<Framebuffer>& fb) override;
-        virtual void EndRenderPass() override;
-
+#if 0
         virtual void ClearColorTarget(
             std::uint32_t slot, 
             float r, float g, float b, float a) override;
 
         virtual void ClearDepthStencil(float depth, std::uint8_t stencil) override;
-    
-
-        virtual void SetViewport(std::uint32_t index, const Viewport& viewport) override;
-        virtual void SetFullViewport(std::uint32_t index) override;
-        virtual void SetFullViewports() override;
-
-        virtual void SetScissorRect(
-            std::uint32_t index, 
-            std::uint32_t x, std::uint32_t y, 
-            std::uint32_t width, std::uint32_t height) override;
-        virtual void SetFullScissorRect(std::uint32_t index) override;
-        virtual void SetFullScissorRects() override;
-
-        //void _RegisterResourceSetUsage(VkPipelineBindPoint bindPoint);
-        //void _FlushNewResourceSets(VkPipelineBindPoint bindPoint);
-        void PreDrawCommand();
-        virtual void Draw(
-            std::uint32_t vertexCount, std::uint32_t instanceCount,
-            std::uint32_t vertexStart, std::uint32_t instanceStart) override;
+#endif 
         
-        virtual void DrawIndexed(
-            std::uint32_t indexCount, std::uint32_t instanceCount, 
-            std::uint32_t indexStart, std::uint32_t vertexOffset, 
-            std::uint32_t instanceStart) override;
-        
-        virtual void DrawIndirect(
-            const sp<Buffer>& indirectBuffer, 
-            std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 
-        virtual void DrawIndexedIndirect(
-            const sp<Buffer>& indirectBuffer, 
-            std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
+        ///#TODO: add load, store and clearcolor handling for more efficient operation
+        virtual IRenderCommandEncoder& BeginRenderPass(const common::sp<IFrameBuffer>&,
+                                                       const RenderPassAction&) override;
+        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual ITransferCommandEncoder& BeginTransferPass() override;
+        //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 
-        void PreDispatchCommand();
-        virtual void Dispatch(std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) override;
-
-        virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override;
-
-        virtual void ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) override;
-
-        virtual void CopyBuffer(
-            const sp<Buffer>& source, std::uint32_t sourceOffset,
-            const sp<Buffer>& destination, std::uint32_t destinationOffset, 
-            std::uint32_t sizeInBytes) override;
-                
-        virtual void CopyBufferToTexture(
-            const sp<Buffer>& source,
-            const Texture::Description& sourceDescription,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
-            std::uint32_t srcMipLevel,
-            std::uint32_t srcBaseArrayLayer,
-            const sp<Texture>& destination,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
-            std::uint32_t dstMipLevel,
-            std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount
-        ) override;
-
-        virtual void CopyTextureToBuffer(
-            const sp<Texture>& source,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
-            std::uint32_t srcMipLevel,
-            std::uint32_t srcBaseArrayLayer,
-            const sp<Buffer>& destination,
-            const Texture::Description& destinationDescription,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
-            std::uint32_t dstMipLevel,
-            std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount
-        ) override;
-
-        virtual void CopyTexture(
-            const sp<Texture>& source,
-            std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
-            std::uint32_t srcMipLevel,
-            std::uint32_t srcBaseArrayLayer,
-            const sp<Texture>& destination,
-            std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
-            std::uint32_t dstMipLevel,
-            std::uint32_t dstBaseArrayLayer,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-            std::uint32_t layerCount) override;
-
-        virtual void GenerateMipmaps(const sp<Texture>& texture) override;
+        virtual void EndPass() override;
 
         
         virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
@@ -225,7 +298,7 @@ namespace Veldrid
 
     public:
         DXCCommandList6(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList6* pList
         ) 
@@ -241,7 +314,7 @@ namespace Veldrid
         ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
     public:
         DXCCommandList7(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList7* pList
         ) 
@@ -254,6 +327,6 @@ namespace Veldrid
     };
     
 
-} // namespace Veldrid
+} // namespace alloy
 
 

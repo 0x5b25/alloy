@@ -2,15 +2,15 @@
 
 #include <volk.h>
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/common/Macros.h"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/common/Macros.h"
 
 #include <cstdint>
 #include <queue>
 #include <unordered_set>
 #include <mutex>
 
-namespace Veldrid::VK::priv {
+namespace alloy::vk {
 
 	class _DescriptorSet;
 
@@ -49,7 +49,7 @@ namespace Veldrid::VK::priv {
 	class _DescriptorPoolMgr{
 
 	public:
-		 struct Container : public RefCntBase{
+		 struct Container : public common::RefCntBase{
 			VkDescriptorPool pool;
 			_DescriptorPoolMgr* mgr;
 
@@ -69,7 +69,7 @@ namespace Veldrid::VK::priv {
 		//previously full pools, some sets might be freed, but at least one set is in use.
 		std::unordered_set<Container*> _dirtyPools;
 		//Currently active pool, that is not full.
-		sp<Container> _currentPool;
+		common::sp<Container> _currentPool;
 
 		std::mutex _m_pool;
 
@@ -95,7 +95,7 @@ namespace Veldrid::VK::priv {
 	class _DescriptorSet{
 		DISABLE_COPY_AND_ASSIGN(_DescriptorSet);
 
-		sp<_DescriptorPoolMgr::Container> _pool;
+		common::sp<_DescriptorPoolMgr::Container> _pool;
 		VkDescriptorSet _descSet;
 
 	public:
@@ -105,7 +105,7 @@ namespace Veldrid::VK::priv {
 		{}
 
 		_DescriptorSet(
-			const sp<_DescriptorPoolMgr::Container>& pool,
+			const common::sp<_DescriptorPoolMgr::Container>& pool,
 			VkDescriptorSet set	
 		)
 			: _pool(pool)

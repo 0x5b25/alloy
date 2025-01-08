@@ -1,10 +1,10 @@
 #include "D3DTypeCvt.hpp"
 
-namespace Veldrid {
+namespace alloy::dxc {
 
-    D3D12_TEXTURE_ADDRESS_MODE VdToD3DSamplerAddressMode(Sampler::Description::AddressMode mode)
+    D3D12_TEXTURE_ADDRESS_MODE VdToD3DSamplerAddressMode(ISampler::Description::AddressMode mode)
     {
-        using SamplerAddressMode = typename Sampler::Description::AddressMode;
+        using SamplerAddressMode = typename ISampler::Description::AddressMode;
         switch (mode)
         {
         case SamplerAddressMode::Wrap:
@@ -21,9 +21,9 @@ namespace Veldrid {
     }
 
     
-    D3D12_FILTER VdToD3DFilter(Sampler::Description::SamplerFilter filter, bool enableComparison)
+    D3D12_FILTER VdToD3DFilter(ISampler::Description::SamplerFilter filter, bool enableComparison)
     {
-        using SamplerFilter = typename Sampler::Description::SamplerFilter;
+        using SamplerFilter = typename ISampler::Description::SamplerFilter;
         switch (filter)
         {
         case SamplerFilter::Anisotropic: return D3D12_FILTER_ANISOTROPIC;
@@ -496,9 +496,9 @@ namespace Veldrid {
         }
     }
 
-    D3D12_BLEND VdToD3DBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor)
+    D3D12_BLEND VdToD3DBlendFactor(alloy::BlendStateDescription::BlendFactor factor)
     {
-        using BlendFactor = typename Veldrid::BlendStateDescription::BlendFactor;
+        using BlendFactor = typename alloy::BlendStateDescription::BlendFactor;
         switch (factor)
         {
         case BlendFactor::Zero:
@@ -697,7 +697,7 @@ namespace Veldrid {
             //ETC2 formats are not supported on D3D
             assert(false);
         default:
-            //throw new VeldridException($"Invalid {nameof(PixelFormat)}: {format}");
+            //throw new alloyException($"Invalid {nameof(PixelFormat)}: {format}");
             return DXGI_FORMAT::DXGI_FORMAT_UNKNOWN;
         }
     }
@@ -833,7 +833,7 @@ namespace Veldrid {
             return PixelFormat::R11_G11_B10_Float;
 
         default:
-            //throw new VeldridException($"Invalid {nameof(PixelFormat)}: {format}");
+            //throw new alloyException($"Invalid {nameof(PixelFormat)}: {format}");
             return (PixelFormat)0;
 
         }

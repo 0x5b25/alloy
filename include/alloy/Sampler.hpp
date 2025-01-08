@@ -1,18 +1,17 @@
 #pragma once
 
-#include "veldrid/Types.hpp"
-#include "veldrid/FixedFunctions.hpp"
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/BindableResource.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/FixedFunctions.hpp"
+#include "alloy/BindableResource.hpp"
 
 #include <cstdint>
 #include <string>
  
-namespace Veldrid
+namespace alloy
 {
     
 
-    class Sampler : public IBindableResource
+    class ISampler : public IBindableResource
     {
 
     public:       
@@ -89,13 +88,13 @@ namespace Veldrid
 
         const Description& GetDesc() const {return description;}
 
-        Sampler(const Description& desc) : description(desc) {}
+        ISampler(const Description& desc) : description(desc) {}
 
-        virtual ~Sampler() {}
+        virtual ~ISampler() {}
 
     protected:
         Description description;
     };
-} // namespace Veldrid
+} // namespace alloy
 
 

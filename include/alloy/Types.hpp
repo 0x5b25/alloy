@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Veldrid
+namespace alloy
 {
     /// <summary>
     /// The format of an individual vertex element.
@@ -272,6 +272,30 @@ namespace Veldrid
         float maxDepth;
     };
 
+    struct Rect {
+        std::uint32_t x, y;
+        std::uint32_t width, height;
+    };
+
+    struct Point3D {
+        
+        std::uint32_t x, y, z;
+    };
+
+    struct Size3D {
+        
+        std::uint32_t width, height, depth;
+    };
+
+    struct Box {
+        Point3D origin;
+        Size3D size;
+    };
+
+    struct Color4f {
+        float r,g,b,a;
+    };
+
     enum class HostAccess{
         None,
 
@@ -296,5 +320,5 @@ namespace Veldrid
         x32 = 32
     };
 
-} // namespace Veldrid
+} // namespace alloy
 

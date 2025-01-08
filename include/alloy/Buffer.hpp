@@ -1,18 +1,18 @@
 #pragma once
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/common/Macros.h"
-#include "veldrid/DeviceResource.hpp"
-#include "veldrid/BindableResource.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/BindableResource.hpp"
+#include "alloy/Types.hpp"
 
 #include <cstdint>
 
-namespace Veldrid
+namespace alloy
 {
-    class GraphicsDevice;
+    class IGraphicsDevice;
     class BufferRange;
     
-    class Buffer : public DeviceResource{
+    class IBuffer : public common::RefCntBase {
         friend class BufferRange;
     public:
         struct Description
@@ -81,13 +81,7 @@ namespace Veldrid
           
 
     protected:
-        Buffer(
-            const sp<GraphicsDevice>& dev,
-            const Description& desc
-        ) : 
-            DeviceResource(dev),
-            description(desc)
-        {};
+        IBuffer( const Description& desc ) : description(desc) { };
 
     protected:
         Description description;
@@ -110,15 +104,18 @@ namespace Veldrid
             std::uint64_t offsetInElements;
             std::uint64_t elementCount;
             std::uint32_t elementSizeInBytes;
+
+            std::uint64_t GetOffsetInBytes() const {return offsetInElements * elementSizeInBytes;}
+            std::uint64_t GetSizeInBytes() const {return elementCount * elementSizeInBytes;}
         };
     private:
 
-        sp<Buffer> _buffer;
+        common::sp<IBuffer> _buffer;
         Shape _shape;
         ResourceKind _kind;
 
         BufferRange(
-            const sp<Buffer>& buffer,
+            const common::sp<IBuffer>& buffer,
             const Shape& shape,
             ResourceKind kind
         )
@@ -129,8 +126,8 @@ namespace Veldrid
     public:
         ~BufferRange() override {}
 
-        static sp<BufferRange> MakeByteBuffer(
-            const sp<Buffer>& buffer,
+        static common::sp<BufferRange> MakeByteBuffer(
+            const common::sp<IBuffer>& buffer,
             std::uint32_t offsetInBytes,
             std::uint32_t sizeInBytes
         ){
@@ -142,36 +139,36 @@ namespace Veldrid
             auto range = new BufferRange{ 
                 buffer, shape, ResourceKind::UniformBuffer
             };
-            return sp{range};
+            return common::sp{range};
         }
 
-        static sp<BufferRange> MakeByteBuffer(
-            const sp<Buffer>& buffer
+        static common::sp<BufferRange> MakeByteBuffer(
+            const common::sp<IBuffer>& buffer
         ) {
             return MakeByteBuffer(buffer, 0, buffer->GetDesc().sizeInBytes);
         }
 
-        static sp<BufferRange> MakeStructuredBuffer(
-            const sp<Buffer>& buffer,
+        static common::sp<BufferRange> MakeStructuredBuffer(
+            const common::sp<IBuffer>& buffer,
             const Shape& shape
         ){
             auto range = new BufferRange{ buffer, shape, ResourceKind::StorageBuffer};
-            return sp{range};
+            return common::sp{range};
         }
 
         template<typename T>
-        static sp<BufferRange> MakeStructuredBuffer(
-            const sp<Buffer>& buffer,
+        static common::sp<BufferRange> MakeStructuredBuffer(
+            const common::sp<IBuffer>& buffer,
             std::uint32_t offsetInElements,
             std::uint32_t sizeInElements
         ) { return MakeStructuredBuffer(sizeof(T), offsetInElements, sizeInElements); }
 
         virtual ResourceKind GetResourceKind() const override { return _kind; }
 
-        Buffer* GetBufferObject() const {return _buffer.get();}
+        IBuffer* GetBufferObject() const {return _buffer.get();}
         
         const Shape& GetShape() const {return _shape;}
 
     };
 
-} // namespace Veldrid
+} // namespace alloy

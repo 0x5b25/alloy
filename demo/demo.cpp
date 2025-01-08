@@ -59,7 +59,7 @@ void main()
 
 class DemoApp : public AppBase{
 
-    Veldrid::sp<Veldrid::GraphicsDevice> dev;
+    Veldrid::sp<Veldrid::IGraphicsDevice> dev;
     Veldrid::sp<Veldrid::SwapChain> swapChain;
 
     Veldrid::sp<Veldrid::Shader> fragmentShader, vertexShader;
@@ -215,7 +215,7 @@ class DemoApp : public AppBase{
 		unsigned surfaceWidth,
 		unsigned surfaceHeight
     ) override{
-        Veldrid::GraphicsDevice::Options opt{};
+        Veldrid::IGraphicsDevice::Options opt{};
         opt.preferStandardClipSpaceYDirection = true;
         dev = Veldrid::CreateDefaultGraphicsDevice(opt, swapChainSrc);
 

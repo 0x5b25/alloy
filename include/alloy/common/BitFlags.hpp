@@ -3,7 +3,7 @@
 #include <bitset>
 #include <cassert>
 
-namespace alloy
+namespace alloy::common
 {
 /**
  * BitFlags implements a bitset usable with `enum` and `enum class`.
@@ -205,7 +205,7 @@ public:
  * member into a BitFlags.
  */
 template<typename T>
-std::enable_if_t<std::is_enum<T>::value, alloy::BitFlags<T>>
+std::enable_if_t<std::is_enum<T>::value, alloy::common::BitFlags<T>>
 operator|(const T &lhs, const T &rhs)
 {
   BitFlags<T> bs;

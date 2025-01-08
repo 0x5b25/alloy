@@ -1,6 +1,6 @@
 #pragma once
 
-#include "veldrid/common/Macros.h"
+#include "alloy/common/Macros.h"
 
 
 /* Set platform defines at build time for volk to pick up.
@@ -19,17 +19,17 @@
  */
 #include <volk.h>
 
-#include "veldrid/SwapChainSources.hpp"
+#include "alloy/SwapChainSources.hpp"
 
 #include <string>
 
-namespace Veldrid::VK::priv{
+namespace alloy::VK::priv{
 	struct SurfaceContainer{
 		VkSurfaceKHR surface;
 		bool isOwnSurface;//Is this surface managed by us
 	};
 
-	SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource);
+	SurfaceContainer CreateSurface(VkInstance instance, alloy::SwapChainSource* swapchainSource);
 
-	std::string GetSurfaceExtension(Veldrid::SwapChainSource* swapchainSource);
+	std::string GetSurfaceExtension(alloy::SwapChainSource* swapchainSource);
 }

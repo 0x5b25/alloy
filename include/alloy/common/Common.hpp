@@ -3,10 +3,11 @@
 #include "Macros.h"
 #include "RefCnt.hpp"
 
-namespace Veldrid
+namespace alloy::common
 {
     template<typename T, typename U>
-    T* PtrCast(U* ptr){
+    std::enable_if_t<std::is_convertible<T*, U*>::value, T*>
+    PtrCast(U* ptr){
     #ifdef VLD_DEBUG
         T* res = dynamic_cast<T*>(ptr);
         //Actually is the target type
@@ -42,7 +43,10 @@ namespace Veldrid
         return ( val + mask ) & ( ~mask );
     }
 
-} // namespace Veldrid
+} // namespace alloy
 
+#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
+    TypeName(const TypeName&) = delete;   \
+    void operator=(const TypeName&) = delete
 
 

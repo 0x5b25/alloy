@@ -1,14 +1,14 @@
 #pragma once
 
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/Types.hpp"
-#include "veldrid/Texture.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/Texture.hpp"
 
 #include <cstdint>
 #include <cmath>
 #include <type_traits>
 
-namespace Veldrid::Helpers
+namespace alloy
 {
 
     template<typename T>
@@ -24,23 +24,23 @@ namespace Veldrid::Helpers
     std::uint32_t GetDimension(std::uint32_t largestLevelDimension, std::uint32_t mipLevel);
 
     void GetMipDimensions(
-        const Veldrid::Texture::Description& texDesc, 
+        const alloy::ITexture::Description& texDesc, 
         std::uint32_t mipLevel, 
         std::uint32_t& width, std::uint32_t& height, std::uint32_t& depth);
 
     void GetMipLevelAndArrayLayer(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t subresource, 
+        const alloy::ITexture::Description& texDesc, std::uint32_t subresource, 
         std::uint32_t& mipLevel, std::uint32_t& arrayLayer);
 
 
     std::uint64_t ComputeSubresourceOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer);
+        const alloy::ITexture::Description& texDesc, std::uint32_t mipLevel, std::uint32_t arrayLayer);
 
     std::uint32_t ComputeArrayLayerOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t arrayLayer);
+        const alloy::ITexture::Description& texDesc, std::uint32_t arrayLayer);
 
     std::uint32_t ComputeMipOffset(
-        const Veldrid::Texture::Description& texDesc, std::uint32_t mipLevel);
+        const alloy::ITexture::Description& texDesc, std::uint32_t mipLevel);
 
     namespace FormatHelpers{
         /// <summary>
@@ -66,7 +66,7 @@ namespace Veldrid::Helpers
         std::int32_t GetElementCount(ShaderDataType format);
 
         std::uint32_t GetSampleCountUInt32(
-            Veldrid::SampleCount sampleCount);
+            alloy::SampleCount sampleCount);
 
         bool IsStencilFormat(PixelFormat format);
 
@@ -92,9 +92,9 @@ namespace Veldrid::Helpers
 
         std::uint32_t GetRegionSize(std::uint32_t width, std::uint32_t height, std::uint32_t depth, PixelFormat format);
 
-        Veldrid::SampleCount GetSampleCount(
+        alloy::SampleCount GetSampleCount(
             std::uint32_t samples);
 
         PixelFormat GetViewFamilyFormat(const PixelFormat& format);
     }
-} // namespace Veldrid
+} // namespace alloy

@@ -1,6 +1,6 @@
 #include "DXCTexture.hpp"
 
-#include "veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
 
 #include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
@@ -9,7 +9,7 @@
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
 
-namespace Veldrid {
+namespace alloy::dxc {
 
     uint32_t DXCTexture::ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
     {
@@ -32,29 +32,25 @@ namespace Veldrid {
         }
     }
 
-    DXCDevice* DXCTexture::GetDevice() const {
-        return PtrCast<DXCDevice>(dev.get());
-    }
-
-    sp<Texture> DXCTexture::Make(
-        const sp<DXCDevice>& dev,
-        const Texture::Description& desc
+    common::sp<ITexture> DXCTexture::Make(
+        const common::sp<DXCDevice>& dev,
+        const ITexture::Description& desc
     ) {
         D3D12_RESOURCE_DESC resourceDesc = {};
         switch(desc.type) {
-            case Texture::Description::Type::Texture1D: {
+            case ITexture::Description::Type::Texture1D: {
                 resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
                 resourceDesc.Width = desc.width;
                 resourceDesc.Height = 1;
                 resourceDesc.DepthOrArraySize = desc.arrayLayers;
             }break;
-            case Texture::Description::Type::Texture2D: {
+            case ITexture::Description::Type::Texture2D: {
                 resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
                 resourceDesc.Width = desc.width;
                 resourceDesc.Height = desc.height;
                 resourceDesc.DepthOrArraySize = desc.arrayLayers;
             }break;
-            case Texture::Description::Type::Texture3D: { 
+            case ITexture::Description::Type::Texture3D: { 
                 resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D; 
                 resourceDesc.Width = desc.width;
                 resourceDesc.Height = desc.height;
@@ -68,9 +64,9 @@ namespace Veldrid {
         resourceDesc.Format = VdToD3DPixelFormat(desc.format, desc.usage.depthStencil);
         resourceDesc.SampleDesc.Count = 1;
 
-        //#TODO: enable high quality MSAA
+        ///#TODO: enable high quality MSAA
         if ((desc.usage.depthStencil || desc.usage.renderTarget)
-            && desc.type == Texture::Description::Type::Texture2D) {
+            && desc.type == ITexture::Description::Type::Texture2D) {
             resourceDesc.SampleDesc.Count = (uint32_t)desc.sampleCount;
             //switch(desc.sampleCount) {
             //    case SampleCount::x1 : resourceDesc.SampleDesc.Count = 1; break;
@@ -115,7 +111,7 @@ namespace Veldrid {
                 return nullptr;
             }
 
-            //#TODO DX12 is very restrictive on host visible textures.
+            ///#TODO DX12 is very restrictive on host visible textures.
             // we must ensure following:
             //    * Layout is D3D12_TEXTURE_LAYOUT_ROW_MAJOR
             //    * only D3D12_RESOURCE_DIMENSION_TEXTURE_2D is supported.
@@ -193,18 +189,18 @@ namespace Veldrid {
         tex->_allocation = allocation;
         tex->SetResource(allocation->GetResource());
 
-        return sp(tex);
+        return common::sp(tex);
     }
 
-    sp<Texture> DXCTexture::WrapNative(
-        const sp<DXCDevice>& dev,
-        const Texture::Description& desc,
+    common::sp<ITexture> DXCTexture::WrapNative(
+        const common::sp<DXCDevice>& dev,
+        const ITexture::Description& desc,
         ID3D12Resource* nativeRes
     ) {
         auto tex = new DXCTexture{ dev, desc };
         tex->_allocation = nullptr;
         tex->SetResource(nativeRes);
-        return sp(tex);
+        return common::sp(tex);
     }
 
     void DXCTexture::WriteSubresource(
@@ -261,7 +257,7 @@ namespace Veldrid {
                                                        &srcBox));
     }
 
-    Texture::SubresourceLayout DXCTexture::GetSubresourceLayout(
+    ITexture::SubresourceLayout DXCTexture::GetSubresourceLayout(
             uint32_t mipLevel,
             uint32_t arrayLayer,
             SubresourceAspect aspect
@@ -305,7 +301,7 @@ namespace Veldrid {
         //_Out_writes_opt_(NumSubresources)  UINT64 *pRowSizeInBytes,
         //_Out_opt_  UINT64 *pTotalBytes
 
-        Texture::SubresourceLayout ret{};
+        ITexture::SubresourceLayout ret{};
         ret.offset = footprint.Offset;
         ret.rowPitch = footprint.Footprint.RowPitch;
         ret.depthPitch = ret.rowPitch * footprint.Footprint.Height;

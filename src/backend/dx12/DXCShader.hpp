@@ -2,13 +2,13 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/RefCnt.hpp"
+//alloy public headers
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/Shader.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/Pipeline.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/Shader.hpp"
 
 //standard library headers
 #include <string>
@@ -24,22 +24,22 @@
 //Local headers
 
 
-namespace Veldrid::DXC::priv
+namespace alloy::DXC::priv
 {
 
 
-} // namespace Veldrid::DXC
+} // namespace alloy::DXC
 
 
 
-namespace Veldrid
+namespace alloy::dxc
 {
     
     class DXCDevice;
 
-    class DXCShader : public Shader{
+    class DXCShader : public IShader{
         
-        DXCDevice* _Dev() const {return reinterpret_cast<DXCDevice*>(dev.get());}
+        common::sp<DXCDevice> _dev;
 
     private:
         //VkShaderModule _shaderModule;
@@ -49,7 +49,7 @@ namespace Veldrid
         std::vector<uint8_t> _bytes;
 
         DXCShader(
-            const sp<DXCDevice> &dev,
+            const common::sp<DXCDevice> &dev,
             const Description& desc
         );
        
@@ -59,9 +59,9 @@ namespace Veldrid
 
         ~DXCShader() = default;
 
-        static sp<Shader> Make(
-            const sp<DXCDevice>& dev,
-            const Shader::Description& desc,
+        static common::sp<IShader> Make(
+            const common::sp<DXCDevice>& dev,
+            const IShader::Description& desc,
             const std::span<std::uint8_t>& il
         );
         
@@ -71,5 +71,5 @@ namespace Veldrid
 
     };
 
-} // namespace Veldrid
+} // namespace alloy
 

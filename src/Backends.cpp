@@ -1,7 +1,7 @@
-#include "veldrid/backend/Backends.hpp"
-#include "veldrid/common/Macros.h"
+#include "alloy/backend/Backends.hpp"
+#include "alloy/common/Macros.h"
 
-namespace Veldrid
+namespace alloy
 {
 
 #ifndef VLD_BACKEND_DXC
@@ -17,13 +17,13 @@ namespace Veldrid
 #endif
 
 #ifndef VLD_BACKEND_MTL
-    sp<GraphicsDevice> CreateMetalGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateMetalGraphicsDevice(
+        const IGraphicsDevice::Options& options
     ){return nullptr;}
 #endif
 
-    sp<GraphicsDevice> CreateDefaultGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateDefaultGraphicsDevice(
+        const IGraphicsDevice::Options& options
     ){
 
 #if defined(VLD_PLATFORM_WIN32)

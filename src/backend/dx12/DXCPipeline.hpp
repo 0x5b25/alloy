@@ -1,14 +1,14 @@
 #pragma once
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/RefCnt.hpp"
+//alloy public headers
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SyncObjects.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/SwapChain.hpp"
+#include "alloy/Pipeline.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/SwapChain.hpp"
 
 //standard library headers
 #include <unordered_set>
@@ -22,40 +22,40 @@
 
 //Local headers
 
-namespace Veldrid
+namespace alloy::dxc
 {
     class DXCDevice;
     class DXCResourceLayout;
 
-    class DXCPipelineBase : public Pipeline{
+    class DXCPipelineBase {
 
     protected:
-        std::unordered_set<sp<RefCntBase>> _refCnts;
+        common::sp<DXCDevice> dev;
 
-        DXCDevice* _Dev();
+        std::unordered_set<common::sp<common::RefCntBase>> _refCnts;
 
         Microsoft::WRL::ComPtr<ID3D12PipelineState> _pso;
-        sp<DXCResourceLayout> _rootSig;
+        common::sp<DXCResourceLayout> _rootSig;
 
 
     protected:
-        DXCPipelineBase(const sp<GraphicsDevice>& dev) : Pipeline(dev){}
+        DXCPipelineBase(const common::sp<DXCDevice>& dev) : dev(dev) { }
 
     public:
         virtual ~DXCPipelineBase();
 
         ID3D12PipelineState* GetHandle() const {return _pso.Get();}
         
-        virtual void* GetNativeHandle() const override {return GetHandle();}
+        //virtual void* GetNativeHandle() const override {return GetHandle();}
 
         virtual void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) = 0;
 
-        const sp<DXCResourceLayout>& GetPipelineLayout() const { _rootSig; }
+        const common::sp<DXCResourceLayout>& GetPipelineLayout() const { _rootSig; }
 
     };
 
 
-    class DXCGraphicsPipeline : public DXCPipelineBase{
+    class DXCGraphicsPipeline : public IGfxPipeline, public DXCPipelineBase{
 
         GraphicsPipelineDescription _desc;
 
@@ -68,7 +68,7 @@ namespace Veldrid
         //command list
         D3D_PRIMITIVE_TOPOLOGY _primTopo;
         DXCGraphicsPipeline(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             const GraphicsPipelineDescription& desc
         ) 
             : DXCPipelineBase(dev)
@@ -78,12 +78,10 @@ namespace Veldrid
     public:
         ~DXCGraphicsPipeline();
 
-        static sp<Pipeline> Make(
-            const sp<DXCDevice>& dev,
+        static common::sp<IGfxPipeline> Make(
+            const common::sp<DXCDevice>& dev,
             const GraphicsPipelineDescription& desc
         );
-
-        bool IsComputePipeline() const override {return false;}
 
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
 
@@ -92,13 +90,13 @@ namespace Veldrid
     };
 
     
-    class DXCComputePipeline : public DXCPipelineBase{
+    class DXCComputePipeline : public IComputePipeline, public DXCPipelineBase{
 
         
         ComputePipelineDescription _desc;
 
         DXCComputePipeline(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             const ComputePipelineDescription& desc
         )   
             : DXCPipelineBase(dev)
@@ -108,13 +106,10 @@ namespace Veldrid
     public:
         ~DXCComputePipeline();
 
-        static sp<Pipeline> Make(
-            const sp<DXCDevice>& dev,
+        static common::sp<IComputePipeline> Make(
+             const common::sp<DXCDevice>& dev,
             const ComputePipelineDescription& desc
         );
-
-        bool IsComputePipeline() const override {return false;}
-
         
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
     };
