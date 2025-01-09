@@ -37,25 +37,25 @@ namespace alloy::dxc {
         const ITexture::Description& desc
     ) {
         D3D12_RESOURCE_DESC resourceDesc = {};
-        switch(desc.type) {
-            case ITexture::Description::Type::Texture1D: {
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = 1;
-                resourceDesc.DepthOrArraySize = desc.arrayLayers;
-            }break;
-            case ITexture::Description::Type::Texture2D: {
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = desc.height;
-                resourceDesc.DepthOrArraySize = desc.arrayLayers;
-            }break;
-            case ITexture::Description::Type::Texture3D: { 
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D; 
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = desc.height;
-                resourceDesc.DepthOrArraySize = desc.depth;
-            }break;
+        switch (desc.type) {
+        case ITexture::Description::Type::Texture1D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = 1;
+            resourceDesc.DepthOrArraySize = desc.arrayLayers;
+        }break;
+        case ITexture::Description::Type::Texture2D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = desc.height;
+            resourceDesc.DepthOrArraySize = desc.arrayLayers;
+        }break;
+        case ITexture::Description::Type::Texture3D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = desc.height;
+            resourceDesc.DepthOrArraySize = desc.depth;
+        }break;
         }
         //For buffers Alignment must be 64KB (D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) or 0, 
         //which is effectively 64KB.
@@ -76,7 +76,8 @@ namespace alloy::dxc {
             //    case SampleCount::x16: resourceDesc.SampleDesc.Count = 16; break;
             //    case SampleCount::x32: resourceDesc.SampleDesc.Count = 32 break;
             //}
-        } else {
+        }
+        else {
             resourceDesc.SampleDesc.Count = 1;
         }
         resourceDesc.SampleDesc.Quality = 0;
@@ -86,27 +87,29 @@ namespace alloy::dxc {
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         //if(desc.usage.sampled)         resourceDesc.Flags |= ;
-        if(desc.usage.storage)         resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        if(desc.usage.renderTarget)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        if(desc.usage.depthStencil)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (desc.usage.storage)         resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        if (desc.usage.renderTarget)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (desc.usage.depthStencil)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         //if(desc.usage.cubemap)         resourceDesc.Flags |= ;
         //if(desc.usage.generateMipmaps) resourceDesc.Flags |= ;
 
         D3D12MA::ALLOCATION_DESC allocationDesc = {};
         D3D12_RESOURCE_STATES resourceState;
 
-        D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
+        //D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
         //Make sure that we default to a invalid heap
         static_assert(D3D12_HEAP_TYPE_DEFAULT != (D3D12_HEAP_TYPE)0);
-        
-        if(dev->GetDevCaps().SupportUMA()) {
-            cpuAccessableLFB = D3D12_HEAP_TYPE_DEFAULT;
-        }else if(dev->GetDevCaps().SupportReBAR()) {   
-            cpuAccessableLFB = D3D12_HEAP_TYPE_GPU_UPLOAD;
-        }
 
-        if(desc.hostAccess != HostAccess::None) {
-            if( cpuAccessableLFB == 0) {
+        if (desc.hostAccess != HostAccess::None) {
+            if (dev->GetDevCaps().SupportUMA()) {
+                //allocationDesc.HeapType = D3D12_HEAP_TYPE_CUSTOM;
+                allocationDesc.CustomPool = dev->UMAPool();
+            }
+            else if (dev->GetDevCaps().SupportReBAR()) {
+                allocationDesc.HeapType = D3D12_HEAP_TYPE_GPU_UPLOAD;
+            }
+
+            else {
                 //Uh-oh, no host accessible texture for you!
                 return nullptr;
             }
@@ -121,38 +124,39 @@ namespace alloy::dxc {
             //    * Non-MSAA.
             //    * No D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL.
             //    * The format cannot be a YUV format.
-            
-            allocationDesc.HeapType = cpuAccessableLFB;
+
             //allocationDesc.ExtraHeapFlags |=   D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER
             //                                 | D3D12_HEAP_FLAG_SHARED;
-            
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        } else {
 
+            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         }
-        
-        switch (desc.hostAccess)
-        {        
-        case HostAccess::None:
+        else {
+
+    
+        //switch (desc.hostAccess)
+        //{        
+        //case HostAccess::None:
+        //    allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+        //    break;
+        //case HostAccess::PreferRead:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
+        //    break;
+        //case HostAccess::PreferWrite:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+        //    break;
+        //default:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_COMMON;
+        //    break;
+        //}
             allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
-            break;
-        case HostAccess::PreferRead:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
-            break;
-        case HostAccess::PreferWrite:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
-            break;
-        default:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_COMMON;
-            break;
-        }
 
+        }
         resourceState = D3D12_RESOURCE_STATE_COMMON;
 
         D3D12MA::Allocation* allocation;

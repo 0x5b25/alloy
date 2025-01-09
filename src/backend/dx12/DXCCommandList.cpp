@@ -902,45 +902,58 @@ namespace alloy::dxc
             auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
             auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
 
-            barriers.emplace_back();
-            auto& barrier = barriers.back();
+            D3D12_RESOURCE_BARRIER barrier { };
+            bool isBarrierNecessary = true;
 
-            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
+            if (!syncAfter || !syncBefore) {
+                isBarrierNecessary = false;
+            }else if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
                 barrier.UAV.pResource = nullptr;
             }
-            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
-                
-                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
-                _devRes.insert(barrierDesc.resource);
-                auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
-                
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcBuffer->GetHandle();
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            }
-            else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+            else {
+                if (std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
 
-                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
-                _devRes.insert(texDesc.resource);
-                auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
+                    auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
+                    _devRes.insert(barrierDesc.resource);
+                    auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
 
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcTex->GetHandle();
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                    dxcBarrierFlags.SyncAfter = syncAfter;
+                    dxcBarrierFlags.SyncBefore = syncBefore;
+                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
+                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                    barrier.Transition.pResource = dxcBuffer->GetHandle();
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                }
+                else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+
+                    auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
+                    _devRes.insert(texDesc.resource);
+                    auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
+
+                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                    dxcBarrierFlags.SyncAfter = syncAfter;
+                    dxcBarrierFlags.SyncBefore = syncBefore;
+                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
+                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                    barrier.Transition.pResource = dxcTex->GetHandle();
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                }
+
+                if (barrier.Transition.StateBefore == barrier.Transition.StateAfter) {
+                    isBarrierNecessary = false;
+                }
             }
+
+            if (isBarrierNecessary) {
+                barriers.push_back(barrier);
+            }
+
         }
 
-
-        _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+        if(!barriers.empty())
+            _cmdList->ResourceBarrier(barriers.size(), barriers.data());
 
     }
 

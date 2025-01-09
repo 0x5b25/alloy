@@ -20,6 +20,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h> // For HRESULT
 
+
+#include <dxgidebug.h>
+#include <iostream>
+
 //Import DX12 agility SDK
 extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = AGILITY_SDK_VERSION_EXPORT; }
 
@@ -390,6 +394,11 @@ namespace alloy::dxc {
     DXCDevice::~DXCDevice() {
         delete _gfxQ;
         delete _copyQ;
+
+        if (_umaPool) {
+            _umaPool->Release();
+        }
+        _alloc->Release();
     }
 
     common::sp<IGraphicsDevice> DXCDevice::Make(const IGraphicsDevice::Options &options)
@@ -427,8 +436,29 @@ namespace alloy::dxc {
 
         //Enumeration done. create the selected device
         ComPtr<ID3D12Device> device;
-        if(FAILED(D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)))){
-            return nullptr;
+        {
+            auto hr = D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_11_1, IID_PPV_ARGS(&device));
+            if (FAILED(hr)) {
+                Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
+                Microsoft::WRL::ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
+                if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+                {
+                    ThrowIfFailed(dxgiDebug->QueryInterface(IID_PPV_ARGS(&dxgiInfoQueue)));
+                
+                    for (UINT64 index = 0; index < dxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL); index++)
+                    {
+                        SIZE_T length = 0;
+                        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, nullptr, &length);
+                        auto msg = (DXGI_INFO_QUEUE_MESSAGE*)malloc(sizeof(length));
+                        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, msg, &length);
+
+                        std::cout << "Description: " << msg->pDescription << std::endl;
+                        
+                        free(msg);
+                    }
+                }
+                return nullptr;
+            }
         }
 
         D3D12_COMMAND_QUEUE_DESC queueDesc{};
@@ -455,12 +485,13 @@ namespace alloy::dxc {
             return nullptr;
         }
 
-        ComPtr<D3D12MA::Allocator> allocator;
+        D3D12MA::Allocator* allocator;
         
         D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
         allocatorDesc.pDevice = device.Get();
         allocatorDesc.pAdapter = adp.Get();
 
+        
         if(FAILED(D3D12MA::CreateAllocator(&allocatorDesc, &allocator))){
             return nullptr;
         }
@@ -476,11 +507,31 @@ namespace alloy::dxc {
         dev->_copyQ = new DXCCommandQueue(dev.get(), D3D12_COMMAND_LIST_TYPE_COPY);
         //dev->_cmdAlloc = std::move(cmdAlloc);
         dev->_waitIdleFence.Init(std::move(waitIdleFence));
-        dev->_alloc = std::move(allocator);
+        dev->_alloc = allocator;
 
         dev->_adpInfo = {};
         dev->_dxcFeat = {};
         dev->_dxcFeat.ReadFromDevice(dev->_dev.Get());
+
+        //Create CPU accessable VRAM heap for UMA type device
+        if (dev->_dxcFeat.SupportUMA()) {
+            D3D12MA::POOL_DESC poolDesc = {};
+            poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
+            // For CPU readback use D3D12_CPU_PAGE_PROPERTY_WRITE_BACK
+            poolDesc.HeapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE;
+            poolDesc.HeapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+            // These flags are optional but recommended.
+            poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
+            poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
+
+            D3D12MA::Pool* pool = nullptr;;
+            HRESULT hr = allocator->CreatePool(&poolDesc, &pool);
+            if (FAILED(hr)) {
+
+            }
+
+            dev->_umaPool = pool;
+        }
 
         //Fill driver and api info
         {//Get device ID & driver version

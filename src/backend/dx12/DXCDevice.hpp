@@ -186,7 +186,8 @@ namespace alloy::dxc{
         //Microsoft::WRL::ComPtr<ID3D12CommandAllocator> _cmdAlloc;
         DXCAutoFence _waitIdleFence;
 
-        Microsoft::WRL::ComPtr<D3D12MA::Allocator> _alloc;
+        D3D12MA::Allocator* _alloc;
+        D3D12MA::Pool* _umaPool;
 
         alloy::dxc::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
@@ -223,7 +224,8 @@ namespace alloy::dxc{
 
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
-        D3D12MA::Allocator* Allocator() const {return _alloc.Get();}
+        D3D12MA::Allocator* Allocator() const { return _alloc; }
+        D3D12MA::Pool* UMAPool() const {return _umaPool;}
 
         ID3D12CommandQueue* GetImplicitQueue() const {return _gfxQ->GetHandle(); } 
         //virtual void SubmitCommand(const CommandList* cmd) override;
