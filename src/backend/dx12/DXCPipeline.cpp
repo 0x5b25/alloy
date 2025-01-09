@@ -578,12 +578,17 @@ namespace alloy::dxc
 
            psoDesc.NumRenderTargets = color_count;
            for (uint32_t i = 0; i < color_count; i++) {
-              psoDesc.RTVFormats[i] = VdToD3DPixelFormat(desc.outputs.colorAttachment[i].format, false);
+              psoDesc.RTVFormats[i] 
+                = VdToD3DPixelFormat(
+                    desc.outputs.colorAttachment[i]->GetTexture().GetTextureObject()->GetDesc().format,
+                    false);
            }
         }
 
-        if (desc.outputs.depthAttachment.has_value()) {
-            psoDesc.DSVFormat = VdToD3DPixelFormat(desc.outputs.depthAttachment.value().format, true);
+        if (desc.outputs.depthAttachment) {
+            psoDesc.DSVFormat = VdToD3DPixelFormat(
+                desc.outputs.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format,
+                true);
         }
 
         //pipeline->multiview.view_mask = MAX2(view_mask, 1);

@@ -12,7 +12,7 @@
 
 namespace alloy::vk
 {
-
+#if 0
     void VulkanFrameBufferBase::CreateCompatibleRenderPasses(
         VulkanDevice* vkDev,
         const Description& desc,
@@ -31,7 +31,7 @@ namespace alloy::vk
         std::vector<VkAttachmentReference> colorAttachmentRefs{};
         for (int i = 0; i < colorAttachmentCount; i++)
         {
-            auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
+            auto vkColorTex = PtrCast<VulkanTexture>(desc.colorTargets[i]->GetTarget().get());
             auto& texDesc = vkColorTex->GetDesc();
             VkAttachmentDescription colorAttachmentDesc{};
             colorAttachmentDesc.format = VdToVkPixelFormat(texDesc.format);
@@ -153,7 +153,7 @@ namespace alloy::vk
         VK_CHECK(vkCreateRenderPass(vkDev->LogicalDev(), &renderPassCI, nullptr, &clear));
 
     }
-
+#endif
     VulkanFrameBufferBase::~VulkanFrameBufferBase(){
         auto vkDev = PtrCast<VulkanDevice>(dev.get());
 
@@ -161,17 +161,17 @@ namespace alloy::vk
     }
 
     VulkanFrameBuffer::~VulkanFrameBuffer(){
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
+        //auto vkDev = PtrCast<VulkanDevice>(dev.get());
         //vkDestroyFramebuffer(vkDev->LogicalDev(), _fb, nullptr);
 
         //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClear, nullptr);
         //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassNoClearLoad, nullptr);
         //vkDestroyRenderPass(vkDev->LogicalDev(), renderPassClear, nullptr);
 
-        for (VkImageView view : _attachmentViews)
-        {
-            vkDestroyImageView(vkDev->LogicalDev(), view, nullptr);
-        }
+        //for (VkImageView view : _attachmentViews)
+        //{
+        //    vkDestroyImageView(vkDev->LogicalDev(), view, nullptr);
+        //}
 
     }
 
@@ -188,94 +188,90 @@ namespace alloy::vk
         //VkFramebufferCreateInfo fbCI {};
         //fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         unsigned fbAttachmentsCount = colorAttachmentCount;
-        if(desc.HasDepthTarget()) fbAttachmentsCount += 1;
+        if(desc.depthTarget) fbAttachmentsCount += 1;
 
-        std::vector<VkImageView> fbAttachments{fbAttachmentsCount};
+        std::vector<common::sp<VulkanTextureView>> colorAttachments;
         for (int i = 0; i < colorAttachmentCount; i++)
         {
-            VulkanTexture* vkColorTarget = PtrCast<VulkanTexture>(desc.colorTargets[i].target.get());
-            VkImageViewCreateInfo imageViewCI{};
-            imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            imageViewCI.image = vkColorTarget->GetHandle();
-            imageViewCI.format = VdToVkPixelFormat(vkColorTarget->GetDesc().format);
-            imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-            imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-            imageViewCI.subresourceRange.baseMipLevel = desc.colorTargets[i].mipLevel;
-            imageViewCI.subresourceRange.levelCount = 1;
-            imageViewCI.subresourceRange.baseArrayLayer = desc.colorTargets[i].arrayLayer;
-            imageViewCI.subresourceRange.layerCount = 1;
+            auto vkColorTarget = SPCast<VulkanTexture>(desc.colorTargets[i]->GetTextureObject());
+            //VkImageViewCreateInfo imageViewCI{};
+            //imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            //imageViewCI.image = vkColorTarget->GetHandle();
+            //imageViewCI.format = VdToVkPixelFormat(vkColorTarget->GetDesc().format);
+            //imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
+            //imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+            //imageViewCI.subresourceRange.baseMipLevel = desc.colorTargets[i].mipLevel;
+            //imageViewCI.subresourceRange.levelCount = 1;
+            //imageViewCI.subresourceRange.baseArrayLayer = desc.colorTargets[i].arrayLayer;
+            //imageViewCI.subresourceRange.layerCount = 1;
+            if(!vkColorTarget->GetDesc().usage.renderTarget) {
+                assert(false);
+            }
 
-            VK_CHECK(vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &fbAttachments[i]));
+            ITextureView::Description ctvDesc {};
+            ctvDesc.baseMipLevel = desc.colorTargets[i]->GetDesc().baseMipLevel;
+            ctvDesc.mipLevels = 1;
+            ctvDesc.baseArrayLayer = desc.colorTargets[i]->GetDesc().baseArrayLayer;
+            ctvDesc.arrayLayers = 1;
+            auto ctView = VulkanTextureView::Make(vkColorTarget, ctvDesc);
 
+            //VK_CHECK(vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &fbAttachments[i]));
+            colorAttachments.push_back(ctView);
             //_attachmentViews.Add(*dest);
         }
 
         // Depth
-        if (desc.HasDepthTarget())
+        common::sp<VulkanTextureView> dsAttachment;
+        if (desc.depthTarget)
         {
-            VulkanTexture* vkDepthTarget = PtrCast<VulkanTexture>(desc.depthTarget.target.get());
+            auto vkDepthTarget = SPCast<VulkanTexture>(desc.depthTarget->GetTextureObject());
             bool hasStencil = FormatHelpers::IsStencilFormat(vkDepthTarget->GetDesc().format);
-            VkImageViewCreateInfo depthViewCI{};
-            depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            depthViewCI.image = vkDepthTarget->GetHandle();
-            depthViewCI.format = VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
-            depthViewCI.viewType = desc.depthTarget.target->GetDesc().arrayLayers > 1
-                ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
-                : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-            depthViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-            if(hasStencil){
-                depthViewCI.subresourceRange.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
-            depthViewCI.subresourceRange.baseMipLevel = desc.depthTarget.mipLevel;
-            depthViewCI.subresourceRange.levelCount = 1;
-            depthViewCI.subresourceRange.baseArrayLayer = desc.depthTarget.arrayLayer;
-            depthViewCI.subresourceRange.layerCount = 1;
 
-            VK_CHECK(vkCreateImageView(dev->LogicalDev(), &depthViewCI, nullptr, &fbAttachments.back()));
+            if(!vkDepthTarget->GetDesc().usage.depthStencil) {
+                assert(false);
+            }
+
+            //VkImageViewCreateInfo depthViewCI{};
+            //depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            //depthViewCI.image = vkDepthTarget->GetHandle();
+            //depthViewCI.format = VdToVkPixelFormat(vkDepthTarget->GetDesc().format);
+            //depthViewCI.viewType = desc.depthTarget.target->GetDesc().arrayLayers > 1
+            //    ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
+            //    : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
+            //depthViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+            //if(hasStencil){
+            //    depthViewCI.subresourceRange.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            //}
+            //depthViewCI.subresourceRange.baseMipLevel = desc.depthTarget.mipLevel;
+            //depthViewCI.subresourceRange.levelCount = 1;
+            //depthViewCI.subresourceRange.baseArrayLayer = desc.depthTarget.arrayLayer;
+            //depthViewCI.subresourceRange.layerCount = 1;
+            //
+            //VK_CHECK(vkCreateImageView(dev->LogicalDev(), &depthViewCI, nullptr, &fbAttachments.back()));
+
+            ITextureView::Description dsvDesc {};
+            dsvDesc.baseMipLevel = desc.depthTarget->GetDesc().baseMipLevel;
+            dsvDesc.mipLevels = 1;
+            dsvDesc.baseArrayLayer = desc.depthTarget->GetDesc().baseArrayLayer;
+            dsvDesc.arrayLayers = 1;
+            dsAttachment = VulkanTextureView::Make(vkDepthTarget, dsvDesc);
 
             //_attachmentViews.Add(*dest);
         }
 
-        common::sp<ITexture> dimTex;
-        std::uint32_t mipLevel;
-        if (desc.HasDepthTarget())
-        {
-            dimTex = desc.depthTarget.target;
-            mipLevel = desc.depthTarget.mipLevel;
-            
-        }
-        else
-        {
-            //At least we should have a target
-            assert(desc.HasColorTarget());
-            dimTex = desc.colorTargets[0].target;
-            mipLevel = desc.colorTargets[0].mipLevel;
-        }
+        auto framebuffer = new VulkanFrameBuffer(dev);
 
-        auto framebuffer = new VulkanFrameBuffer(dev, desc);
-
-
-        std::uint32_t mipWidth, mipHeight, mipDepth;
-        GetMipDimensions(dimTex->GetDesc(), mipLevel, mipWidth, mipHeight, mipDepth);
-
-        //fbCI.width = mipWidth;
-        //fbCI.height = mipHeight;
-        //
-        //fbCI.attachmentCount = fbAttachmentsCount;
-        //fbCI.pAttachments = fbAttachments.data();
-        //fbCI.layers = 1;
-        //fbCI.renderPass = framebuffer->renderPassNoClear;
-        //
         //VkFramebuffer fb;
         //VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
         //
         //framebuffer->_fb = fb;
-        framebuffer->_attachmentViews = std::move(fbAttachments);
+        framebuffer->_colorTgts = std::move(colorAttachments);
+        framebuffer->_dsTgt = dsAttachment;
 
         return common::sp<IFrameBuffer>(framebuffer);
     }
 
-
+#if 0
     void VulkanFrameBuffer::TransitionToAttachmentLayout(VkCommandBuffer cb) {
         //TODO: Need to support compute shader pipeline stage?
         for (auto& colorDesc : description.colorTargets)
@@ -303,7 +299,7 @@ namespace alloy::vk
                 );
         }
     }
-
+#endif
     //void VulkanFrameBuffer::VisitAttachments(AttachmentVisitor visitor) {
     //    //TODO: Need to support compute shader pipeline stage?
     //    for (auto& colorDesc : description.colorTargets)
@@ -343,20 +339,27 @@ namespace alloy::vk
             return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
         };
 
+        
+        uint32_t width = 0, height = 0;
 
-        unsigned colorAttachmentCount = GetDesc().colorTargets.size();
+
+        unsigned colorAttachmentCount = _colorTgts.size();
         assert(actions.colorTargetActions.size() == colorAttachmentCount);
         std::vector<VkRenderingAttachmentInfoKHR> colorAttachmentRefs{};
         for (int i = 0; i < colorAttachmentCount; i++)
         {
             auto& ctAct = actions.colorTargetActions[i];
 
-            auto vkColorTex = PtrCast<VulkanTexture>(GetDesc().colorTargets[i].target.get());
+            auto vkColorTex = PtrCast<VulkanTexture>(_colorTgts[i]->GetTextureObject().get());
             auto& texDesc = vkColorTex->GetDesc();
+
+            width = std::max(width, texDesc.width);
+            height = std::max(height, texDesc.height);
+
             auto& colorAttachmentDesc 
                 = colorAttachmentRefs.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
 
-            colorAttachmentDesc.imageView = _attachmentViews[i];
+            colorAttachmentDesc.imageView = _colorTgts[i]->GetHandle();
             colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
             colorAttachmentDesc.resolveImageView = nullptr;
@@ -384,15 +387,16 @@ namespace alloy::vk
 
         bool hasDepth = false, hasStencil = false;
 
-        if (GetDesc().HasDepthTarget())
+        if (HasDepthTarget())
         {
-            assert(colorAttachmentCount + 1 == _attachmentViews.size());
             hasDepth = true;
 
-            auto vkDepthTex = PtrCast<VulkanTexture>(GetDesc().depthTarget.target.get());
+            auto vkDepthTex = PtrCast<VulkanTexture>(_dsTgt->GetTextureObject().get());
             auto& texDesc = vkDepthTex->GetDesc();
+            width = std::max(width, texDesc.width);
+            height = std::max(height, texDesc.height);
             
-            depthAttachment.imageView = _attachmentViews.back();
+            depthAttachment.imageView = _dsTgt->GetHandle();
             depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
             depthAttachment.resolveImageView = nullptr;
@@ -420,7 +424,7 @@ namespace alloy::vk
 
         const VkRenderingInfoKHR render_info {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
-            .renderArea = VkRect2D{ {0, 0}, {GetDesc().GetWidth(), GetDesc().GetHeight()} },
+            .renderArea = VkRect2D{ {0, 0}, {width, height} },
             .layerCount = 1,
             .colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
             .pColorAttachments = colorAttachmentRefs.data(),
@@ -430,5 +434,35 @@ namespace alloy::vk
 
         vkCmdBeginRenderingKHR(cb, &render_info);
     }
+
+    
+    OutputDescription VulkanFrameBuffer::GetDesc() {
+        OutputDescription desc { };
+        desc.sampleCount = SampleCount::x1;
+
+        for(auto& ct : _colorTgts) {
+            desc.colorAttachment.push_back(common::sp(new VulkanRenderTarget(
+                common::sp(this),
+                *ct.get()
+            )));
+            ref();
+
+            desc.sampleCount = ct->GetTextureObject()->GetDesc().sampleCount;
+        }
+
+        if(HasDepthTarget()) {
+            desc.depthAttachment.reset(new VulkanRenderTarget(
+                common::sp(this),
+                *_dsTgt.get()
+            ));
+            
+            ref();
+        }
+
+        return desc;
+    }
+
+    
+    ITextureView& VulkanRenderTarget::GetTexture() const {return _rt;}
 
 } // namespace alloy

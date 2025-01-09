@@ -453,7 +453,7 @@ namespace alloy::vk {
         vkDestroyImageView(_dev.LogicalDev(), _view, nullptr);
     }
 
-	common::sp<ITextureView> VulkanTextureView::Make(
+	common::sp<VulkanTextureView> VulkanTextureView::Make(
 		const common::sp<VulkanTexture>& target,
 		const ITextureView::Description& desc
 	){
@@ -470,6 +470,10 @@ namespace alloy::vk {
         if (targetDesc.usage.depthStencil)
         {
             aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+
+            if(FormatHelpers::IsStencilFormat(targetDesc.format)){
+                aspectFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
         }
         else
         {

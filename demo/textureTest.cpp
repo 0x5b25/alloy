@@ -471,7 +471,7 @@ class UniformApp : public AppBase {
         pipelineDescription.shaderSet.vertexShader = vertexShader;
         pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
-        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetOutputDescription();
+        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
         //pipelineDescription.outputs = fb->GetOutputDescription();
         pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
     }
@@ -565,6 +565,7 @@ class UniformApp : public AppBase {
         auto& factory = dev->GetResourceFactory();
         //Get one drawable
         auto backBuffer = swapChain->GetBackBuffer();
+        auto backBufferDesc = backBuffer->GetDesc();
 
         auto gfxQ = dev->GetGfxCommandQueue();
         
@@ -594,7 +595,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::PRESENT,
                     .toLayout = alloy::TextureLayout::RENDER_TARGET,
-                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };
@@ -612,7 +613,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::COMMON,
                     .toLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
-                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                    .resource = backBufferDesc.depthAttachment->GetTexture().GetTextureObject()
                 }
             };
                 //_isFirstSubmission = false;
@@ -670,7 +671,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = alloy::TextureLayout::RENDER_TARGET,
                     .toLayout = alloy::TextureLayout::PRESENT,
-                    .resource = swapChain->GetBackBuffer()->GetDesc().colorTargets[0].target
+                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };
@@ -688,7 +689,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = alloy::TextureLayout::DEPTH_STENCIL_WRITE,
                     .toLayout = alloy::TextureLayout::COMMON,
-                    .resource = swapChain->GetBackBuffer()->GetDesc().depthTarget.target
+                    .resource = backBufferDesc.depthAttachment->GetTexture().GetTextureObject()
                 }
             };
 

@@ -192,7 +192,7 @@ namespace alloy::dxc {
         return common::sp(tex);
     }
 
-    common::sp<ITexture> DXCTexture::WrapNative(
+    common::sp<DXCTexture> DXCTexture::WrapNative(
         const common::sp<DXCDevice>& dev,
         const ITexture::Description& desc,
         ID3D12Resource* nativeRes
@@ -312,6 +312,11 @@ namespace alloy::dxc {
         return ret;
     }
 
-
+    common::sp<DXCTextureView> DXCTextureView::Make (
+        const common::sp<DXCTexture>& tex,
+        const ITextureView::Description& desc
+    ) {
+        return common::sp(new DXCTextureView(tex, desc));
+    }
     
 }

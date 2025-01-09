@@ -121,7 +121,7 @@ namespace alloy::vk
 
         const VkImageView& GetHandle() const { return _view; }
 
-        static common::sp<ITextureView> Make(
+        static common::sp<VulkanTextureView> Make(
             const common::sp<VulkanTexture>& target,
             const ITextureView::Description& desc
         );

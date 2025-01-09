@@ -230,7 +230,7 @@ public:
 
     
 
-
+#if 0
     VkRenderPass CreateFakeRenderPassForCompat(
         VulkanDevice* dev,
         const OutputDescription& outputDesc,
@@ -320,7 +320,7 @@ public:
         return renderPass;
     }
 
-
+#endif
     VulkanPipelineBase::~VulkanPipelineBase() {
         vkDestroyPipelineLayout(dev->LogicalDev(), _pipelineLayout, nullptr);
         vkDestroyPipeline(dev->LogicalDev(), _devicePipeline, nullptr);
@@ -833,8 +833,10 @@ public:
         std::vector<VkFormat> colorAttachmentFormats{};
         colorAttachmentFormats.reserve(outputDesc.colorAttachment.size());
 
-        for(auto& a : outputDesc.colorAttachment)
-            colorAttachmentFormats.push_back(VdToVkPixelFormat(a.format, false));
+        for(auto& a : outputDesc.colorAttachment) {
+            auto f = a->GetTexture().GetTextureObject()->GetDesc().format;
+            colorAttachmentFormats.push_back(VdToVkPixelFormat(f, false));
+        }
 
         VkPipelineRenderingCreateInfoKHR dynRenderingCI{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
@@ -843,8 +845,10 @@ public:
             .pColorAttachmentFormats = colorAttachmentFormats.data(),
         };
 
-        if(outputDesc.depthAttachment.has_value()) {
-            PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
+        if(outputDesc.depthAttachment) {
+            
+            auto t = outputDesc.depthAttachment->GetTexture().GetTextureObject();
+            PixelFormat depthFormat = t->GetDesc().format;
             auto vkFormat = VdToVkPixelFormat(depthFormat, true);
             dynRenderingCI.depthAttachmentFormat  = vkFormat;
             if(FormatHelpers::IsStencilFormat(depthFormat))

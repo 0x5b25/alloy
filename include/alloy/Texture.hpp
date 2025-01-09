@@ -165,7 +165,7 @@ namespace alloy
 
         virtual ResourceKind GetResourceKind() const override { return ResourceKind::Texture; }
 
-        const common::sp<ITexture>& GetTarget() const { return target; }
+        const common::sp<ITexture>& GetTextureObject() const { return target; }
 
     };
 

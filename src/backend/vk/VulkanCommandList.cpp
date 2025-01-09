@@ -566,11 +566,12 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetFullViewports() {
 
         std::vector<Viewport> vps;
+        auto desc = _fb->GetDesc();
 
         //SetViewport(0, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
-        for (auto& ct : _fb->GetDesc().colorTargets)
+        for (auto& ct : desc.colorAttachment)
         {
-            auto& ctdesc = ct.target->GetDesc();
+            auto& ctdesc = ct->GetTexture().GetTextureObject()->GetDesc();
             auto& vp = vps.emplace_back();
             vp.x = 0;
             vp.y = 0;
@@ -606,11 +607,12 @@ namespace alloy::vk{
 
     void VkRenderCmdEnc::SetFullScissorRects() {
 
-        auto& cts = _fb->GetDesc().colorTargets;
+        
+        auto desc = _fb->GetDesc();
 
         std::vector<Rect> rects;
-        for(auto& ct : cts) {
-            auto& ctDesc = ct.target->GetDesc();
+        for(auto& ct : desc.colorAttachment) {
+            auto& ctDesc = ct->GetTexture().GetTextureObject()->GetDesc();
             rects.emplace_back(0, 0, ctDesc.width, ctDesc.height);
         }
 

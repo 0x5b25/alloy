@@ -51,20 +51,40 @@ namespace alloy::vk
     //VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
     //VkRenderPass _SCFB::GetRenderPassClear() const {return _sc->GetRenderPassClear();}
 
-    const IFrameBuffer::Description& _SCFB::GetDesc() const { return _fbDesc; }
+    OutputDescription _SCFB::GetDesc() { 
+        
+        OutputDescription desc { };
+
+        desc.colorAttachment.push_back(common::sp(new VulkanSCRT(
+            _sc,
+            *_bb.colorTgt.get()
+        )));
+
+        if(HasDepthTarget()) {
+            desc.depthAttachment.reset(new VulkanSCRT(
+                _sc,
+                *_bb.dsTgt.get()
+            ));
+        }
+
+        desc.sampleCount = _bb.colorTgt.get()->GetTextureObject()->GetDesc().sampleCount;
+
+        return desc;
+    
+    }
 
     _SCFB::~_SCFB(){
-        auto _gd = PtrCast<VulkanDevice>(dev.get());
-        vkDestroyImageView(_gd->LogicalDev(), _colorTargetView, nullptr);
-        if(HasDepthTarget()){
-            vkDestroyImageView(_gd->LogicalDev(), _depthTargetView, nullptr);
-        }
+        //auto _gd = PtrCast<VulkanDevice>(dev.get());
+        //vkDestroyImageView(_gd->LogicalDev(), _colorTargetView, nullptr);
+        //if(HasDepthTarget()){
+        //    vkDestroyImageView(_gd->LogicalDev(), _depthTargetView, nullptr);
+        //}
         //vkDestroyFramebuffer(_gd->LogicalDev(), _fb, nullptr);
     }
 
 
-
-    common::sp<_SCFB> _SCFB::Make(
+#if 0
+    common::sp<_SCFB> _SCFB::_Make(
         const common::sp<VulkanDevice>& dev,
         const common::sp<VulkanSwapChain>& sc,
         const common::sp<VulkanTexture>& colorTarget,
@@ -142,6 +162,7 @@ namespace alloy::vk
         return common::sp(scfb);
     }
 
+#endif
     void VulkanSwapChain::ReleaseFramebuffers(){
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClear, nullptr);
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClearLoad, nullptr);
@@ -177,12 +198,32 @@ namespace alloy::vk
         VK_CHECK(vkGetSwapchainImagesKHR(_dev->LogicalDev(), _deviceSwapchain, &scImageCount, scImgs.data()));
 
         assert(scImageCount > 0);
-        auto _CreateSCFB = [&](const common::sp<VulkanTexture>& colorTgt, const common::sp<VulkanTexture>& dsTgt) {
+        auto _CreateRT = [&](
+            const common::sp<VulkanTexture>& colorTgt, 
+            const common::sp<VulkanTexture>& dsTgt
+        ) {
             this->ref();
             auto spsc = common::sp(this);
-            auto fb = _SCFB::Make(_dev, spsc, colorTgt, dsTgt);
-            assert(fb != nullptr);
+            BackBufferContainer fb { };
+
+            ITextureView::Description ctvDesc {};
+            ctvDesc.mipLevels = 1;
+            ctvDesc.arrayLayers = 1;
+            auto ctView = VulkanTextureView::Make(colorTgt,ctvDesc);
+            fb.colorTgt = ctView;
+
+            if(dsTgt) {
+                ITextureView::Description dsvDesc {};
+                dsvDesc.mipLevels = 1;
+                dsvDesc.arrayLayers = 1;
+                auto dsView = VulkanTextureView::Make(dsTgt,dsvDesc);
+                fb.dsTgt = dsView;
+            }
+
             _fbs.push_back(std::move(fb));
+
+            //auto fb = _SCFB::Make(_dev, spsc, colorTgt, dsTgt);
+            //assert(fb != nullptr);
         };
 #if 0
         //_scExtent = swapchainExtent;
@@ -284,7 +325,7 @@ namespace alloy::vk
             }
 
 
-            _CreateSCFB(colorTex, dsTex);
+            _CreateRT(colorTex, dsTex);
         }
 
         
@@ -344,7 +385,7 @@ namespace alloy::vk
             //assert(false);
             return result;
         }
-        _fbs[_currentImageIndex]->SetToInitialLayout();
+        //_fbs[_currentImageIndex]->SetToInitialLayout();
         return VK_SUCCESS;
     }
 
@@ -618,8 +659,14 @@ namespace alloy::vk
         }
         if (res == VK_SUCCESS ){
             //Swapchain image may be 0 when app minimized
-            if (_currentImageIndex < _fbs.size()) return _fbs[_currentImageIndex];
-            else                                  return nullptr;
+            if (_currentImageIndex < _fbs.size()) {
+                ref();
+                return common::sp(
+                    new _SCFB(_dev, common::sp(this), _fbs[_currentImageIndex])
+                );
+            }
+            else 
+                return nullptr;
         } else {
             return nullptr;
         }

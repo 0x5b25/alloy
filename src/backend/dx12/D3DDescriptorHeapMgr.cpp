@@ -121,7 +121,7 @@ namespace alloy::dxc {
             auto hCurrSlot = hFreeSlot;
             for(auto& texView : res) {
 
-                auto* dxcTex = PtrCast<DXCTexture>(texView->GetTarget().get());
+                auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
                 auto& texDesc = dxcTex->GetDesc();
                 auto& viewDesc = texView->GetDesc();
 

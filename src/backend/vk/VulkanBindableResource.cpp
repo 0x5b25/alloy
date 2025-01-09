@@ -258,7 +258,7 @@ namespace alloy::vk
                             }
                             descriptorWrites[i].pImageInfo = &imageInfos[i];
 
-                            auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
+                            auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
                             if(elem.options.writable)
                                 texRW.insert(vkTex);
                             else

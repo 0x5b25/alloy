@@ -15,6 +15,8 @@
 //#include <Metal/Metal.h>
 
 namespace alloy {
+
+   
         
         enum class LoadAction {
             DontCare = 0,
@@ -40,7 +42,7 @@ namespace alloy {
             /// The target texture to render into. For color attachments, this resource must have been created with the
             /// <see cref="TextureUsage.RenderTarget"/> flag. For depth attachments, this resource must have been created with the
             /// <see cref="TextureUsage.DepthStencil"/> flag.
-            //common::sp<ITexture> target;
+            common::sp<IRenderTarget> target;
                             
             /// The array layer to render to. This value must be less than <see cref="Texture.ArrayLayers"/> in the target
             //std::uint32_t arrayLayer; //seems to translate to depthPlane in metal

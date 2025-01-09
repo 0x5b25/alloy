@@ -215,22 +215,24 @@ namespace alloy::dxc
     }
     void DXCRenderCmdEnc::SetFullViewports() {
         auto rtCnt = _fb->GetRTVCount();
-
-        D3D12_VIEWPORT vp {
-            .TopLeftX = 0,
-            .TopLeftY = 0,
-            .Width    = (float)_fb->GetDesc().GetWidth(),
-            .Height   = (float)_fb->GetDesc().GetHeight(),
-            .MinDepth = 0,
-            .MaxDepth = 1,
-        };
+        auto desc = _fb->GetDesc();
 
         std::vector<D3D12_VIEWPORT> vps;
         vps.reserve(rtCnt);
 
-        while(rtCnt -- > 0)
+        for(auto& rt : desc.colorAttachment) {
+            auto& texDesc = rt->GetTexture().GetTextureObject()->GetDesc();
+            D3D12_VIEWPORT vp {
+                .TopLeftX = 0,
+                .TopLeftY = 0,
+                .Width    = (float)texDesc.width,
+                .Height   = (float)texDesc.height,
+                .MinDepth = 0,
+                .MaxDepth = 1,
+            };
+
             vps.push_back(vp);
-        
+        }
         cmdList->RSSetViewports(vps.size(), vps.data());
     }
 
@@ -258,20 +260,22 @@ namespace alloy::dxc
     void DXCRenderCmdEnc::SetFullScissorRects(){
         
         auto rtCnt = _fb->GetRTVCount();
-        auto& desc = _fb->GetDesc();
-
-        D3D12_RECT sr {
-            .left = 0,
-            .top = 0,
-            .right    =  (LONG)desc.GetWidth(),
-            .bottom   =  (LONG)desc.GetHeight(),
-        };
+        auto desc = _fb->GetDesc();
 
         std::vector<D3D12_RECT> srs;
         srs.reserve(rtCnt);
+        for(auto& rt : desc.colorAttachment) {
+            auto& texDesc = rt->GetTexture().GetTextureObject()->GetDesc();
+            D3D12_RECT sr {
+                .left = 0,
+                .top = 0,
+                .right    =  (LONG)texDesc.width,
+                .bottom   =  (LONG)texDesc.height,
+            };
 
-        while(rtCnt -- > 0)
+
             srs.push_back(sr);
+        }
         
         cmdList->RSSetScissorRects(srs.size(), srs.data());
     }

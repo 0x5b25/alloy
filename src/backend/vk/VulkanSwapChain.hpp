@@ -20,34 +20,71 @@ namespace alloy::vk
 {
     class VulkanDevice;
     class VulkanSwapChain;
+
+    struct BackBufferContainer {
+        //DXCSwapChain* _sc;
+        common::sp<VulkanTextureView> colorTgt;
+        
+        common::sp<VulkanTextureView> dsTgt;
+
+        //IFrameBuffer::Description fbDesc;
+    };
+
+
+    class VulkanSCRT : public IRenderTarget {
+        common::sp<VulkanSwapChain> _sc;
+        VulkanTextureView& _rt;
+    public:
+
+        VulkanSCRT(
+            const common::sp<VulkanSwapChain>& sc,
+            VulkanTextureView& rt
+        )
+            : _sc(sc)
+            , _rt(rt) 
+        { }
+        
+        VulkanTextureView& GetVkTexView() const {return _rt;}
+        virtual ITextureView& GetTexture() const override {return GetVkTexView();}
+
+    };
     
     class _SCFB : public VulkanFrameBufferBase{
 
         common::sp<VulkanSwapChain> _sc;
+        const BackBufferContainer& _bb;
 
-        common::sp<VulkanTexture> _colorTarget;
-        common::sp<VulkanTexture> _depthTarget;
-
-        VkImageView _colorTargetView;
-        VkImageView _depthTargetView;
+        //common::sp<VulkanTexture> _colorTarget;
+        //common::sp<VulkanTexture> _depthTarget;
+        //
+        //VkImageView _colorTargetView;
+        //VkImageView _depthTargetView;
         //VkFramebuffer _fb;
 
         
-        IFrameBuffer::Description _fbDesc;
-
-
-        _SCFB(const common::sp<VulkanDevice>& dev) : VulkanFrameBufferBase(dev){}
+        //IFrameBuffer::Description _fbDesc;
 
     public:
 
+        _SCFB(
+            const common::sp<VulkanDevice>& dev,
+            common::sp<VulkanSwapChain>&& sc,
+            const BackBufferContainer& bb
+        ) 
+            : VulkanFrameBufferBase(dev)
+            , _sc(std::move(sc))
+            , _bb(bb)
+        { }
+
+
         ~_SCFB();
 
-        static common::sp<_SCFB> Make(
-            const common::sp<VulkanDevice>& dev,
-            const common::sp<VulkanSwapChain>& sc,
-            const common::sp<VulkanTexture>& colorTarget,
-            const common::sp<VulkanTexture>& depthTarget = nullptr
-        );
+        //static common::sp<_SCFB> Make(
+        //    const common::sp<VulkanDevice>& dev,
+        //    const common::sp<VulkanSwapChain>& sc,
+        //    const common::sp<VulkanTexture>& colorTarget,
+        //    const common::sp<VulkanTexture>& depthTarget = nullptr
+        //);
 
         //virtual const VkFramebuffer& GetHandle() const override {return _fb;}
 
@@ -55,37 +92,37 @@ namespace alloy::vk
         //virtual VkRenderPass GetRenderPassNoClear_Load() const;
         //virtual VkRenderPass GetRenderPassClear() const;
 
-        virtual const Description& GetDesc() const;
+        virtual OutputDescription GetDesc() override;
 
-        bool HasDepthTarget() const {return _depthTarget != nullptr;}
+        bool HasDepthTarget() const {return _bb.dsTgt != nullptr;}
 
-        void SetToInitialLayout() {
-            _colorTarget->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
-        }
-
-        void TransitionToAttachmentLayout(VkCommandBuffer cb) override {
-            {
-                _colorTarget->TransitionImageLayout(cb,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                );
-            }
-
-            // Depth
-            if (_depthTarget)
-            {
-               bool hasStencil = FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
-
-                _depthTarget->TransitionImageLayout(cb,
-                    hasStencil
-                        ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                        : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                );
-            }
-        }
+        //void SetToInitialLayout() {
+        //    _colorTarget->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+        //}
+        //
+        //void TransitionToAttachmentLayout(VkCommandBuffer cb) override {
+        //    {
+        //        _colorTarget->TransitionImageLayout(cb,
+        //            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        //            VK_ACCESS_SHADER_WRITE_BIT,
+        //            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        //        );
+        //    }
+        //
+        //    // Depth
+        //    if (_depthTarget)
+        //    {
+        //       bool hasStencil = FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
+        //
+        //        _depthTarget->TransitionImageLayout(cb,
+        //            hasStencil
+        //                ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        //                : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        //            VK_ACCESS_SHADER_WRITE_BIT,
+        //            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        //        );
+        //    }
+        //}
 
         virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb, const RenderPassAction& actions) override {
             
@@ -111,7 +148,7 @@ namespace alloy::vk
             VkRenderingAttachmentInfoKHR colorAttachmentRef{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
                 .pNext = nullptr,
-                .imageView = _colorTargetView,
+                .imageView = _bb.colorTgt->GetHandle(),
                 .imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .resolveMode = VK_RESOLVE_MODE_NONE,
                 .resolveImageView = nullptr,
@@ -143,9 +180,9 @@ namespace alloy::vk
                 hasDepth = true;
                 assert(actions.depthTargetAction.has_value());
 
-                auto& texDesc = _depthTarget->GetDesc();
+                auto& texDesc = _bb.dsTgt->GetTextureObject()->GetDesc();
 
-                depthAttachment.imageView = _depthTargetView;
+                depthAttachment.imageView = _bb.dsTgt->GetHandle();
                 depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
                 depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
                 depthAttachment.resolveImageView = nullptr;
@@ -171,9 +208,11 @@ namespace alloy::vk
                 }
             }
 
+            auto& ctDesc = _bb.colorTgt->GetTextureObject()->GetDesc();
+
             const VkRenderingInfoKHR render_info {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
-                .renderArea = VkRect2D{ {0, 0}, {GetDesc().GetWidth(), GetDesc().GetHeight()} },
+                .renderArea = VkRect2D{ {0, 0}, {ctDesc.width, ctDesc.height} },
                 .layerCount = 1,
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &colorAttachmentRef,
@@ -212,7 +251,7 @@ namespace alloy::vk
         //VkRenderPass _renderPassClear;
 
         common::sp<VulkanTexture> _depthTarget;
-        std::vector<common::sp<_SCFB>> _fbs;
+        std::vector<BackBufferContainer> _fbs;
         //std::vector<Framebuffer::Description> _fbDesc;
 
         VkSwapchainKHR _deviceSwapchain;

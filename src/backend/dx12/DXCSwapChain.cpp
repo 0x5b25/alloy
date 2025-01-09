@@ -23,13 +23,14 @@ namespace alloy::dxc {
 
     uint32_t DXCSwapChainBackBuffer::GetRTVCount() const { return 1; }
 
-    bool DXCSwapChainBackBuffer::HasDSV() const { return _bb._depthBuffer != nullptr; }
+    bool DXCSwapChainBackBuffer::HasDSV() const { return _bb.dsTgt.tex != nullptr; }
 
     
     bool DXCSwapChainBackBuffer::DSVHasStencil() const {
-        if(_bb._depthBuffer) {
+        if(_bb.dsTgt.tex) {
+            auto& dxcTex = _bb.dsTgt.tex->GetTextureObject();
             if(FormatHelpers::IsStencilFormat(
-                _bb._depthBuffer->GetDesc().format
+                dxcTex->GetDesc().format
             )) return true;
         }
         
@@ -37,11 +38,31 @@ namespace alloy::dxc {
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE DXCSwapChainBackBuffer::GetRTV(uint32_t slot) const {
-        return _bb._rtv;
+        return _bb.colorTgt.view;
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE DXCSwapChainBackBuffer::GetDSV() const {
-        return _bb._dsv;
+        return _bb.dsTgt.view;
+    }
+
+    
+    OutputDescription DXCSwapChainBackBuffer::GetDesc() {
+        OutputDescription desc { };
+        desc.colorAttachment.push_back(common::sp(new DXCSwapChainRenderTarget(
+            _sc,
+            _bb.colorTgt
+        )));
+
+        if(HasDSV()) {
+            desc.depthAttachment.reset(new DXCSwapChainRenderTarget(
+                _sc,
+                _bb.dsTgt
+            ));
+        }
+
+        desc.sampleCount = _bb.colorTgt.tex->GetTextureObject()->GetDesc().sampleCount;
+
+        return desc;
     }
     
     common::sp<ISwapChain> DXCSwapChain::Make(
@@ -287,10 +308,10 @@ namespace alloy::dxc {
 
             auto vldTex = DXCTexture::WrapNative(dxcDev, texDesc, pTex);
 
-            IFrameBuffer::Description fbDesc;
-            fbDesc.colorTargets = { 
-                {vldTex, vldTex->GetDesc().arrayLayers, vldTex->GetDesc().mipLevels}
-            };
+            //IFrameBuffer::Description fbDesc;
+            //fbDesc.colorTargets = { 
+            //    {vldTex, vldTex->GetDesc().arrayLayers, vldTex->GetDesc().mipLevels}
+            //};
 
             common::sp<ITexture> vldDepthTex;
             if (description.depthFormat.has_value()) {
@@ -308,14 +329,29 @@ namespace alloy::dxc {
 
                 vldDepthTex = _dev->GetResourceFactory().CreateTexture(dsDesc);
 
-                fbDesc.depthTarget = { vldDepthTex, vldDepthTex->GetDesc().arrayLayers, vldDepthTex->GetDesc().mipLevels };
+                //fbDesc.depthTarget = { vldDepthTex, vldDepthTex->GetDesc().arrayLayers, vldDepthTex->GetDesc().mipLevels };
 
                 auto dxcDepthTex = PtrCast<DXCTexture>(vldDepthTex.get());
                 dxcDev->GetDevice()->CreateDepthStencilView(dxcDepthTex->GetHandle(), nullptr, dsvHandle);
         
             }
 
-            _fbs.emplace_back(vldTex, rtvHandle, vldDepthTex, dsvHandle, fbDesc);
+            auto& fbC = _fbs.emplace_back();
+            ITextureView::Description ctvDesc { };
+            ctvDesc.arrayLayers = 1;
+            ctvDesc.mipLevels = 1;
+            fbC.colorTgt.tex = DXCTextureView::Make(vldTex, ctvDesc);
+            fbC.colorTgt.view = rtvHandle;
+            if(vldDepthTex) {
+                auto dxcDepthTex = PtrCast<DXCTexture>(vldDepthTex.get());
+                dxcDepthTex->ref();
+                
+                ITextureView::Description dsvDesc { };
+                dsvDesc.arrayLayers = 1;
+                dsvDesc.mipLevels = 1;
+                fbC.dsTgt.tex = DXCTextureView::Make(common::sp(dxcDepthTex), dsvDesc);
+                fbC.dsTgt.view = dsvHandle;
+            }
 
             rtvHandle.ptr += rtvDescriptorSize;
             dsvHandle.ptr += dsvDescriptorSize;

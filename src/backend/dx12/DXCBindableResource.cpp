@@ -256,7 +256,7 @@ namespace alloy::dxc
                         pRes = rangedDXCBuffer->GetHandle();
                     } else {
                         auto* texView = PtrCast<ITextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTarget().get());
+                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
                         auto& texDesc = dxcTex->GetDesc();
                         auto& viewDesc = texView->GetDesc();
                         uavDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
@@ -327,7 +327,7 @@ namespace alloy::dxc
                         pRes = rangedDXCBuffer->GetHandle();
                     } else {
                         auto* texView = PtrCast<ITextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTarget().get());
+                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
                         auto& texDesc = dxcTex->GetDesc();
                         auto& viewDesc = texView->GetDesc();
 

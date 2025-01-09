@@ -31,15 +31,36 @@ namespace alloy::dxc {
     class DXCDevice;
     class DXCSwapChain;
 
+    struct RenderTargetContainer {
+        common::sp<DXCTextureView> tex;
+        D3D12_CPU_DESCRIPTOR_HANDLE view;
+    };
     struct BackBufferContainer {
         //DXCSwapChain* _sc;
-        common::sp<ITexture> _colorBuffer;
-        D3D12_CPU_DESCRIPTOR_HANDLE _rtv;
+        RenderTargetContainer colorTgt;
         
-        common::sp<ITexture> _depthBuffer;
-        D3D12_CPU_DESCRIPTOR_HANDLE _dsv;
+        RenderTargetContainer dsTgt;
 
-        IFrameBuffer::Description _fbDesc;
+        //IFrameBuffer::Description fbDesc;
+    };
+
+    class DXCSwapChainRenderTarget : public IRenderTarget {
+        common::sp<DXCSwapChain> _sc;
+        const RenderTargetContainer& _rt;
+        
+    public:
+
+        DXCSwapChainRenderTarget(
+            const common::sp<DXCSwapChain>& sc,
+            const RenderTargetContainer& rt
+        )
+            : _sc(sc)
+            , _rt(rt) 
+        { }
+        
+        virtual ITextureView& GetTexture() const override {return *_rt.tex.get();}
+
+        D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const {return _rt.view;}
     };
 
     class DXCSwapChainBackBuffer : public DXCFrameBufferBase {
@@ -55,10 +76,8 @@ namespace alloy::dxc {
         );
 
         ~DXCSwapChainBackBuffer() override;
-
         
-        virtual const Description& GetDesc() const override {return _bb._fbDesc;}
-
+        virtual OutputDescription GetDesc() override;
 
         virtual uint32_t GetRTVCount() const override;
         virtual bool HasDSV() const override;

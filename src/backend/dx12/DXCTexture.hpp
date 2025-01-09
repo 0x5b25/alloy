@@ -53,7 +53,7 @@ namespace alloy::dxc
             const ITexture::Description& desc
         );
 
-        static common::sp<ITexture> WrapNative(
+        static common::sp<DXCTexture> WrapNative(
             const common::sp<DXCDevice>& dev,
             const ITexture::Description& desc,
             ID3D12Resource* nativeRes
@@ -123,6 +123,11 @@ namespace alloy::dxc
     
     
         ~DXCTextureView() {}
+
+        static common::sp<DXCTextureView> Make (
+            const common::sp<DXCTexture>& tex,
+            const ITextureView::Description& desc
+        );
         
     };
 
