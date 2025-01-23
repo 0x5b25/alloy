@@ -179,7 +179,7 @@ public:
     bool refCntGreaterThan(int32_t threadIsolatedTestCnt) const {
         int cnt = fRefCnt.load(std::memory_order_acquire);
         // If this fails then the above contract has been violated.
-        ASSERT(cnt >= threadIsolatedTestCnt);
+        assert(cnt >= threadIsolatedTestCnt);
         return cnt > threadIsolatedTestCnt;
     }
 
@@ -270,7 +270,7 @@ public:
         return *this;
     }
     template <typename U>
-    typename std::enable_if<std::is_convertible<U*, T*>::value, typename sp<T>&>::type
+    typename std::enable_if<std::is_convertible<U*, T*>::value,  sp<T>&>::type
     operator=(const sp<U>& that) {
         static_assert(std::is_convertible<U*, T*>::value,
             "Type not convertable!");

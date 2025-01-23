@@ -1,4 +1,5 @@
-#include "MetalDevice.hpp"
+#include "MetalDevice.h"
+#include "alloy/CommandList.hpp"
 
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
@@ -6,26 +7,28 @@
 
 #import <Metal/Metal.h>
 
-#include "veldrid/common/Macros.h"
-#include "veldrid/backend/Backends.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/common/Waitable.hpp"
+#include "alloy/backend/Backends.hpp"
 #include "MtlSurfaceUtil.hpp"
+#include "MetalCommandList.h"
+#include "MetalSwapChain.h"
 
 #include <set>
+#include <chrono>
 
-void Test(){
-    id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
+namespace alloy {
+    common::sp<IGraphicsDevice> CreateMetalGraphicsDevice(
+        const IGraphicsDevice::Options& options
+    ) {
+        return alloy::mtl::MetalDevice::Make(options);
+    }
 }
 
-
-namespace Veldrid
+namespace alloy::mtl
 {
     
-	sp<GraphicsDevice> CreateMetalGraphicsDevice(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
-    ) {
-		return MetalDevice::Make(options, swapChainSource);
-	}
+	
 
     class _MTLFeatures{
         
@@ -230,129 +233,334 @@ namespace Veldrid
     };
 
     MetalDevice::~MetalDevice(){
+        delete _gfxQ;
+        delete _copyQ;
         [_device release];
     }
 
 
-    sp<GraphicsDevice> MetalDevice::Make(
-        const GraphicsDevice::Options& options,
-        SwapChainSource* swapChainSource
+    common::sp<MetalDevice> MetalDevice::Make(
+        const IGraphicsDevice::Options& options
     ){
-        
-        auto _device = MTLCreateSystemDefaultDevice();
-        //_deviceName = _device->name();
-        //enumerate featureset support
-        _MTLFeatures MetalFeatures(_device);
-
-        GraphicsApiVersion _apiVersion = MetalFeatures;// new GraphicsApiVersion(major, minor, 0, 0);
-
-        GraphicsDevice::Features _features;
-
-        _features.computeShader = true;
-        _features.geometryShader = false;
-        _features.tessellationShaders = false;
-        _features.multipleViewports = MetalFeatures.IsMultiViewportSupported();
-        _features.samplerLodBias = false;
-        _features.drawBaseVertex = MetalFeatures.IsDrawBaseVertexInstanceSupported();
-        _features.drawBaseInstance = MetalFeatures.IsDrawBaseVertexInstanceSupported();
-        _features.drawIndirect = true;
-        _features.drawIndirectBaseInstance = true;
-        _features.fillModeWireframe = true;
-        _features.samplerAnisotropy = true;
-        _features.depthClipDisable = true;
-        _features.texture1D = true, // TODO: Should be macOS 10.11+ and iOS 11.0+;
-        _features.independentBlend = true;
-        _features.structuredBuffer = true;
-        _features.subsetTextureView = true;
-        _features.commandListDebugMarkers = true;
-        _features.bufferRangeBinding = true;
-        _features.shaderFloat64 = false;
-        //    ResourceBindingModel = options.ResourceBindingModel;
-        
-        MTLCommandBufferHandler _completionHandler;
+        @autoreleasepool {
+            auto _device = MTLCreateSystemDefaultDevice();
+            //_deviceName = _device->name();
+            //enumerate featureset support
+            _MTLFeatures MetalFeatures(_device);
             
-
+            GraphicsApiVersion _apiVersion = MetalFeatures;// new GraphicsApiVersion(major, minor, 0, 0);
+            
+            IGraphicsDevice::Features _features;
+            
+            _features.computeShader = true;
+            _features.geometryShader = false;
+            _features.tessellationShaders = false;
+            _features.multipleViewports = MetalFeatures.IsMultiViewportSupported();
+            _features.samplerLodBias = false;
+            _features.drawBaseVertex = MetalFeatures.IsDrawBaseVertexInstanceSupported();
+            _features.drawBaseInstance = MetalFeatures.IsDrawBaseVertexInstanceSupported();
+            _features.drawIndirect = true;
+            _features.drawIndirectBaseInstance = true;
+            _features.fillModeWireframe = true;
+            _features.samplerAnisotropy = true;
+            _features.depthClipDisable = true;
+            _features.texture1D = true, // TODO: Should be macOS 10.11+ and iOS 11.0+;
+            _features.independentBlend = true;
+            _features.structuredBuffer = true;
+            _features.subsetTextureView = true;
+            _features.commandListDebugMarkers = true;
+            _features.bufferRangeBinding = true;
+            _features.shaderFloat64 = false;
+            //    ResourceBindingModel = options.ResourceBindingModel;
+            
+            MTLCommandBufferHandler _completionHandler;
+            
+            
             //_libSystem = new NativeLibrary("libSystem.dylib");
             //_concreteGlobalBlock = _libSystem.LoadFunction("_NSConcreteGlobalBlock");
-        if (MetalFeatures.IsMacOS())
-        {
-            //_completionHandler = OnCommandBufferCompleted;
-        }
-        else
-        {
-            //_completionHandler = OnCommandBufferCompleted_Static;
-        }
+            if (MetalFeatures.IsMacOS())
+            {
+                //_completionHandler = OnCommandBufferCompleted;
+            }
+            else
+            {
+                //_completionHandler = OnCommandBufferCompleted_Static;
+            }
             //_completionHandlerFuncPtr = Marshal.GetFunctionPointerForDelegate<MTLCommandBufferHandler>(_completionHandler);
-        //_completionBlockDescriptor = Marshal.AllocHGlobal(Unsafe.SizeOf<BlockDescriptor>());
-        /*
-        BTNodeDescriptor* descriptorPtr = (BlockDescriptor*)_completionBlockDescriptor;
-            descriptorPtr->reserved = 0;
-            descriptorPtr->Block_size = (ulong)Unsafe.SizeOf<BlockDescriptor>();
+            //_completionBlockDescriptor = Marshal.AllocHGlobal(Unsafe.SizeOf<BlockDescriptor>());
+            /*
+             BTNodeDescriptor* descriptorPtr = (BlockDescriptor*)_completionBlockDescriptor;
+             descriptorPtr->reserved = 0;
+             descriptorPtr->Block_size = (ulong)Unsafe.SizeOf<BlockDescriptor>();
+             
+             _completionBlockLiteral = Marshal.AllocHGlobal(Unsafe.SizeOf<BlockLiteral>());
+             BlockLiteral* blockPtr = (BlockLiteral*)_completionBlockLiteral;
+             blockPtr->isa = _concreteGlobalBlock;
+             blockPtr->flags = 1 << 28 | 1 << 29;
+             blockPtr->invoke = _completionHandlerFuncPtr;
+             blockPtr->descriptor = descriptorPtr;
+             
+             if (!MetalFeatures.IsMacOS())
+             {
+             lock (s_aotRegisteredBlocks)
+             {
+             s_aotRegisteredBlocks.Add(_completionBlockLiteral, this);
+             }
+             }
+             
+             ResourceFactory = new MTLResourceFactory(this);
+             
+             TextureSampleCount[] allSampleCounts = (TextureSampleCount[])Enum.GetValues(typeof(TextureSampleCount));
+             _supportedSampleCounts = new bool[allSampleCounts.Length];
+             for (int i = 0; i < allSampleCounts.Length; i++)
+             {
+             TextureSampleCount count = allSampleCounts[i];
+             uint uintValue = FormatHelpers.GetSampleCountUInt32(count);
+             if (_device.supportsTextureSampleCount((UIntPtr)uintValue))
+             {
+             _supportedSampleCounts[i] = true;
+             }
+             }
+             */
+            //MtlSurfaceContainer container = {};
+            //if (swapChainSource != nullptr)
+            //{
+            //    //SwapchainDescription desc = swapchainDesc.Value;
+            //    container = CreateSurface(_device, swapChainSource);
+            //}
+            
+            auto mtlDev = new MetalDevice();
+            mtlDev->_device = _device;
+            mtlDev->_cmdQueue = [_device newCommandQueue];
+            //_device->newCommandQueue();
+            mtlDev->_info.apiVersion = _apiVersion;
+            mtlDev->_info.deviceName = [[_device name] cStringUsingEncoding:kCFStringEncodingUTF8];
+            mtlDev->_info.deviceID = [_device registryID];
+            mtlDev->_features = _features;
+            
+            mtlDev->_gfxQ = new MetalCmdQ(*mtlDev);
+            mtlDev->_copyQ = new MetalCmdQ(*mtlDev);
+            
+            return common::sp(mtlDev);
+            
+            //_metalInfo = new BackendInfoMetal(this);
+            
+            /// Creates and caches common device resources after device creation completes.
+            //PostDeviceCreated();
+        }
+    }
 
-            _completionBlockLiteral = Marshal.AllocHGlobal(Unsafe.SizeOf<BlockLiteral>());
-            BlockLiteral* blockPtr = (BlockLiteral*)_completionBlockLiteral;
-            blockPtr->isa = _concreteGlobalBlock;
-            blockPtr->flags = 1 << 28 | 1 << 29;
-            blockPtr->invoke = _completionHandlerFuncPtr;
-            blockPtr->descriptor = descriptorPtr;
 
-            if (!MetalFeatures.IsMacOS())
-            {
-                lock (s_aotRegisteredBlocks)
-                {
-                    s_aotRegisteredBlocks.Add(_completionBlockLiteral, this);
-                }
-            }
 
-            ResourceFactory = new MTLResourceFactory(this);
+    ICommandQueue* MetalDevice::GetGfxCommandQueue() {
+        return _gfxQ;
+    }
+    ICommandQueue* MetalDevice::GetCopyCommandQueue() {
+        return _copyQ;
+    }
 
-            TextureSampleCount[] allSampleCounts = (TextureSampleCount[])Enum.GetValues(typeof(TextureSampleCount));
-            _supportedSampleCounts = new bool[allSampleCounts.Length];
-            for (int i = 0; i < allSampleCounts.Length; i++)
-            {
-                TextureSampleCount count = allSampleCounts[i];
-                uint uintValue = FormatHelpers.GetSampleCountUInt32(count);
-                if (_device.supportsTextureSampleCount((UIntPtr)uintValue))
-                {
-                    _supportedSampleCounts[i] = true;
-                }
-            }
-         */
-        MtlSurfaceContainer container = {};
-        if (swapChainSource != nullptr)
-        {
-            //SwapchainDescription desc = swapchainDesc.Value;
-            container = CreateSurface(_device, swapChainSource);
+    ISwapChain::State MetalDevice::PresentToSwapChain(ISwapChain* sc) {
+        auto mtlSC = common::PtrCast<MetalSwapChain>(sc);
+        mtlSC->PresentBackBuffer();
+        return ISwapChain::State::Optimal;
+    }
+
+
+    void MetalDevice::WaitForIdle() {
+        _gfxQ->WaitForIdle();
+    }
+
+    common::sp<ICommandList> MetalCmdQ::CreateCommandList() {
+        
+        @autoreleasepool {
+            auto dev = common::ref_sp(&_dev);
+            auto cmdBuf = [[_cmdQ commandBuffer] retain];
+            //[_cmdBuf retain];
+            
+            auto impl = new MetalCommandList(dev, cmdBuf);
+            return common::sp<ICommandList>(impl);
+        }
+    }
+
+
+    MetalCmdQ::MetalCmdQ(MetalDevice& device)
+        : _dev(device) 
+    {
+        _cmdQ = [_dev.GetHandle() newCommandQueue];
+    }
+
+
+    MetalCmdQ::~MetalCmdQ() { [_cmdQ release]; }
+
+
+    void MetalCmdQ::EncodeSignalEvent(IEvent *fence, uint64_t value) {
+    auto mtlEvt = common::PtrCast<MetalEvent>(fence);
+    
+        @autoreleasepool {
+            auto dummyCmdBuf = [_cmdQ commandBuffer];
+            [dummyCmdBuf encodeSignalEvent:mtlEvt->GetHandle() value:value];
+            [dummyCmdBuf commit];
+        }
+    }
+
+    void MetalCmdQ::EncodeWaitForEvent(IEvent *fence, uint64_t value) {
+        auto mtlEvt = common::PtrCast<MetalEvent>(fence);
+    
+        @autoreleasepool {
+            auto dummyCmdBuf = [_cmdQ commandBuffer] ;
+            [dummyCmdBuf encodeWaitForEvent:mtlEvt->GetHandle() value:value];
+            [dummyCmdBuf commit];
+        }
+    }
+
+    void MetalCmdQ::SubmitCommand(
+        ICommandList *cmd
+    ){
+        @autoreleasepool {
+            auto mtlCmdBuf = static_cast<MetalCommandList*>(cmd);
+            auto rawCmdBuf = mtlCmdBuf->GetHandle();
+            
+            
+            //auto stat = [rawCmdBuf status];
+            [rawCmdBuf commit];
+            //If multiple submissions, pick gang leader
         }
         
-        auto mtlDev = new MetalDevice();
-        mtlDev->_device = _device;
-        mtlDev->_cmdQueue = [_device newCommandQueue];
-        mtlDev->_metalLayer = container.layer;
-        mtlDev->_isOwnSurface = container.isOwnSurface;
-        //_device->newCommandQueue();
-        mtlDev->_apiVersion = _apiVersion;
-        mtlDev->_features = _features;
-
-        return sp(mtlDev);
-
-        //_metalInfo = new BackendInfoMetal(this);
-
-        /// Creates and caches common device resources after device creation completes.
-        //PostDeviceCreated();
     }
 
-    void MetalDevice::SubmitCommand(
-        const std::vector<CommandList *> &cmd,
-        const std::vector<Semaphore *> &waitSemaphores,
-        const std::vector<Semaphore *> &signalSemaphores,
-        Fence *fence
-    ){
-        assert(!cmd.empty());
-        bool isGangedSubmission = !waitSemaphores.empty() || !signalSemaphores.empty();
-        
-        //If multiple submissions, pick gang leader
-        
+
+void MetalCmdQ::WaitForIdle() {
+    @autoreleasepool {
+        auto dummyCmdBuf = [[_cmdQ commandBuffer] retain];
+        [dummyCmdBuf commit];
+        [dummyCmdBuf waitUntilCompleted];
+        [dummyCmdBuf release];
+    }
+}
+
+MetalBuffer::MetalBuffer( const common::sp<MetalDevice>& dev,
+            const IBuffer::Description& desc,
+            id<MTLBuffer> buffer )
+    : IBuffer(desc)
+    , _dev(dev)
+    , _mtlBuffer(buffer)
+{}
+
+MetalBuffer::~MetalBuffer() {
+    [_mtlBuffer release];
+}
+
+
+    common::sp<MetalBuffer> MetalBuffer::Make(
+        const common::sp<MetalDevice>& dev,
+        const IBuffer::Description& desc
+    ) {
+        @autoreleasepool {
+            
+            MTLResourceOptions mtlDesc{};
+            
+            switch(desc.hostAccess) {
+                case alloy::HostAccess::PreferRead:
+                    mtlDesc |= MTLResourceStorageModeShared
+                             | MTLResourceCPUCacheModeDefaultCache;
+                    break;
+                    
+                case alloy::HostAccess::PreferWrite:
+                    mtlDesc |= MTLResourceStorageModeShared
+                             | MTLResourceCPUCacheModeWriteCombined;
+                    break;
+                        
+                case alloy::HostAccess::None:
+                    mtlDesc |= MTLResourceStorageModePrivate;
+                    break;
+            }
+            
+            mtlDesc |= MTLResourceHazardTrackingModeTracked;
+            
+            auto alignedSize = ((desc.sizeInBytes + 255)/256) * 256;
+            
+            auto buffer = [dev->GetHandle() newBufferWithLength:alignedSize options:mtlDesc];
+            //[buffer retain];
+            
+            auto alBuf = new MetalBuffer(dev, desc, buffer);
+            alBuf->description.sizeInBytes = alignedSize;
+            return common::sp(alBuf);
+        }
     }
 
-} // namespace Veldrid
+    void* MetalBuffer::MapToCPU() {
+        @autoreleasepool {
+            return [_mtlBuffer contents];
+        }
+    }
+
+    void MetalBuffer::UnMap() {}
+
+
+
+    void MetalBuffer::SetDebugName(const std::string& name) {
+        @autoreleasepool {
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [_mtlBuffer setLabel:nsSrc];
+        }
+    }
+
+
+    MetalEvent::~MetalEvent() {
+        //[_listener release];
+        [_mtlEvt release];
+    }
+
+
+    common::sp<MetalEvent> MetalEvent::Make(const common::sp<MetalDevice>& dev) {
+        @autoreleasepool {
+            auto mtlDev = dev->GetHandle();
+            
+            auto mtlEvt = [mtlDev newSharedEvent];
+            
+            auto evtImpl = new MetalEvent(dev);
+            
+            evtImpl->_mtlEvt = mtlEvt;
+            //evtImpl->_listener = [MTLSharedEventListener new];
+            
+            return common::sp(evtImpl);
+        }
+
+    }
+
+
+    uint64_t MetalEvent::GetSignaledValue(){
+       return  _mtlEvt.signaledValue;
+    }
+
+    bool MetalEvent::WaitFromCPU(uint64_t waitForValue, uint32_t timeoutMs){
+        
+        @autoreleasepool {
+            common::ManualResetLatch latch;
+            
+            auto* pLatch = &latch;
+            
+            auto listener = [[MTLSharedEventListener new] autorelease];
+            
+            [_mtlEvt notifyListener:listener atValue:waitForValue block:^(id<MTLSharedEvent> evt, uint64_t value){
+                
+                pLatch->Signal();
+                
+            }];
+            
+            auto duration = std::chrono::milliseconds(timeoutMs);
+            
+            bool timedout = latch.WaitWithTimeout(duration);
+            
+            return !timedout;
+        }
+    }
+
+    void MetalEvent::SignalFromCPU(uint64_t signalValue){
+        _mtlEvt.signaledValue = signalValue;
+    }
+
+
+    
+
+} // namespace alloy::mtl

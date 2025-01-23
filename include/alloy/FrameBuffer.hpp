@@ -29,7 +29,7 @@ namespace alloy
         //};
 
         common::sp<IRenderTarget> depthAttachment;
-        std::vector<common::sp<IRenderTarget>> colorAttachment;
+        std::vector<common::sp<IRenderTarget>> colorAttachments;
         SampleCount sampleCount;
 
     };

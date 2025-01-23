@@ -8,19 +8,19 @@
 #import <QuartzCore/QuartzCore.h>
 
 
-MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, Veldrid::SwapChainSource* src){
+MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
     
     MtlSurfaceContainer container{};
     
     switch(src->tag){
-        case Veldrid::SwapChainSource::Tag::Opaque: {
-            auto opaqueSource = (Veldrid::OpaqueSwapChainSource*)src;
-            container.layer = (CAMetalLayer*)opaqueSource->handle;
+        case alloy::SwapChainSource::Tag::Opaque: {
+            auto opaqueSource = (alloy::OpaqueSwapChainSource*)src;
+            container.layer = (__bridge CAMetalLayer*)opaqueSource->handle;
             container.isOwnSurface = false;
         }break;
             
-        case Veldrid::SwapChainSource::Tag::NSWindow: {
-            auto nsWindowSource = (Veldrid::NSWindowSwapChainSource*)src;
+        case alloy::SwapChainSource::Tag::NSWindow: {
+            auto nsWindowSource = (alloy::NSWindowSwapChainSource*)src;
             NSWindow* nsWindow = (NSWindow*)nsWindowSource->nsWindow;
             NSView* contentView = nsWindow.contentView;
             CGSize windowContentSize = contentView.frame.size;
@@ -37,8 +37,8 @@ MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, Veldrid::SwapChainSource* sr
             container.isOwnSurface = true;
         }break;
             
-        case Veldrid::SwapChainSource::Tag::NSView:{
-            auto nsViewSource = (Veldrid::NSViewSwapChainSource*)src;
+        case alloy::SwapChainSource::Tag::NSView:{
+            auto nsViewSource = (alloy::NSViewSwapChainSource*)src;
             NSView* contentView = (NSView*)nsViewSource->nsView;
             CGSize windowContentSize = contentView.frame.size;
             uint width = windowContentSize.width;
@@ -56,7 +56,7 @@ MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, Veldrid::SwapChainSource* sr
             container.isOwnSurface = true;
         } break;
             
-        //case Veldrid::SwapChainSource::Tag::UIView: {
+        //case alloy::SwapChainSource::Tag::UIView: {
             
         //} break;
             

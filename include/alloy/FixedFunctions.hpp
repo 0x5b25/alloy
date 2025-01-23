@@ -15,7 +15,7 @@ namespace alloy
         NotEqual
     };
 
-    struct BlendStateDescription{
+    struct AttachmentStateDescription{
 
         enum class BlendFactor{
             /// <summary>
@@ -106,7 +106,10 @@ namespace alloy
             }
         };
 
-        struct Attachment{
+        struct ColorAttachment{
+
+            PixelFormat format;
+
             // Controls whether blending is enabled for the color attachment.
             bool blendEnabled;
 
@@ -143,8 +146,8 @@ namespace alloy
             ///     DestinationAlphaFactor = BlendFactor.Zero
             ///     AlphaFunction = BlendFunction.Add
             /// </summary>
-            static constexpr Attachment MakeOverrideBlend(){
-                Attachment res{};
+            static constexpr ColorAttachment MakeOverrideBlend(){
+                ColorAttachment res{};
                 res.blendEnabled = true;
                 res.sourceColorFactor = BlendFactor::One;
                 res.destinationColorFactor = BlendFactor::Zero;
@@ -168,8 +171,8 @@ namespace alloy
             ///     DestinationAlphaFactor = BlendFactor.InverseSourceAlpha
             ///     AlphaFunction = BlendFunction.Add
             /// </summary>
-            static constexpr Attachment MakeAlphaBlend() {
-                Attachment res{};
+            static constexpr ColorAttachment MakeAlphaBlend() {
+                ColorAttachment res{};
                 res.blendEnabled = true;
                 res.sourceColorFactor = BlendFactor::SourceAlpha;
                 res.destinationColorFactor = BlendFactor::InverseSourceAlpha;
@@ -193,8 +196,8 @@ namespace alloy
             ///     DestinationAlphaFactor = BlendFactor.One
             ///     AlphaFunction = BlendFunction.Add
             /// </summary>
-            static constexpr Attachment MakeAdditiveBlend() {
-                Attachment res{};
+            static constexpr ColorAttachment MakeAdditiveBlend() {
+                ColorAttachment res{};
                 res.blendEnabled = true;
                 res.sourceColorFactor = BlendFactor::SourceAlpha;
                 res.destinationColorFactor = BlendFactor::One;
@@ -218,8 +221,8 @@ namespace alloy
             ///     DestinationAlphaFactor = BlendFactor.Zero
             ///     AlphaFunction = BlendFunction.Add
             /// </summary>
-            static constexpr Attachment MakeDisabled() {
-                Attachment res{};
+            static constexpr ColorAttachment MakeDisabled() {
+                ColorAttachment res{};
                 res.blendEnabled = false;
                 res.sourceColorFactor = BlendFactor::One;
                 res.destinationColorFactor = BlendFactor::Zero;
@@ -235,11 +238,15 @@ namespace alloy
 
         // A constant blend color used in <see cref="BlendFactor.BlendFactor"/> and <see cref="BlendFactor.InverseBlendFactor"/>,
         // or otherwise ignored.
-        struct{
-            float r,g,b,a;
-        } blendConstant;
+        Color4f blendConstant;
 
-        std::vector<Attachment> attachments;
+        std::vector<ColorAttachment> colorAttachments;
+
+        struct DepthStencilAttachment{
+            PixelFormat depthStencilFormat;
+        };
+
+        std::optional<DepthStencilAttachment> depthStencilAttachment;
         
         // Enables alpha-to-coverage, which causes a fragment's alpha value to be used when determining multi-sample coverage.
         bool alphaToCoverageEnabled;

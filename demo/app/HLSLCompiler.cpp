@@ -98,6 +98,8 @@ class DxcInstanceHelper {
     bool LoadDxcDylib() {
         #ifdef _WIN32
             _dxcDylib = LoadLibraryA("dxcompiler.dll");
+        #elif __APPLE__
+            _dxcDylib = dlopen("libdxcompiler.dylib", RTLD_LAZY);
         #else
             _dxcDylib = dlopen("libdxcompiler.so", RTLD_LAZY);
         #endif
@@ -169,7 +171,7 @@ public:
         delete pInst;
     }
     
-    virtual std::vector<uint8_t> Compile(const std::wstring& source, 
+    virtual std::vector<uint8_t> Compile(const std::string& source, 
                                        const std::wstring& entryPoint,
                                        ShaderType type,
                                        ShaderModel model,
@@ -196,8 +198,9 @@ public:
         // Add optimization level
         switch(optLevel) {
             case OptimizationLevel::Debug:
-                args.push_back(L"-Od");
+                args.push_back(L"-O0");
                 args.push_back(L"-Zi");  // Add debug info
+                args.push_back(L"-Qembed_debug"); //Embed debug info into bytecode
                 break;
             case OptimizationLevel::Level1:
                 args.push_back(L"-O1");
@@ -213,8 +216,8 @@ public:
 
         DxcBuffer sourceBuffer { };
         sourceBuffer.Ptr = source.c_str();
-        sourceBuffer.Size = source.size() * sizeof(wchar_t);
-        sourceBuffer.Encoding = DXC_CP_UTF16;
+        sourceBuffer.Size = source.size();// * sizeof(wchar_t);
+        sourceBuffer.Encoding = DXC_CP_UTF8;
 
         ComPtr<IDxcResult> pResult;
         ThrowIfFailed(pCompiler3->Compile(&sourceBuffer, args.data(), args.size(), nullptr, IID_PPV_ARGS(&pResult)));
@@ -224,14 +227,14 @@ public:
             ComPtr<IDxcBlobUtf8> pErrors;
             ThrowIfFailed(pResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&pErrors), nullptr));
             if (pErrors && pErrors->GetStringLength() > 0) {
-                throw ShaderCompileError(source, entryPoint, pErrors->GetStringPointer());
+                throw ShaderCompileError(L"", entryPoint, pErrors->GetStringPointer());
             }
         }
 
         HRESULT hrStatus;
         ThrowIfFailed(pResult->GetStatus(&hrStatus));
         if (FAILED(hrStatus)) {
-            throw ShaderCompileError(source, entryPoint, 
+            throw ShaderCompileError(L"", entryPoint, 
                 std::format("Compilation failed with HRESULT {:#010x}", static_cast<unsigned int>(hrStatus)).c_str());
         }
 

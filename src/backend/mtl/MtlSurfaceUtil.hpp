@@ -3,7 +3,7 @@
 #include <AppKit/AppKit.h>
 #include <QuartzCore/QuartzCore.h>
 
-#include "veldrid/SwapChainSources.hpp"
+#include "alloy/SwapChainSources.hpp"
 
 struct MtlSurfaceContainer{
     CAMetalLayer* layer;
@@ -11,4 +11,4 @@ struct MtlSurfaceContainer{
 };
 
 
-MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, Veldrid::SwapChainSource* src);
+MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src);

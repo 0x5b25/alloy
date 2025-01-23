@@ -5,14 +5,14 @@ namespace alloy
 {
 
 #ifndef VLD_BACKEND_DXC
-    sp<GraphicsDevice> CreateDX12GraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateDX12GraphicsDevice(
+        const IGraphicsDevice::Options& options
     ){return nullptr;}
 #endif
 
 #ifndef VLD_BACKEND_VK
-    sp<GraphicsDevice> CreateVulkanGraphicsDevice(
-        const GraphicsDevice::Options& options
+    common::sp<IGraphicsDevice> CreateVulkanGraphicsDevice(
+        const IGraphicsDevice::Options& options
     ){return nullptr;}
 #endif
 

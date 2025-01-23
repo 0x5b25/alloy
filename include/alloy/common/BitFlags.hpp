@@ -2,6 +2,7 @@
 
 #include <bitset>
 #include <cassert>
+#include <type_traits>
 
 namespace alloy::common
 {

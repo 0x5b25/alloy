@@ -9,7 +9,15 @@ set(VLD_MISC_HEADERS
     "include/alloy/common/Common.hpp"
     "include/alloy/common/Macros.h"
     "include/alloy/common/RefCnt.hpp"
+    "include/alloy/common/Waitable.hpp"
+    "include/alloy/common/BitFlags.hpp"
 )
+
+set(VLD_MISC_SRCS
+
+    "src/common/Waitable.cpp"
+)
+
 
 set(VLD_IFACE_HEADERS
     "include/alloy/RenderPass.hpp"
@@ -44,7 +52,7 @@ set(VLD_IFACE_IMP_SRCS
 
 source_group(
     TREE "${CMAKE_CURRENT_SOURCE_DIR}"
-    FILES ${VLD_MISC_HEADERS} ${VLD_IFACE_HEADERS} ${VLD_IFACE_IMP_SRCS})
+    FILES ${VLD_MISC_HEADERS} ${VLD_MISC_SRCS} ${VLD_IFACE_HEADERS} ${VLD_IFACE_IMP_SRCS})
 
 add_subdirectory("3rd-party")
 
@@ -54,7 +62,6 @@ if(WIN32)
     set(VLD_BACKEND_VK  true)
     set(VLD_BACKEND_MTL false)
 elseif(APPLE)
-    enable_language(OBJCXX)
     set(VLD_BACKEND_DXC false)
     set(VLD_BACKEND_VK  false)
     set(VLD_BACKEND_MTL true)
@@ -98,6 +105,7 @@ PrintBackendInfo()
 
 add_library(Veldrid STATIC
     ${VLD_MISC_HEADERS}
+    ${VLD_MISC_SRCS}
     ${VLD_IFACE_HEADERS}
     ${VLD_IFACE_IMP_SRCS}
     )
@@ -114,6 +122,9 @@ endif()
 
 if(${VLD_BACKEND_MTL})
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_MTL=1)
+    enable_language(OBJCXX)
+    #target_compile_options(Veldrid PRIVATE -fobjc-arc)
+    #target_compile_features(Veldrid PUBLIC objcxx_std_23)
     include("src/backend/mtl/CMakeLists.txt")
 endif()
 

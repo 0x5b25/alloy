@@ -16,6 +16,8 @@
 #include <string>
 #include <iostream>
 #include <type_traits>
+#include <chrono>
+#include <thread>
 
 #include "app/App.hpp"
 #include "app/HLSLCompiler.hpp"
@@ -33,7 +35,7 @@ struct UniformBufferObject {
     glm::mat4 proj;
 };
 
-const wchar_t HLSLCode[] = LR"AGAN(
+const char HLSLCode[] = R"AGAN(
 //*********************************************************
 //
 // Copyright (c) Microsoft. All rights reserved.
@@ -258,6 +260,7 @@ class UniformApp : public AppBase {
         _vbDesc.usage.vertexBuffer = 1;
         //_vbDesc.usage.staging = 1;
         vertexBuffer = factory.CreateBuffer(_vbDesc);
+        vertexBuffer->SetDebugName("Vertex Buffer");
         UpdateBuffer(vertexBuffer, quadVertices.data(), quadVertices.size());
 
         alloy::IBuffer::Description _ibDesc{};
@@ -265,6 +268,7 @@ class UniformApp : public AppBase {
         _ibDesc.usage.indexBuffer = 1;
         //_ibDesc.usage.staging = 1;
         indexBuffer = factory.CreateBuffer(_ibDesc);
+        indexBuffer->SetDebugName("Index Buffer");
         UpdateBuffer(indexBuffer, quadIndices.data(), quadIndices.size());
 
         alloy::IBuffer::Description _ubDesc{};
@@ -273,11 +277,13 @@ class UniformApp : public AppBase {
         //_ubDesc.usage.staging = 1;
         _ubDesc.hostAccess = alloy::HostAccess::PreferWrite;
         uniformBuffer = factory.CreateBuffer(_ubDesc);
+        uniformBuffer->SetDebugName("Uniform Buffer");
 
         alloy::IBuffer::Description _tbDesc{};
         _tbDesc.sizeInBytes = sizeof(SceneDescriptor);
         _tbDesc.usage.structuredBufferReadOnly = 1;
         structBuffer = factory.CreateBuffer(_tbDesc);
+        structBuffer->SetDebugName("Storage Buffer");
         UpdateBuffer(structBuffer, &sceneDescriptor, 1);
         
     }
@@ -286,6 +292,7 @@ class UniformApp : public AppBase {
         auto& factory = dev->GetResourceFactory();
 
         alloy::ISampler::Description samp1Desc {};
+        samp1Desc.maximumAnisotropy = 1;
         samp1 = factory.CreateSampler(samp1Desc);
 
 
@@ -357,10 +364,11 @@ class UniformApp : public AppBase {
             pPixel += 256;
         }
 
-        tex1Img->WriteSubresource(0,0,0,0,0,256,256,1,pCPUBuffer,256*4, 256*256*4);
+        tex1Img->WriteSubresource(0,0,{ 0,0,0 },{ 256,256,1 },pCPUBuffer,256*4, 256*256*4);
 
         delete[] pCPUBuffer;
 
+        cmd = dev->GetGfxCommandQueue()->CreateCommandList();
         cmd->Begin();
         {
             alloy::BarrierDescription barrier{
@@ -442,10 +450,19 @@ class UniformApp : public AppBase {
         };
         shaderResources = factory.CreateResourceSet(resSetDesc);
         
+        auto outputDesc = swapChain->GetBackBuffer()->GetDesc();
+        
         alloy::GraphicsPipelineDescription pipelineDescription{};
         pipelineDescription.resourceLayout = _layout;
-        pipelineDescription.blendState = {};
-        pipelineDescription.blendState.attachments = { alloy::BlendStateDescription::Attachment::MakeOverrideBlend() };
+        pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
+        pipelineDescription.attachmentState.colorAttachments.front().format = outputDesc.colorAttachments.front()->GetTexture().GetTextureObject()->GetDesc().format;
+        if(outputDesc.depthAttachment) {
+            alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
+            dsAttachment.depthStencilFormat =
+                outputDesc.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format;
+            
+            pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
+        }
         //pipelineDescription.blendState.attachments[0].blendEnabled = true;
 
         pipelineDescription.depthStencilState.depthTestEnabled = false;
@@ -461,7 +478,7 @@ class UniformApp : public AppBase {
 
         pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
 
-        using VL = alloy::GraphicsPipelineDescription::ShaderSet::VertexLayout;
+        using VL = alloy::VertexLayout;
         pipelineDescription.shaderSet.vertexLayouts = { {} };
         pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
             {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0}, alloy::ShaderDataType::Float2},
@@ -492,7 +509,9 @@ class UniformApp : public AppBase {
         opt.preferStandardClipSpaceYDirection = true;
         //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
         //dev = alloy::CreateVulkanGraphicsDevice(opt);
-        dev = alloy::CreateDX12GraphicsDevice(opt);
+        //dev = alloy::CreateDX12GraphicsDevice(opt);
+        
+        dev = alloy::CreateMetalGraphicsDevice(opt);
 
         auto& adpInfo = dev->GetAdapterInfo();
 
@@ -595,7 +614,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::PRESENT,
                     .toLayout = alloy::TextureLayout::RENDER_TARGET,
-                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
+                    .resource = backBufferDesc.colorAttachments[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };
@@ -621,22 +640,26 @@ class UniformApp : public AppBase {
             
             _commandList->Barrier({ texBarrier, dsBarrier });
         }
+        auto fbDesc = swapChain->GetBackBuffer()->GetDesc();
+        
         alloy::RenderPassAction passAction{};
         auto& ctAct = passAction.colorTargetActions.emplace_back();
         ctAct.loadAction = alloy::LoadAction::Clear;
-        ctAct.storeAction = alloy::StoreAction::DontCare;
+        ctAct.storeAction = alloy::StoreAction::Store;
         ctAct.clearColor = {0.9, 0.1, 0.3, 1};
+        ctAct.target = fbDesc.colorAttachments.front();
 
         auto& dtAct = passAction.depthTargetAction.emplace();
         dtAct.loadAction = alloy::LoadAction::Clear;
         dtAct.storeAction = alloy::StoreAction::DontCare;
-
+        dtAct.target = fbDesc.depthAttachment;
         
         auto& stAct = passAction.stencilTargetAction.emplace();
         stAct.loadAction = alloy::LoadAction::Load;
         stAct.storeAction = alloy::StoreAction::Store;
+        stAct.target = fbDesc.depthAttachment;
 
-        auto& pass = _commandList->BeginRenderPass(swapChain->GetBackBuffer(), passAction);
+        auto& pass = _commandList->BeginRenderPass(passAction);
         //_commandList->BeginRenderPass(fb);
         pass.SetPipeline(pipeline);
         pass.SetFullViewports();
@@ -671,7 +694,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = alloy::TextureLayout::RENDER_TARGET,
                     .toLayout = alloy::TextureLayout::PRESENT,
-                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
+                    .resource = backBufferDesc.colorAttachments[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };
@@ -727,6 +750,14 @@ public:
 };
 
 int main() {
+    
+    
+#if defined(VLD_PLATFORM_MACOS)
+    //Workaround xcode bug of multiple instances opened when debug
+    //: Sleep for 3 seconds on startup
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+#endif
+    
 	UniformApp app;
 	app.Run();
 }

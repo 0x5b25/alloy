@@ -133,7 +133,7 @@ bool AppBase::Run(){
 #elif defined(VLD_PLATFORM_MACOS)
     //Get the NSWindow
     auto hWnd = glfwGetCocoaWindow(window);
-    Veldrid::NSWindowSwapChainSource scSrc(hWnd);
+    alloy::NSWindowSwapChainSource scSrc(hWnd);
 #endif
     OnAppStart(&scSrc, initialWidth, initialHeight);
 

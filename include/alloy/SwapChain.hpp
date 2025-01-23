@@ -1,6 +1,6 @@
 #pragma once
 
-#include "alloy/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 #include "alloy/SwapChainSources.hpp"
 #include "alloy/SyncObjects.hpp"
 
@@ -59,7 +59,7 @@ namespace alloy
         ISwapChain(const Description& desc) : description(desc) {}
 
     public:
-
+        //ISwapChain() {}
         virtual common::sp<IFrameBuffer> GetBackBuffer() = 0;
 
         virtual void Resize(
@@ -73,7 +73,6 @@ namespace alloy
         virtual std::uint32_t GetHeight() const = 0;
 
         //virtual State SwapBuffers() = 0;
-
     };
     
 } // namespace alloy

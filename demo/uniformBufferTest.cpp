@@ -369,7 +369,7 @@ class UniformApp : public AppBase {
         alloy::GraphicsPipelineDescription pipelineDescription{};
         pipelineDescription.resourceLayout = _layout;
         pipelineDescription.blendState = {};
-        pipelineDescription.blendState.attachments = { alloy::BlendStateDescription::Attachment::MakeOverrideBlend() };
+        pipelineDescription.blendState.attachments = { alloy::AttachmentStateDescription::Attachment::MakeOverrideBlend() };
         //pipelineDescription.blendState.attachments[0].blendEnabled = true;
 
         pipelineDescription.depthStencilState.depthTestEnabled = false;
@@ -520,7 +520,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = isInitSubmission? initialLayout : alloy::TextureLayout::PRESENT,
                     .toLayout = alloy::TextureLayout::RENDER_TARGET,
-                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
+                    .resource = backBufferDesc.colorAttachments[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };
@@ -594,7 +594,7 @@ class UniformApp : public AppBase {
                 .resourceInfo = alloy::TextureBarrierResource {
                     .fromLayout = alloy::TextureLayout::RENDER_TARGET,
                     .toLayout = alloy::TextureLayout::PRESENT,
-                    .resource = backBufferDesc.colorAttachment[0]->GetTexture().GetTextureObject()
+                    .resource = backBufferDesc.colorAttachments[0]->GetTexture().GetTextureObject()
                 }
                 //.barriers = { texBarrier, dsBarrier }
             };

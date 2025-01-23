@@ -94,6 +94,8 @@ namespace alloy
         virtual void UnMap() = 0;
 
         virtual uint64_t GetNativeHandle() const {return 0;}
+        
+        virtual void SetDebugName(const std::string& ) = 0;
     };
 
 
@@ -136,7 +138,7 @@ namespace alloy
                 .elementCount = sizeInBytes,
                 .elementSizeInBytes = 1,
             };
-            auto range = new BufferRange{ 
+            auto range = new BufferRange{
                 buffer, shape, ResourceKind::UniformBuffer
             };
             return common::sp{range};
@@ -161,7 +163,12 @@ namespace alloy
             const common::sp<IBuffer>& buffer,
             std::uint32_t offsetInElements,
             std::uint32_t sizeInElements
-        ) { return MakeStructuredBuffer(sizeof(T), offsetInElements, sizeInElements); }
+        ) {
+            Shape shape {};
+            shape.elementCount = sizeInElements;
+            shape.elementSizeInBytes = sizeof(T);
+            shape.offsetInElements = offsetInElements;
+            return MakeStructuredBuffer(buffer, shape); }
 
         virtual ResourceKind GetResourceKind() const override { return _kind; }
 

@@ -464,8 +464,8 @@ namespace alloy::dxc
             {
                 auto& inputElement = inputDesc.elements[location];
 
-                iaDescs[targetIndex]./*LPCSTR*/ SemanticName = inputElement.name.c_str();
-                iaDescs[targetIndex]./*UINT*/ SemanticIndex = 0;
+                iaDescs[targetIndex]./*LPCSTR*/ SemanticName = SemanticToStr(inputElement.semantic.name);
+                iaDescs[targetIndex]./*UINT*/ SemanticIndex = inputElement.semantic.slot;
                 iaDescs[targetIndex]./*DXGI_FORMAT*/ Format = VdToD3DShaderDataType(inputElement.format);
                 iaDescs[targetIndex]./*UINT*/ InputSlot = binding;
                 iaDescs[targetIndex]./*UINT*/ AlignedByteOffset = inputElement.offset != 0 

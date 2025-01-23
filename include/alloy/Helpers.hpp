@@ -1,11 +1,11 @@
 #pragma once
 
-#include "alloy/common/RefCnt.hpp"
+//#include "alloy/common/RefCnt.hpp"
 #include "alloy/Types.hpp"
 #include "alloy/Texture.hpp"
 
 #include <cstdint>
-#include <cmath>
+//#include <cmath>
 #include <type_traits>
 
 namespace alloy

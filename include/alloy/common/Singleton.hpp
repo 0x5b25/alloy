@@ -20,7 +20,7 @@ namespace alloy{
             if (_pinstance == nullptr) {
                 std::lock_guard<std::mutex> lock{ _m };
                 if (_pinstance == nullptr) {
-                    _pinstance = new _VkCtx();
+                    _pinstance = new T();
                 }
             }
             return _pinstance.load();

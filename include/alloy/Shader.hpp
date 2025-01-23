@@ -73,6 +73,8 @@ namespace alloy
 
     public: 
         const Description& GetDesc() const {return description;}
+        
+        virtual const std::span<uint8_t> GetByteCode() = 0;
     };
 
   

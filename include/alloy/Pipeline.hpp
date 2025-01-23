@@ -4,7 +4,7 @@
 #include "alloy/BindableResource.hpp"
 #include "alloy/FixedFunctions.hpp"
 #include "alloy/Shader.hpp"
-#include "alloy/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 
 #include <cstdint>
 #include <string>
@@ -46,10 +46,77 @@ namespace alloy
         }
     };
 
+    constexpr const char* SemanticToStr(VertexInputSemantic::Name semantic)  {
+
+        switch(semantic){
+            case VertexInputSemantic::Name::Binormal:          return "BINORMAL";
+            case VertexInputSemantic::Name::BlendIndices:      return "BLENDINDICES";
+            case VertexInputSemantic::Name::BlendWeight:       return "BLENDWEIGHT";
+            case VertexInputSemantic::Name::Color:             return "COLOR";
+            case VertexInputSemantic::Name::Normal:            return "NORMAL";
+            case VertexInputSemantic::Name::Position:          return "POSITION";
+            case VertexInputSemantic::Name::PointSize:         return "PSIZE";
+            case VertexInputSemantic::Name::Tangent:           return "TANGENT";
+            case VertexInputSemantic::Name::TextureCoordinate: return "TEXCOORD";
+                
+            default: return "";
+        };
+    }
+
+    struct VertexLayout{
+
+        struct Element{
+            // The name of the element.
+            std::string name;
+            
+            /// The semantic type of the element.
+            ///#TODO: Use real semantic name and index in shader converter/dxcpipeline
+            VertexInputSemantic semantic;
+            
+            // The format of the element.
+            ShaderDataType format;
+            
+            // The offset in bytes from the beginning of the vertex.
+            // If any vertex element has an explicit offset, then all elements must have an explicit offset.
+            std::uint32_t offset;
+        };
+    
+        // The number of bytes in between successive elements in the <see cref="DeviceBuffer"/>.
+        std::uint32_t stride;
+    
+        // An array of <see cref="VertexElementDescription"/> objects, each describing a single element of vertex data.
+        std::vector<Element> elements;
+    
+        /// A value controlling how often data for instances is advanced for this layout. For per-vertex elements, this value
+        /// should be 0.
+        /// For example, an InstanceStepRate of 3 indicates that 3 instances will be drawn with the same value for this layout. The
+        /// next 3 instances will be drawn with the next value, and so on.
+        std::uint32_t instanceStepRate;
+
+        void SetElements(std::initializer_list<Element> elements){
+            
+            this->elements = elements;
+            unsigned computedStride = 0;
+            for (int i = 0; i < elements.size(); i++)
+            {
+                auto& thisElem = this->elements[i];
+                unsigned elementSize = alloy::FormatHelpers::GetSizeInBytes(thisElem.format);
+                if (thisElem.offset != 0){
+                    computedStride = thisElem.offset + elementSize;
+                } else {
+                    computedStride += elementSize;
+                }
+            }
+            
+            stride = computedStride;
+            instanceStepRate = 0;
+        }
+    };
+
     struct GraphicsPipelineDescription{
 
         // A description of the blend state, which controls how color values are blended into each color target.
-        BlendStateDescription blendState;
+        AttachmentStateDescription attachmentState;
         
         // A description of the depth stencil state, which controls depth tests, writing, and comparisons.
         DepthStencilStateDescription depthStencilState;
@@ -63,56 +130,6 @@ namespace alloy
         /// A description of the shader set to be used.
         /// </summary>
         struct ShaderSet{
-
-            struct VertexLayout{
-
-                struct Element{
-                    // The name of the element.
-                    std::string name;
-
-                    /// The semantic type of the element.
-                    ///#TODO: Use real semantic name and index in shader converter/dxcpipeline
-                    VertexInputSemantic semantic;
-                    
-                    // The format of the element.
-                    ShaderDataType format;
-                    
-                    // The offset in bytes from the beginning of the vertex.
-                    // If any vertex element has an explicit offset, then all elements must have an explicit offset.
-                    std::uint32_t offset;
-                };
-                
-                // The number of bytes in between successive elements in the <see cref="DeviceBuffer"/>.
-                std::uint32_t stride;
-                
-                // An array of <see cref="VertexElementDescription"/> objects, each describing a single element of vertex data.
-                std::vector<Element> elements;
-                
-                /// A value controlling how often data for instances is advanced for this layout. For per-vertex elements, this value
-                /// should be 0.
-                /// For example, an InstanceStepRate of 3 indicates that 3 instances will be drawn with the same value for this layout. The
-                /// next 3 instances will be drawn with the next value, and so on.
-                std::uint32_t instanceStepRate;
-
-                void SetElements(std::initializer_list<Element> elements){
-        
-                    this->elements = elements;
-                    unsigned computedStride = 0;
-                    for (int i = 0; i < elements.size(); i++)
-                    {
-                        auto& thisElem = this->elements[i];
-                        unsigned elementSize = alloy::FormatHelpers::GetSizeInBytes(thisElem.format);
-                        if (thisElem.offset != 0){
-                            computedStride = thisElem.offset + elementSize;
-                        } else {
-                            computedStride += elementSize;
-                        }
-                    }
-
-                    stride = computedStride;
-                    instanceStepRate = 0;
-                }
-            };
 
             std::vector<VertexLayout> vertexLayouts;
             //std::vector<sp<Shader>> shaders;

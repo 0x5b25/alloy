@@ -6,7 +6,7 @@
 #include "alloy/common/RefCnt.hpp"
 #include "alloy/Shader.hpp"
 #include "alloy/Texture.hpp"
-#include "alloy/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 #include "alloy/Sampler.hpp"
 #include "alloy/Buffer.hpp"
 #include "alloy/Pipeline.hpp"

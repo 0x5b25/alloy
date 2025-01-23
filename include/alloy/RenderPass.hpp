@@ -7,7 +7,7 @@
 //
 #include "common/RefCnt.hpp"
 #include "Types.hpp"
-#include "Texture.hpp"
+#include "FrameBuffer.hpp"
 
 #include <vector>
 #include <optional>
@@ -43,6 +43,7 @@ namespace alloy {
             /// <see cref="TextureUsage.RenderTarget"/> flag. For depth attachments, this resource must have been created with the
             /// <see cref="TextureUsage.DepthStencil"/> flag.
             common::sp<IRenderTarget> target;
+
                             
             /// The array layer to render to. This value must be less than <see cref="Texture.ArrayLayers"/> in the target
             //std::uint32_t arrayLayer; //seems to translate to depthPlane in metal
@@ -80,7 +81,6 @@ namespace alloy {
         };
         
         struct RenderPassAction {
-            
             std::optional<DepthAttachmentAction> depthTargetAction;
             std::optional<StencilAttachmentAction> stencilTargetAction;
             std::vector<ColorAttachmentAction> colorTargetActions;
