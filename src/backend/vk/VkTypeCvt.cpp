@@ -186,19 +186,19 @@ namespace alloy::vk {
         }
     }
 
-     VkBlendOp VdToVkBlendOp(BlendStateDescription::BlendFunction func)
+     VkBlendOp VdToVkBlendOp(AttachmentStateDescription::BlendFunction func)
     {
         switch (func)
         {
-        case BlendStateDescription::BlendFunction::Add:
+        case AttachmentStateDescription::BlendFunction::Add:
             return VkBlendOp::VK_BLEND_OP_ADD;
-        case BlendStateDescription::BlendFunction::Subtract:
+        case AttachmentStateDescription::BlendFunction::Subtract:
             return VkBlendOp::VK_BLEND_OP_SUBTRACT;
-        case BlendStateDescription::BlendFunction::ReverseSubtract:
+        case AttachmentStateDescription::BlendFunction::ReverseSubtract:
             return VkBlendOp::VK_BLEND_OP_REVERSE_SUBTRACT;
-        case BlendStateDescription::BlendFunction::Minimum:
+        case AttachmentStateDescription::BlendFunction::Minimum:
             return VkBlendOp::VK_BLEND_OP_MIN;
-        case BlendStateDescription::BlendFunction::Maximum:
+        case AttachmentStateDescription::BlendFunction::Maximum:
             return VkBlendOp::VK_BLEND_OP_MAX;
         default:
             return VkBlendOp::VK_BLEND_OP_MAX_ENUM;
@@ -206,7 +206,7 @@ namespace alloy::vk {
     }
 
     VkColorComponentFlags VdToVkColorWriteMask(
-        const BlendStateDescription::ColorWriteMask& mask
+        const AttachmentStateDescription::ColorWriteMask& mask
     ) {
         VkColorComponentFlags flags = 0;
 
@@ -393,9 +393,9 @@ namespace alloy::vk {
         }
     }
 
-    VkBlendFactor VdToVkBlendFactor(alloy::BlendStateDescription::BlendFactor factor)
+    VkBlendFactor VdToVkBlendFactor(alloy::AttachmentStateDescription::BlendFactor factor)
     {
-        using BlendFactor = typename alloy::BlendStateDescription::BlendFactor;
+        using BlendFactor = typename alloy::AttachmentStateDescription::BlendFactor;
         switch (factor)
         {
         case BlendFactor::Zero:

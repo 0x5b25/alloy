@@ -313,6 +313,11 @@ namespace alloy::dxc{
 
         virtual void UnMap();
 
+
+        virtual void SetDebugName(const std::string& name) {
+            GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
+        }
+
     };
 
 

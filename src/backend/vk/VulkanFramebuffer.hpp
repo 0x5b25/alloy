@@ -115,6 +115,7 @@ namespace alloy::vk
         //virtual void VisitAttachments(AttachmentVisitor visitor);
 
     };
+    
 
     class VulkanRenderTarget : public IRenderTarget {
         VulkanTextureView& _rt;

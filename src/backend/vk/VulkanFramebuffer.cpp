@@ -441,7 +441,7 @@ namespace alloy::vk
         desc.sampleCount = SampleCount::x1;
 
         for(auto& ct : _colorTgts) {
-            desc.colorAttachment.push_back(common::sp(new VulkanRenderTarget(
+            desc.colorAttachments.push_back(common::sp(new VulkanRenderTarget(
                 common::sp(this),
                 *ct.get()
             )));

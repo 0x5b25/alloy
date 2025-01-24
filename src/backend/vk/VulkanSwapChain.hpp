@@ -134,15 +134,15 @@ namespace alloy::vk
                 switch(load) {
                     case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
                     case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
-                    return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 }
+                return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             };
 
             auto _Vd2VkStoreOp = [](alloy::StoreAction store) {
                 switch(store) {
                     case alloy::StoreAction::Store : return  VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
-                    return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 }
+                return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
             };
             
             VkRenderingAttachmentInfoKHR colorAttachmentRef{

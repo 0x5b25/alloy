@@ -508,10 +508,13 @@ class UniformApp : public AppBase {
         opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
         //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
-        //dev = alloy::CreateVulkanGraphicsDevice(opt);
-        //dev = alloy::CreateDX12GraphicsDevice(opt);
-        
-        dev = alloy::CreateMetalGraphicsDevice(opt);
+        #if 0//defined( _WIN32 )
+            dev = alloy::CreateDX12GraphicsDevice(opt);
+        #elif __APPLE__
+            dev = alloy::CreateMetalGraphicsDevice(opt);
+        #else
+            dev = alloy::CreateVulkanGraphicsDevice(opt);
+        #endif
 
         auto& adpInfo = dev->GetAdapterInfo();
 

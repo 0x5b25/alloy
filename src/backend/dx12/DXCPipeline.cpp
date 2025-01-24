@@ -118,8 +118,8 @@ namespace alloy::dxc
 
         auto _FillShaderDesc = [&](common::sp<IShader> shader, D3D12_SHADER_BYTECODE& desc){
             auto dxcShader = static_cast<DXCShader*>(shader.get());
-            desc.BytecodeLength = dxcShader->GetDataSizeInBytes();
-            desc.pShaderBytecode = dxcShader->GetData();
+            desc.BytecodeLength = dxcShader->GetByteCode().size();
+            desc.pShaderBytecode = dxcShader->GetByteCode().data();
             refCnts.insert(shader);
         };
 
@@ -183,7 +183,7 @@ namespace alloy::dxc
             /*void OMSetBlendFactor(
               [in, optional] const FLOAT [4] BlendFactor
             );*/
-            auto& blendFactor = desc.blendState.blendConstant;
+            auto& blendFactor = desc.attachmentState.blendConstant;
         //blendStateCI.blendConstants[0] = blendFactor.r;
         //blendStateCI.blendConstants[1] = blendFactor.g;
         //blendStateCI.blendConstants[2] = blendFactor.b;
@@ -193,13 +193,13 @@ namespace alloy::dxc
             // BOOL AlphaToCoverageEnable;
             //BOOL IndependentBlendEnable;
 
-            auto attachmentsCount = desc.blendState.attachments.size();
+            auto attachmentsCount = desc.attachmentState.colorAttachments.size();
 
             assert(attachmentsCount <= 8);
 
             for (int i = 0; i < attachmentsCount; i++)
             {
-                auto vdDesc = desc.blendState.attachments[i];
+                auto vdDesc = desc.attachmentState.colorAttachments[i];
                 auto& attachmentState = blendState.RenderTarget[i];
 
                 /*typedef struct D3D12_RENDER_TARGET_BLEND_DESC
@@ -272,7 +272,7 @@ namespace alloy::dxc
                 attachmentState.BlendEnable = vdDesc.blendEnabled;
             }
 
-            blendState.AlphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
+            blendState.AlphaToCoverageEnable = desc.attachmentState.alphaToCoverageEnabled;
        
         }
         /*        
@@ -572,7 +572,7 @@ namespace alloy::dxc
         */
 
         //Output formats
-        auto color_count = desc.outputs.colorAttachment.size();
+        auto color_count = desc.attachmentState.colorAttachments.size();
         if (color_count > 0) {
             
 
@@ -580,14 +580,14 @@ namespace alloy::dxc
            for (uint32_t i = 0; i < color_count; i++) {
               psoDesc.RTVFormats[i] 
                 = VdToD3DPixelFormat(
-                    desc.outputs.colorAttachment[i]->GetTexture().GetTextureObject()->GetDesc().format,
+                    desc.attachmentState.colorAttachments[i].format,
                     false);
            }
         }
 
-        if (desc.outputs.depthAttachment) {
+        if (desc.attachmentState.depthStencilAttachment.has_value()) {
             psoDesc.DSVFormat = VdToD3DPixelFormat(
-                desc.outputs.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format,
+                desc.attachmentState.depthStencilAttachment->depthStencilFormat,
                 true);
         }
 
@@ -668,10 +668,10 @@ namespace alloy::dxc
         /*void OMSetBlendFactor(
             [in, optional] const FLOAT [4] BlendFactor
         );*/
-        rawPipe->_blendConstants[0] = desc.blendState.blendConstant.r;
-        rawPipe->_blendConstants[1] = desc.blendState.blendConstant.g;
-        rawPipe->_blendConstants[2] = desc.blendState.blendConstant.b;
-        rawPipe->_blendConstants[3] = desc.blendState.blendConstant.a;
+        rawPipe->_blendConstants[0] = desc.attachmentState.blendConstant.r;
+        rawPipe->_blendConstants[1] = desc.attachmentState.blendConstant.g;
+        rawPipe->_blendConstants[2] = desc.attachmentState.blendConstant.b;
+        rawPipe->_blendConstants[3] = desc.attachmentState.blendConstant.a;
         
         rawPipe->_refCnts = std::move(refCnts);
 
@@ -709,8 +709,8 @@ namespace alloy::dxc
         D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc {};
 
         auto dxcShader = static_cast<DXCShader*>(desc.computeShader.get());
-        psoDesc.CS.BytecodeLength = dxcShader->GetDataSizeInBytes();
-        psoDesc.CS.pShaderBytecode = dxcShader->GetData();
+        psoDesc.CS.BytecodeLength = dxcShader->GetByteCode().size();
+        psoDesc.CS.pShaderBytecode = dxcShader->GetByteCode().data();
         refCnts.insert(desc.computeShader);        
 
         auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());

@@ -38,10 +38,10 @@ namespace alloy::dxc {
 
     D3D12_CULL_MODE VdToD3DCullMode(RasterizerStateDescription::FaceCullMode cullMode);
 
-    D3D12_BLEND_OP VdToD3DBlendOp(BlendStateDescription::BlendFunction func);
+    D3D12_BLEND_OP VdToD3DBlendOp(AttachmentStateDescription::BlendFunction func);
 
     std::uint8_t VdToD3DColorWriteMask(
-        const BlendStateDescription::ColorWriteMask& mask
+        const AttachmentStateDescription::ColorWriteMask& mask
     );
 
     //VkPrimitiveTopology VdToVkPrimitiveTopology(PrimitiveTopology topology);
@@ -60,7 +60,7 @@ namespace alloy::dxc {
 
     DXGI_FORMAT VdToD3DIndexFormat(IndexFormat format);
 
-    D3D12_BLEND VdToD3DBlendFactor(alloy::BlendStateDescription::BlendFactor factor);
+    D3D12_BLEND VdToD3DBlendFactor(alloy::AttachmentStateDescription::BlendFactor factor);
 
     D3D12_COMPARISON_FUNC VdToD3DCompareOp(ComparisonKind comparisonKind);
 

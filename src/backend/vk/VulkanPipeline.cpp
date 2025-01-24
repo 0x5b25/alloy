@@ -493,11 +493,11 @@ public:
         // Blend State
         VkPipelineColorBlendStateCreateInfo blendStateCI{};
         blendStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        auto attachmentsCount = desc.blendState.attachments.size();
+        auto attachmentsCount = desc.attachmentState.colorAttachments.size();
         std::vector<VkPipelineColorBlendAttachmentState> attachments(attachmentsCount);
         for (int i = 0; i < attachmentsCount; i++)
         {
-            auto vdDesc = desc.blendState.attachments[i];
+            auto vdDesc = desc.attachmentState.colorAttachments[i];
             auto& attachmentState = attachments[i];
             attachmentState.srcColorBlendFactor = VdToVkBlendFactor(vdDesc.sourceColorFactor);
             attachmentState.dstColorBlendFactor = VdToVkBlendFactor(vdDesc.destinationColorFactor);
@@ -511,7 +511,7 @@ public:
         
         blendStateCI.attachmentCount = attachmentsCount;
         blendStateCI.pAttachments = attachments.data();
-        auto& blendFactor = desc.blendState.blendConstant;
+        auto& blendFactor = desc.attachmentState.blendConstant;
         blendStateCI.blendConstants[0] = blendFactor.r;
         blendStateCI.blendConstants[1] = blendFactor.g;
         blendStateCI.blendConstants[2] = blendFactor.b;
@@ -604,7 +604,7 @@ public:
         multisampleCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.outputs.sampleCount);
         multisampleCI.rasterizationSamples = vkSampleCount;
-        multisampleCI.alphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
+        multisampleCI.alphaToCoverageEnable = desc.attachmentState.alphaToCoverageEnabled;
         pipelineCI.pMultisampleState = &multisampleCI;
 
         // Input Assembly
@@ -752,7 +752,7 @@ public:
         {
             auto& shader = desc.shaderSet.vertexShader;
             auto vkShader = PtrCast<VulkanShader>(shader.get());
-            auto dxil = vkShader->GetDXIL();
+            auto dxil = vkShader->GetByteCode();
 
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -780,7 +780,7 @@ public:
         {
             auto& shader = desc.shaderSet.fragmentShader;
             auto vkShader = PtrCast<VulkanShader>(shader.get());
-            auto dxil = vkShader->GetDXIL();
+            auto dxil = vkShader->GetByteCode();
 
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -822,7 +822,6 @@ public:
         
         
         // Create fake RenderPass for compatibility.
-        auto& outputDesc = desc.outputs;
         
         //We have dynamic rendering now
         //auto compatRenderPass = CreateFakeRenderPassForCompat(dev.get(), outputDesc, VK_SAMPLE_COUNT_1_BIT);
@@ -831,10 +830,10 @@ public:
 
         // Provide information for dynamic rendering
         std::vector<VkFormat> colorAttachmentFormats{};
-        colorAttachmentFormats.reserve(outputDesc.colorAttachment.size());
+        colorAttachmentFormats.reserve(desc.attachmentState.colorAttachments.size());
 
-        for(auto& a : outputDesc.colorAttachment) {
-            auto f = a->GetTexture().GetTextureObject()->GetDesc().format;
+        for(auto& a : desc.attachmentState.colorAttachments) {
+            auto f = a.format;
             colorAttachmentFormats.push_back(VdToVkPixelFormat(f, false));
         }
 
@@ -845,10 +844,9 @@ public:
             .pColorAttachmentFormats = colorAttachmentFormats.data(),
         };
 
-        if(outputDesc.depthAttachment) {
+        if(desc.attachmentState.depthStencilAttachment.has_value()) {
             
-            auto t = outputDesc.depthAttachment->GetTexture().GetTextureObject();
-            PixelFormat depthFormat = t->GetDesc().format;
+            PixelFormat depthFormat = desc.attachmentState.depthStencilAttachment->depthStencilFormat;
             auto vkFormat = VdToVkPixelFormat(depthFormat, true);
             dynRenderingCI.depthAttachmentFormat  = vkFormat;
             if(FormatHelpers::IsStencilFormat(depthFormat))
@@ -961,7 +959,7 @@ public:
         {
             auto& shader = desc.computeShader;
             auto vkShader = PtrCast<VulkanShader>(shader.get());
-            auto dxil = vkShader->GetDXIL();
+            auto dxil = vkShader->GetByteCode();
 
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;

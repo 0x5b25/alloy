@@ -44,7 +44,7 @@ namespace alloy::dxc {
         //IFrameBuffer::Description fbDesc;
     };
 
-    class DXCSwapChainRenderTarget : public IRenderTarget {
+    class DXCSwapChainRenderTarget : public DXCRenderTargetBase {
         common::sp<DXCSwapChain> _sc;
         const RenderTargetContainer& _rt;
         
@@ -60,17 +60,16 @@ namespace alloy::dxc {
         
         virtual ITextureView& GetTexture() const override {return *_rt.tex.get();}
 
-        D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const {return _rt.view;}
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const override {return _rt.view;}
     };
 
-    class DXCSwapChainBackBuffer : public DXCFrameBufferBase {
+    class DXCSwapChainBackBuffer : public IFrameBuffer {
        
         common::sp<DXCSwapChain> _sc;
         const BackBufferContainer& _bb;
 
     public:
         DXCSwapChainBackBuffer(
-            const common::sp<DXCDevice>& dev,
             common::sp<DXCSwapChain>&& sc,
             const BackBufferContainer& bb
         );
@@ -79,12 +78,12 @@ namespace alloy::dxc {
         
         virtual OutputDescription GetDesc() override;
 
-        virtual uint32_t GetRTVCount() const override;
-        virtual bool HasDSV() const override;
-        virtual bool DSVHasStencil() const override;
+        uint32_t GetRTVCount() const;
+        bool HasDSV() const;
+        bool DSVHasStencil() const;
         
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetRTV(uint32_t slot) const override;
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const override;
+        D3D12_CPU_DESCRIPTOR_HANDLE GetRTV(uint32_t slot) const;
+        D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const;
 
     };
     

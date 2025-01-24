@@ -162,19 +162,19 @@ namespace alloy::dxc {
         }
     }
 
-    D3D12_BLEND_OP VdToD3DBlendOp(BlendStateDescription::BlendFunction func)
+    D3D12_BLEND_OP VdToD3DBlendOp(AttachmentStateDescription::BlendFunction func)
     {
         switch (func)
         {
-        case BlendStateDescription::BlendFunction::Add:
+        case AttachmentStateDescription::BlendFunction::Add:
             return D3D12_BLEND_OP::D3D12_BLEND_OP_ADD;
-        case BlendStateDescription::BlendFunction::Subtract:
+        case AttachmentStateDescription::BlendFunction::Subtract:
             return D3D12_BLEND_OP::D3D12_BLEND_OP_SUBTRACT;
-        case BlendStateDescription::BlendFunction::ReverseSubtract:
+        case AttachmentStateDescription::BlendFunction::ReverseSubtract:
             return D3D12_BLEND_OP::D3D12_BLEND_OP_REV_SUBTRACT;
-        case BlendStateDescription::BlendFunction::Minimum:
+        case AttachmentStateDescription::BlendFunction::Minimum:
             return D3D12_BLEND_OP::D3D12_BLEND_OP_MIN;
-        case BlendStateDescription::BlendFunction::Maximum:
+        case AttachmentStateDescription::BlendFunction::Maximum:
             return D3D12_BLEND_OP::D3D12_BLEND_OP_MAX;
         default:
             return (D3D12_BLEND_OP)0;
@@ -182,7 +182,7 @@ namespace alloy::dxc {
     }
 
     std::uint8_t VdToD3DColorWriteMask(
-        const BlendStateDescription::ColorWriteMask& mask
+        const AttachmentStateDescription::ColorWriteMask& mask
     ) {
         std::uint8_t flags = 0;
 
@@ -496,9 +496,9 @@ namespace alloy::dxc {
         }
     }
 
-    D3D12_BLEND VdToD3DBlendFactor(alloy::BlendStateDescription::BlendFactor factor)
+    D3D12_BLEND VdToD3DBlendFactor(alloy::AttachmentStateDescription::BlendFactor factor)
     {
-        using BlendFactor = typename alloy::BlendStateDescription::BlendFactor;
+        using BlendFactor = typename alloy::AttachmentStateDescription::BlendFactor;
         switch (factor)
         {
         case BlendFactor::Zero:

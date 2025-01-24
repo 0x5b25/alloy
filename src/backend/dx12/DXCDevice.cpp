@@ -514,6 +514,7 @@ namespace alloy::dxc {
         dev->_dxcFeat.ReadFromDevice(dev->_dev.Get());
 
         //Create CPU accessable VRAM heap for UMA type device
+        D3D12MA::Pool* pool = nullptr;
         if (dev->_dxcFeat.SupportUMA()) {
             D3D12MA::POOL_DESC poolDesc = {};
             poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
@@ -524,14 +525,12 @@ namespace alloy::dxc {
             poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
 
-            D3D12MA::Pool* pool = nullptr;;
             HRESULT hr = allocator->CreatePool(&poolDesc, &pool);
             if (FAILED(hr)) {
 
             }
-
-            dev->_umaPool = pool;
         }
+        dev->_umaPool = pool;
 
         //Fill driver and api info
         {//Get device ID & driver version

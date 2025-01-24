@@ -58,8 +58,8 @@ namespace alloy::vk
         virtual void WriteSubresource(
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+            Point3D dstOrigin,
+            Size3D writeSize,
             const void* src,
             uint32_t srcRowPitch,
             uint32_t srcDepthPitch
@@ -71,8 +71,8 @@ namespace alloy::vk
             uint32_t dstDepthPitch,
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth
+            Point3D srcOrigin,
+            Size3D readSize
         ) override;
 
         virtual SubresourceLayout GetSubresourceLayout(

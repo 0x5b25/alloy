@@ -252,7 +252,7 @@ namespace alloy
         bool alphaToCoverageEnabled;
     };
 
-
+    ///#TODO: unify DepthStencilStateDescription and AttachmentState
     struct DepthStencilStateDescription{
         
         // Controls whether depth testing is enabled.

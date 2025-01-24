@@ -593,9 +593,10 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
             throw std::exception("VkDevice creation failed. synchronization2 not supported");
         }
 
-#if defined VLD_DEBUG
-        dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
-#endif
+
+        if (options.debug)
+            dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
+
         dev->_features.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
         if (options.preferStandardClipSpaceYDirection) {
             dev->_features.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);

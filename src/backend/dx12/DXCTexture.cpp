@@ -210,8 +210,8 @@ namespace alloy::dxc {
     void DXCTexture::WriteSubresource(
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+        Point3D dstOrigin,
+        Size3D writeSize,
         const void* src,
         uint32_t srcRowPitch,
         uint32_t srcDepthPitch
@@ -219,12 +219,12 @@ namespace alloy::dxc {
         auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
 
         D3D12_BOX dstBox {
-            .left = dstX,
-            .top = dstY,
-            .front = dstZ,
-            .right = dstX + width,
-            .bottom = dstY + height,
-            .back = dstZ + depth,
+            .left = dstOrigin.x,
+            .top = dstOrigin.y,
+            .front = dstOrigin.z,
+            .right = dstOrigin.x + writeSize.width,
+            .bottom = dstOrigin.y + writeSize.height,
+            .back = dstOrigin.z + writeSize.depth,
         };
 
         ThrowIfFailed(GetHandle()->WriteToSubresource(subResIdx, 
@@ -240,18 +240,18 @@ namespace alloy::dxc {
         uint32_t dstDepthPitch,
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        Point3D srcOrigin,
+        Size3D readSize
     ) {
         auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
 
         D3D12_BOX srcBox {
-            .left = srcX,
-            .top = srcY,
-            .front = srcZ,
-            .right = srcX + width,
-            .bottom = srcY + height,
-            .back = srcZ + depth,
+            .left = srcOrigin.x,
+            .top = srcOrigin.y,
+            .front = srcOrigin.z,
+            .right = srcOrigin.x + readSize.width,
+            .bottom = srcOrigin.y + readSize.height,
+            .back = srcOrigin.z + readSize.depth,
         };
 
         ThrowIfFailed(GetHandle()->ReadFromSubresource(dst,

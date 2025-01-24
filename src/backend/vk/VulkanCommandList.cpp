@@ -566,12 +566,12 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetFullViewports() {
 
         std::vector<Viewport> vps;
-        auto desc = _fb->GetDesc();
+        //auto desc = _fb->GetDesc();
 
         //SetViewport(0, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
-        for (auto& ct : desc.colorAttachment)
+        for (auto& ct : _fb.colorTargetActions)
         {
-            auto& ctdesc = ct->GetTexture().GetTextureObject()->GetDesc();
+            auto& ctdesc = ct.target->GetTexture().GetTextureObject()->GetDesc();
             auto& vp = vps.emplace_back();
             vp.x = 0;
             vp.y = 0;
@@ -606,13 +606,9 @@ namespace alloy::vk{
     }
 
     void VkRenderCmdEnc::SetFullScissorRects() {
-
-        
-        auto desc = _fb->GetDesc();
-
         std::vector<Rect> rects;
-        for(auto& ct : desc.colorAttachment) {
-            auto& ctDesc = ct->GetTexture().GetTextureObject()->GetDesc();
+        for(auto& ct : _fb.colorTargetActions) {
+            auto& ctDesc = ct.target->GetTexture().GetTextureObject()->GetDesc();
             rects.emplace_back(0, 0, ctDesc.width, ctDesc.height);
         }
 
@@ -1095,19 +1091,147 @@ namespace alloy::vk{
     }
 
     
-    IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(const common::sp<IFrameBuffer>& fb,
-                                                       const RenderPassAction& actions) {
+    IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(const RenderPassAction& actions) {
         CHK_RENDERPASS_ENDED();
 
         
-        auto vkfb = common::SPCast<VulkanFrameBufferBase>(fb);
+        //auto vkfb = common::SPCast<VulkanFrameBufferBase>(fb);
         
-        auto* pNewEnc = new VkRenderCmdEnc(_dev.get(), _cmdBuf, vkfb);
+        auto* pNewEnc = new VkRenderCmdEnc(_dev.get(), _cmdBuf, actions);
         //Record render pass
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;
 
-        vkfb->InsertCmdBeginDynamicRendering(_cmdBuf, actions);
+        //vkfb->InsertCmdBeginDynamicRendering(_cmdBuf, actions);
+
+        assert(actions.colorTargetActions.size() == 1);
+
+        auto _Vd2VkLoadOp = [](alloy::LoadAction load) {
+            switch(load) {
+                case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+                case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
+            }
+            return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        };
+
+        auto _Vd2VkStoreOp = [](alloy::StoreAction store) {
+            switch(store) {
+                case alloy::StoreAction::Store : return  VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+            }
+            return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        };
+
+        
+        uint32_t width = 0, height = 0;
+
+
+        unsigned colorAttachmentCount = actions.colorTargetActions.size();
+
+        std::vector<VkRenderingAttachmentInfoKHR> colorAttachmentRefs{};
+        for (auto& ctAct : actions.colorTargetActions)
+        {
+            //auto vkRT = common::PtrCast<VulkanRenderTarget>(ctAct.target.get());
+            auto vkTexView = common::PtrCast<VulkanTextureView>(&ctAct.target->GetTexture());
+            auto vkColorTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+            
+            auto& texDesc = vkColorTex->GetDesc();
+
+            width = std::max(width, texDesc.width);
+            height = std::max(height, texDesc.height);
+
+            auto& colorAttachmentDesc 
+                = colorAttachmentRefs.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+
+            colorAttachmentDesc.imageView = vkTexView->GetHandle();
+            colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
+            colorAttachmentDesc.resolveImageView = nullptr;
+            colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+            colorAttachmentDesc.loadOp = _Vd2VkLoadOp(ctAct.loadAction),
+            colorAttachmentDesc.storeOp = _Vd2VkStoreOp(ctAct.storeAction),
+            colorAttachmentDesc.clearValue = {.color = {
+                    .float32 = {
+                        ctAct.clearColor.r,
+                        ctAct.clearColor.g,
+                        ctAct.clearColor.b,
+                        ctAct.clearColor.a
+                    }
+                }};
+        }
+
+        VkRenderingAttachmentInfoKHR depthAttachment{
+            VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+        };
+
+        VkRenderingAttachmentInfoKHR stencilAttachment{
+            VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+        };
+
+        bool hasDepth = false, hasStencil = false;
+
+        if (actions.depthTargetAction.has_value())
+        {
+            hasDepth = true;
+
+            //auto vkRT = common::PtrCast<VulkanRenderTarget>(actions.depthTargetAction->target.get());
+            auto vkTexView = common::PtrCast<VulkanTextureView>(&actions.depthTargetAction->target->GetTexture());
+            auto vkDepthTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+            auto& texDesc = vkDepthTex->GetDesc();
+            width = std::max(width, texDesc.width);
+            height = std::max(height, texDesc.height);
+            
+            depthAttachment.imageView = vkTexView->GetHandle();
+            depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            depthAttachment.resolveImageView = nullptr;
+            depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            depthAttachment.loadOp = _Vd2VkLoadOp(actions.depthTargetAction->loadAction);
+            depthAttachment.storeOp = _Vd2VkStoreOp(actions.depthTargetAction->storeAction);
+            depthAttachment.clearValue = {
+                .depthStencil = {
+                    .depth = actions.depthTargetAction->clearDepth
+                }
+            };
+        }
+
+        if(actions.stencilTargetAction.has_value())
+        {
+            hasStencil = true;
+
+            //auto vkRT = common::PtrCast<VulkanRenderTarget>(actions.stencilTargetAction->target.get());
+            auto vkTexView = common::PtrCast<VulkanTextureView>(&actions.stencilTargetAction->target->GetTexture());
+            auto vkStencilTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+            auto& texDesc = vkStencilTex->GetDesc();
+            width = std::max(width, texDesc.width);
+            height = std::max(height, texDesc.height);
+
+            stencilAttachment.imageView = vkTexView->GetHandle();
+            stencilAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            stencilAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            stencilAttachment.resolveImageView = nullptr;
+            stencilAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            stencilAttachment.loadOp = _Vd2VkLoadOp(actions.stencilTargetAction->loadAction);
+            stencilAttachment.storeOp = _Vd2VkStoreOp(actions.stencilTargetAction->storeAction);
+            stencilAttachment.clearValue = {
+                .depthStencil = {
+                    .stencil = actions.stencilTargetAction->clearStencil
+                }
+            };
+        }
+
+        const VkRenderingInfoKHR render_info {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+            .renderArea = VkRect2D{ {0, 0}, {width, height} },
+            .layerCount = 1,
+            .colorAttachmentCount = (uint32_t)colorAttachmentRefs.size(),
+            .pColorAttachments = colorAttachmentRefs.data(),
+            .pDepthAttachment = hasDepth ? &depthAttachment : nullptr,
+            .pStencilAttachment = hasStencil ? &stencilAttachment : nullptr,   
+        };
+
+        vkCmdBeginRenderingKHR(_cmdBuf, &render_info);
+
 
         return *pNewEnc;
     }

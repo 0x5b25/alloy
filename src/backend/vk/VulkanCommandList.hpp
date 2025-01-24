@@ -115,11 +115,11 @@ namespace alloy::vk
 
     struct VkRenderCmdEnc : public IRenderCommandEncoder, public VkCmdEncBase {
         VulkanGraphicsPipeline* _currentPipeline;
-        common::sp<VulkanFrameBufferBase> _fb;
+        RenderPassAction _fb;
 
         VkRenderCmdEnc(VulkanDevice* dev,
                         VkCommandBuffer cmdList,
-                        const common::sp<VulkanFrameBufferBase>& fb )
+                        const RenderPassAction& fb )
             : VkCmdEncBase{ dev, cmdList }
             , _currentPipeline(nullptr)
             , _fb(fb)
@@ -300,8 +300,7 @@ namespace alloy::vk
         virtual void Begin() override;
         virtual void End() override;
 
-        virtual IRenderCommandEncoder& BeginRenderPass(const common::sp<IFrameBuffer>&,
-                                                       const RenderPassAction&) override;
+        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
         virtual IComputeCommandEncoder& BeginComputePass() override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;

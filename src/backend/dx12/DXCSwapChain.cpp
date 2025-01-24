@@ -9,12 +9,10 @@ namespace alloy::dxc {
 
 
     DXCSwapChainBackBuffer::DXCSwapChainBackBuffer(
-        const common::sp<DXCDevice>& dev,
         common::sp<DXCSwapChain>&& sc,
         const BackBufferContainer& bb
     )
-        : DXCFrameBufferBase(dev)
-        , _sc(std::move(sc))
+        : _sc(std::move(sc))
         , _bb(bb)
     {}
 
@@ -48,7 +46,7 @@ namespace alloy::dxc {
     
     OutputDescription DXCSwapChainBackBuffer::GetDesc() {
         OutputDescription desc { };
-        desc.colorAttachment.push_back(common::sp(new DXCSwapChainRenderTarget(
+        desc.colorAttachments.push_back(common::sp(new DXCSwapChainRenderTarget(
             _sc,
             _bb.colorTgt
         )));
@@ -222,7 +220,7 @@ namespace alloy::dxc {
 
         this->ref();
 
-        return common::sp(new DXCSwapChainBackBuffer(_dev, common::sp(this), _fbs[nextFrameIdx]));
+        return common::sp(new DXCSwapChainBackBuffer(common::sp(this), _fbs[nextFrameIdx]));
     }
 
     void DXCSwapChain::Resize(

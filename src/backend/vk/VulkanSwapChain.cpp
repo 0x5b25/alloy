@@ -55,7 +55,7 @@ namespace alloy::vk
         
         OutputDescription desc { };
 
-        desc.colorAttachment.push_back(common::sp(new VulkanSCRT(
+        desc.colorAttachments.push_back(common::sp(new VulkanSCRT(
             _sc,
             *_bb.colorTgt.get()
         )));

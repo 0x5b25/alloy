@@ -82,7 +82,7 @@ void main()
 //}
 )";
 
-const wchar_t HLSLCode[] = LR"AGAN(
+const char HLSLCode[] = R"AGAN(
 //*********************************************************
 //
 // Copyright (c) Microsoft. All rights reserved.
@@ -365,12 +365,20 @@ class UniformApp : public AppBase {
             alloy::BufferRange::MakeByteBuffer(structBuffer)
         };
         shaderResources = factory.CreateResourceSet(resSetDesc);
+
+        auto outputDesc = swapChain->GetBackBuffer()->GetDesc();
         
         alloy::GraphicsPipelineDescription pipelineDescription{};
         pipelineDescription.resourceLayout = _layout;
-        pipelineDescription.blendState = {};
-        pipelineDescription.blendState.attachments = { alloy::AttachmentStateDescription::Attachment::MakeOverrideBlend() };
-        //pipelineDescription.blendState.attachments[0].blendEnabled = true;
+        pipelineDescription.attachmentState = {};
+        pipelineDescription.attachmentState.colorAttachments.front().format = outputDesc.colorAttachments.front()->GetTexture().GetTextureObject()->GetDesc().format;
+        if(outputDesc.depthAttachment) {
+            alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
+            dsAttachment.depthStencilFormat =
+                outputDesc.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format;
+            
+            pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
+        }//pipelineDescription.blendState.attachments[0].blendEnabled = true;
 
         pipelineDescription.depthStencilState.depthTestEnabled = false;
         pipelineDescription.depthStencilState.depthWriteEnabled = true;
@@ -385,7 +393,7 @@ class UniformApp : public AppBase {
 
         pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
 
-        using VL = alloy::GraphicsPipelineDescription::ShaderSet::VertexLayout;
+        using VL = alloy::VertexLayout;
         pipelineDescription.shaderSet.vertexLayouts = { {} };
         pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
             {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0}, alloy::ShaderDataType::Float2},
@@ -547,21 +555,26 @@ class UniformApp : public AppBase {
             _commandList->Barrier({ texBarrier, dsBarrier });
         }
         
+        auto fbDesc = swapChain->GetBackBuffer()->GetDesc();
+        
         alloy::RenderPassAction passAction{};
         auto& ctAct = passAction.colorTargetActions.emplace_back();
-        ctAct.loadAction = alloy::LoadAction::Load;
+        ctAct.loadAction = alloy::LoadAction::Clear;
         ctAct.storeAction = alloy::StoreAction::Store;
-        ctAct.clearColor = { 0.9, 0.1, 0.3, 1 };
+        ctAct.clearColor = {0.9, 0.1, 0.3, 1};
+        ctAct.target = fbDesc.colorAttachments.front();
 
         auto& dtAct = passAction.depthTargetAction.emplace();
-        dtAct.loadAction = alloy::LoadAction::Load;
-        dtAct.storeAction = alloy::StoreAction::Store;
+        dtAct.loadAction = alloy::LoadAction::Clear;
+        dtAct.storeAction = alloy::StoreAction::DontCare;
+        dtAct.target = fbDesc.depthAttachment;
         
         auto& stAct = passAction.stencilTargetAction.emplace();
         stAct.loadAction = alloy::LoadAction::Load;
         stAct.storeAction = alloy::StoreAction::Store;
+        stAct.target = fbDesc.depthAttachment;
 
-        auto& pass = _commandList->BeginRenderPass(swapChain->GetBackBuffer(), passAction);
+        auto& pass = _commandList->BeginRenderPass(passAction);
         //_commandList->BeginRenderPass(fb);
         pass.SetPipeline(pipeline);
         pass.SetFullViewports();

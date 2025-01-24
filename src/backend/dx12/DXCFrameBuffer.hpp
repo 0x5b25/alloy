@@ -16,7 +16,7 @@ namespace alloy::dxc
     class DXCDevice;
     class DXCTexture;
 
-    class DXCFrameBufferBase : public IFrameBuffer{
+    class DXCFrameBuffer : public IFrameBuffer{
 
         common::sp<DXCDevice> _dev;
 
@@ -29,7 +29,7 @@ namespace alloy::dxc
     protected:
         
 
-        DXCFrameBufferBase(
+        DXCFrameBuffer(
             const common::sp<DXCDevice>& dev
         ) : _dev(dev)
         { 
@@ -41,28 +41,24 @@ namespace alloy::dxc
 
     public:
 
-        virtual ~DXCFrameBufferBase() override { }
+        virtual ~DXCFrameBuffer() override { }
+
+        virtual OutputDescription GetDesc() override;
 
         //virtual const VkFramebuffer& GetHandle() const = 0;
-
-        virtual uint32_t GetRTVCount() const = 0;
-        virtual bool HasDSV() const = 0;
-        virtual bool DSVHasStencil() const = 0;
-
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetRTV(uint32_t slot) const = 0;
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const = 0;
-
 
         //virtual void VisitAttachments(AttachmentVisitor visitor) = 0;
 
     };
 
-    class DXCFrameBuffer : public DXCFrameBufferBase {
+    class DXCRenderTargetBase : public IRenderTarget {
 
-
+    public:
         
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const = 0;
+    };
 
-
+    class DXCRenderTarget : public DXCRenderTargetBase {
 
     };
 

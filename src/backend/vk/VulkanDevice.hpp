@@ -265,6 +265,19 @@ namespace alloy::vk
 
         virtual void UnMap();
 
+        virtual void SetDebugName(const std::string & name) override {
+            // Check for a valid function pointer
+	        if (_dev->GetFeatures().commandListDebugMarkers)
+	        {
+	        	VkDebugMarkerObjectNameInfoEXT nameInfo = {};
+	        	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+	        	nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+	        	nameInfo.object = (uint64_t)_buffer;
+	        	nameInfo.pObjectName = name.c_str();
+	        	vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+	        }
+        }
+
     };
 
     class VulkanFence : public IEvent {

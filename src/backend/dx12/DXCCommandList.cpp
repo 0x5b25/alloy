@@ -214,14 +214,14 @@ namespace alloy::dxc
         }
     }
     void DXCRenderCmdEnc::SetFullViewports() {
-        auto rtCnt = _fb->GetRTVCount();
-        auto desc = _fb->GetDesc();
+        auto rtCnt = _fb.colorTargetActions.size();
+        //auto desc = _fb->GetDesc();
 
         std::vector<D3D12_VIEWPORT> vps;
         vps.reserve(rtCnt);
 
-        for(auto& rt : desc.colorAttachment) {
-            auto& texDesc = rt->GetTexture().GetTextureObject()->GetDesc();
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
             D3D12_VIEWPORT vp {
                 .TopLeftX = 0,
                 .TopLeftY = 0,
@@ -259,13 +259,12 @@ namespace alloy::dxc
     }
     void DXCRenderCmdEnc::SetFullScissorRects(){
         
-        auto rtCnt = _fb->GetRTVCount();
-        auto desc = _fb->GetDesc();
+        auto rtCnt = _fb.colorTargetActions.size();
 
         std::vector<D3D12_RECT> srs;
         srs.reserve(rtCnt);
-        for(auto& rt : desc.colorAttachment) {
-            auto& texDesc = rt->GetTexture().GetTextureObject()->GetDesc();
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
             D3D12_RECT sr {
                 .left = 0,
                 .top = 0,
@@ -598,38 +597,51 @@ namespace alloy::dxc
     }
 
 
-    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const common::sp<IFrameBuffer>& fb,
-                                                       const RenderPassAction& actions) {
+    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const RenderPassAction& actions) {
         CHK_RENDERPASS_ENDED();
         ////Record render pass
 
-        auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
+        //auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
 
-        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc(_dev.get(), _cmdList, dxcfb);
+        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc(_dev.get(), _cmdList, actions);
 
         ///#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;
         //
+
+        
+        auto colorAttachmentCnt = actions.colorTargetActions.size();
+
         std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-        rtvHandles.reserve(dxcfb->GetRTVCount());
-        for(uint32_t i = 0; i < dxcfb->GetRTVCount(); i++) {
-            rtvHandles.push_back(dxcfb->GetRTV(i));
+        rtvHandles.reserve(colorAttachmentCnt);
+        for(auto& action : actions.colorTargetActions) {
+            auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
+            rtvHandles.push_back(dxcView->GetHandle());
         }
-        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle;
-        if(dxcfb->HasDSV()) {
-            dsvHandle = dxcfb->GetDSV();
+        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle { };
+        if(actions.depthTargetAction.has_value()) {
+            auto dxcView 
+                = common::PtrCast<DXCRenderTargetBase>(actions.depthTargetAction->target.get());
+            dsvHandle = dxcView->GetHandle();
         }
-        _cmdList->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE, dxcfb->HasDSV()?&dsvHandle : nullptr);
+        else if(actions.stencilTargetAction.has_value()) {
+            auto dxcView 
+                = common::PtrCast<DXCRenderTargetBase>(actions.stencilTargetAction->target.get());
+            dsvHandle = dxcView->GetHandle();
+        }
+
+        _cmdList->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE, 
+            dsvHandle.ptr?&dsvHandle : nullptr);
 
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
-        auto colorAttachmentCnt = rtvHandles.size();
-        for(unsigned i = 0; i < colorAttachmentCnt; i++) {
-            auto& action = actions.colorTargetActions[i];
+        for(auto& action : actions.colorTargetActions) {
+
+            auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
 
             if(action.loadAction == alloy::LoadAction::Clear){
-                auto rtv = dxcfb->GetRTV(i);
+                auto rtv = dxcView->GetHandle();
 
                 float clearColor[4] = {action.clearColor.r, 
                                        action.clearColor.g,
@@ -640,38 +652,36 @@ namespace alloy::dxc
             }
         }
 
+        
+        D3D12_CLEAR_FLAGS clearFlags = (D3D12_CLEAR_FLAGS)0;
+        float depthClear = 0;
+        uint8_t stencilClear = 0;
 
-        if(!dxcfb->HasDSV()) {
-            assert(!actions.depthTargetAction.has_value());
-        } else {
-            D3D12_CLEAR_FLAGS clearFlags = (D3D12_CLEAR_FLAGS)0;
-            float depthClear = 0;
-            uint8_t stencilClear = 0;
+        if(actions.depthTargetAction.has_value()) {
+            
             if(actions.depthTargetAction->loadAction == alloy::LoadAction::Clear) {
                 clearFlags |= D3D12_CLEAR_FLAG_DEPTH;
                 depthClear = actions.depthTargetAction->clearDepth;
             }
-            if(dxcfb->DSVHasStencil()) {
-                if(actions.stencilTargetAction->loadAction == alloy::LoadAction::Clear) {
-                    clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
-                    stencilClear = actions.stencilTargetAction->clearStencil;
-                }
-            }
-            else {
-                assert(!actions.stencilTargetAction.has_value());
-            }
-
-            if(clearFlags != 0) {
-                auto dsv = dxcfb->GetDSV();
-
-                _cmdList->ClearDepthStencilView(
-                    dsv,
-                    clearFlags,
-                    depthClear, stencilClear,
-                    0, nullptr
-                );
+        }
+        
+        if(actions.stencilTargetAction.has_value()) {
+            if(actions.stencilTargetAction->loadAction == alloy::LoadAction::Clear) {
+                clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
+                stencilClear = actions.stencilTargetAction->clearStencil;
             }
         }
+
+
+        if(clearFlags != 0) {
+            _cmdList->ClearDepthStencilView(
+                dsvHandle,
+                clearFlags,
+                depthClear, stencilClear,
+                0, nullptr
+            );
+        }
+        
 
         
         return *pNewEnc;

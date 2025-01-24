@@ -30,10 +30,10 @@ namespace alloy::vk {
 
     VkCullModeFlags VdToVkCullMode(RasterizerStateDescription::FaceCullMode cullMode);
 
-    VkBlendOp VdToVkBlendOp(BlendStateDescription::BlendFunction func);
+    VkBlendOp VdToVkBlendOp(AttachmentStateDescription::BlendFunction func);
 
     VkColorComponentFlags VdToVkColorWriteMask(
-        const BlendStateDescription::ColorWriteMask& mask
+        const AttachmentStateDescription::ColorWriteMask& mask
     );
 
     VkPrimitiveTopology VdToVkPrimitiveTopology(PrimitiveTopology topology);
@@ -52,7 +52,7 @@ namespace alloy::vk {
 
     VkIndexType VdToVkIndexFormat(IndexFormat format);
 
-    VkBlendFactor VdToVkBlendFactor(alloy::BlendStateDescription::BlendFactor factor);
+    VkBlendFactor VdToVkBlendFactor(alloy::AttachmentStateDescription::BlendFactor factor);
 
     VkCompareOp VdToVkCompareOp(ComparisonKind comparisonKind);
 

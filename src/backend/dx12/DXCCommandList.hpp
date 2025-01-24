@@ -53,14 +53,14 @@ namespace alloy::dxc
         
         DXCGraphicsPipeline* _currentPipeline;
 
-        common::sp<DXCFrameBufferBase> _fb;
+        RenderPassAction _fb;
 
         DXCRenderCmdEnc(DXCDevice* dev,
                         ID3D12GraphicsCommandList* cmdList,
-                        const common::sp<DXCFrameBufferBase>& fb )
+                        const RenderPassAction& act )
             : DXCCmdEncBase{dev, cmdList}
             , _currentPipeline(nullptr)
-            , _fb(fb)
+            , _fb(act)
         { }
 
         virtual ~DXCRenderCmdEnc() {}
@@ -274,8 +274,7 @@ namespace alloy::dxc
         
 
         ///#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const common::sp<IFrameBuffer>&,
-                                                       const RenderPassAction&) override;
+        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
         virtual IComputeCommandEncoder& BeginComputePass() override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;

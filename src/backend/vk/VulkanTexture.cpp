@@ -236,8 +236,8 @@ namespace alloy::vk {
     void VulkanTexture::WriteSubresource(
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+        Point3D dstOrigin,
+        Size3D writeSize,
         const void* src,
         uint32_t srcRowPitch,
         uint32_t srcDepthPitch
@@ -258,18 +258,18 @@ namespace alloy::vk {
         //                     + x*elementSize 
         //                     + offset
 
-        auto pDstZ = pDst + dstZ * subResLayout.depthPitch;
+        auto pDstZ = pDst + dstOrigin.z * subResLayout.depthPitch;
         auto pSrcZ = (const char*)src;
 
-        for(uint32_t z = 0; z < depth; z++) {
+        for(uint32_t z = 0; z < writeSize.depth; z++) {
             auto pSrcY = pSrcZ;
-            auto pDstY = pDstZ + dstY * subResLayout.rowPitch;
-            for(uint32_t y = 0; y < height; y++) {
+            auto pDstY = pDstZ + dstOrigin.y * subResLayout.rowPitch;
+            for(uint32_t y = 0; y < writeSize.height; y++) {
                 
                 auto pSrcX = pSrcY;
-                auto pDstX = pDstY + dstX * elementSize;
+                auto pDstX = pDstY + dstOrigin.x * elementSize;
 
-                memcpy(pDstX, pSrcX, width * elementSize);
+                memcpy(pDstX, pSrcX, writeSize.width * elementSize);
 
                 pSrcY += srcRowPitch;
                 pDstY += subResLayout.rowPitch;
@@ -288,8 +288,8 @@ namespace alloy::vk {
         uint32_t dstDepthPitch,
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        Point3D srcOrigin,
+        Size3D readSize
     ) {
         void* mappedData;
         VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
@@ -307,18 +307,18 @@ namespace alloy::vk {
         //                     + x*elementSize 
         //                     + offset
 
-        auto pSrcZ = pSrc + srcZ * subResLayout.depthPitch;
+        auto pSrcZ = pSrc + srcOrigin.z * subResLayout.depthPitch;
         auto pDstZ = (char*)dst;
 
-        for(uint32_t z = 0; z < depth; z++) {
-            auto pSrcY = pSrcZ + srcY * subResLayout.rowPitch;
+        for(uint32_t z = 0; z < readSize.depth; z++) {
+            auto pSrcY = pSrcZ + srcOrigin.y * subResLayout.rowPitch;
             auto pDstY = pDstZ;
-            for(uint32_t y = 0; y < height; y++) {
+            for(uint32_t y = 0; y < readSize.height; y++) {
                 
-                auto pSrcX = pSrcY + srcX * elementSize;
+                auto pSrcX = pSrcY + srcOrigin.x * elementSize;
                 auto pDstX = pDstY;
 
-                memcpy(pDstX, pSrcX, width * elementSize);
+                memcpy(pDstX, pSrcX, readSize.width * elementSize);
 
                 pSrcY += subResLayout.rowPitch;
                 pDstY += dstRowPitch;

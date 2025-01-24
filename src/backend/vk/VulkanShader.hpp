@@ -178,7 +178,7 @@ namespace alloy::vk {
     public:
         //const VkShaderModule& GetHandle() const { return _shaderModule; }
 
-        std::span<uint8_t> GetDXIL() { return std::span<uint8_t>(_il); }
+        virtual const std::span<uint8_t> GetByteCode() override { return _il; }
 
         ~VulkanShader();
 

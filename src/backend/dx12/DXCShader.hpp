@@ -65,9 +65,7 @@ namespace alloy::dxc
             const std::span<std::uint8_t>& il
         );
         
-        const void* GetData() const {return _bytes.data();}
-
-        std::size_t GetDataSizeInBytes() const {return _bytes.size();}
+        virtual const std::span<uint8_t> GetByteCode() override { return _bytes; }
 
     };
 
