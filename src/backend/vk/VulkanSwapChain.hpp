@@ -2,11 +2,11 @@
 
 #include <volk.h>
 
-#include "veldrid/common/Common.hpp"
-#include "veldrid/common/RefCnt.hpp"
-#include "veldrid/Helpers.hpp"
-#include "veldrid/SwapChain.hpp"
-#include "veldrid/Framebuffer.hpp"
+#include "alloy/common/Common.hpp"
+#include "alloy/common/RefCnt.hpp"
+#include "alloy/Helpers.hpp"
+#include "alloy/SwapChain.hpp"
+#include "alloy/Framebuffer.hpp"
 
 #include <vector>
 #include <optional>
@@ -16,38 +16,75 @@
 #include "VulkanFramebuffer.hpp"
 #include "VulkanTexture.hpp"
 
-namespace Veldrid
+namespace alloy::vk
 {
     class VulkanDevice;
     class VulkanSwapChain;
+
+    struct BackBufferContainer {
+        //DXCSwapChain* _sc;
+        common::sp<VulkanTextureView> colorTgt;
+        
+        common::sp<VulkanTextureView> dsTgt;
+
+        //IFrameBuffer::Description fbDesc;
+    };
+
+
+    class VulkanSCRT : public IRenderTarget {
+        common::sp<VulkanSwapChain> _sc;
+        VulkanTextureView& _rt;
+    public:
+
+        VulkanSCRT(
+            const common::sp<VulkanSwapChain>& sc,
+            VulkanTextureView& rt
+        )
+            : _sc(sc)
+            , _rt(rt) 
+        { }
+        
+        VulkanTextureView& GetVkTexView() const {return _rt;}
+        virtual ITextureView& GetTexture() const override {return GetVkTexView();}
+
+    };
     
-    class _SCFB : public VulkanFramebufferBase{
+    class _SCFB : public VulkanFrameBufferBase{
 
-        sp<VulkanSwapChain> _sc;
+        common::sp<VulkanSwapChain> _sc;
+        const BackBufferContainer& _bb;
 
-        sp<VulkanTexture> _colorTarget;
-        sp<VulkanTexture> _depthTarget;
-
-        VkImageView _colorTargetView;
-        VkImageView _depthTargetView;
+        //common::sp<VulkanTexture> _colorTarget;
+        //common::sp<VulkanTexture> _depthTarget;
+        //
+        //VkImageView _colorTargetView;
+        //VkImageView _depthTargetView;
         //VkFramebuffer _fb;
 
         
-        Framebuffer::Description _fbDesc;
-
-
-        _SCFB(const sp<GraphicsDevice>& dev) : VulkanFramebufferBase(dev){}
+        //IFrameBuffer::Description _fbDesc;
 
     public:
 
+        _SCFB(
+            const common::sp<VulkanDevice>& dev,
+            common::sp<VulkanSwapChain>&& sc,
+            const BackBufferContainer& bb
+        ) 
+            : VulkanFrameBufferBase(dev)
+            , _sc(std::move(sc))
+            , _bb(bb)
+        { }
+
+
         ~_SCFB();
 
-        static sp<_SCFB> Make(
-            VulkanDevice* dev,
-            const sp<VulkanSwapChain>& sc,
-            const sp<VulkanTexture>& colorTarget,
-            const sp<VulkanTexture>& depthTarget = nullptr
-        );
+        //static common::sp<_SCFB> Make(
+        //    const common::sp<VulkanDevice>& dev,
+        //    const common::sp<VulkanSwapChain>& sc,
+        //    const common::sp<VulkanTexture>& colorTarget,
+        //    const common::sp<VulkanTexture>& depthTarget = nullptr
+        //);
 
         //virtual const VkFramebuffer& GetHandle() const override {return _fb;}
 
@@ -55,53 +92,84 @@ namespace Veldrid
         //virtual VkRenderPass GetRenderPassNoClear_Load() const;
         //virtual VkRenderPass GetRenderPassClear() const;
 
-        virtual const Description& GetDesc() const;
+        virtual OutputDescription GetDesc() override;
 
-        bool HasDepthTarget() const {return _depthTarget != nullptr;}
+        bool HasDepthTarget() const {return _bb.dsTgt != nullptr;}
 
-        void SetToInitialLayout() {
-            _colorTarget->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
-        }
+        //void SetToInitialLayout() {
+        //    _colorTarget->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+        //}
+        //
+        //void TransitionToAttachmentLayout(VkCommandBuffer cb) override {
+        //    {
+        //        _colorTarget->TransitionImageLayout(cb,
+        //            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        //            VK_ACCESS_SHADER_WRITE_BIT,
+        //            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        //        );
+        //    }
+        //
+        //    // Depth
+        //    if (_depthTarget)
+        //    {
+        //       bool hasStencil = FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
+        //
+        //        _depthTarget->TransitionImageLayout(cb,
+        //            hasStencil
+        //                ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        //                : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        //            VK_ACCESS_SHADER_WRITE_BIT,
+        //            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+        //        );
+        //    }
+        //}
 
-        void TransitionToAttachmentLayout(VkCommandBuffer cb) override {
-            {
-                _colorTarget->TransitionImageLayout(cb,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                );
-            }
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb, const RenderPassAction& actions) override {
+            
+            assert(actions.colorTargetActions.size() == 1);
 
-            // Depth
-            if (_depthTarget)
-            {
-               bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
+            auto& ctAct = actions.colorTargetActions.front();
 
-                _depthTarget->TransitionImageLayout(cb,
-                    hasStencil
-                        ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                        : VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    VK_ACCESS_SHADER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                );
-            }
-        }
+            auto _Vd2VkLoadOp = [](alloy::LoadAction load) {
+                switch(load) {
+                    case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+                    case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
+                }
+                return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            };
 
-        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) override {
+            auto _Vd2VkStoreOp = [](alloy::StoreAction store) {
+                switch(store) {
+                    case alloy::StoreAction::Store : return  VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+                }
+                return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            };
+            
             VkRenderingAttachmentInfoKHR colorAttachmentRef{
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
                 .pNext = nullptr,
-                .imageView = _colorTargetView,
+                .imageView = _bb.colorTgt->GetHandle(),
                 .imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 .resolveMode = VK_RESOLVE_MODE_NONE,
                 .resolveImageView = nullptr,
                 .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD,
-                .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = {},
+                .loadOp = _Vd2VkLoadOp(ctAct.loadAction),
+                .storeOp = _Vd2VkStoreOp(ctAct.storeAction),
+                .clearValue = {.color = {
+                    .float32 = {
+                        ctAct.clearColor.r,
+                        ctAct.clearColor.g,
+                        ctAct.clearColor.b,
+                        ctAct.clearColor.a
+                    }
+                }},
             };
 
-            VkRenderingAttachmentInfoKHR dsAttachment{
+            VkRenderingAttachmentInfoKHR depthAttachment{
+                VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
+            };
+
+            VkRenderingAttachmentInfoKHR stencilAttachment{
                 VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
             };
 
@@ -110,53 +178,71 @@ namespace Veldrid
             if (HasDepthTarget())
             {
                 hasDepth = true;
+                assert(actions.depthTargetAction.has_value());
 
-                auto& texDesc = _depthTarget->GetDesc();
+                auto& texDesc = _bb.dsTgt->GetTextureObject()->GetDesc();
 
-                hasStencil = Helpers::FormatHelpers::IsStencilFormat(texDesc.format);
+                depthAttachment.imageView = _bb.dsTgt->GetHandle();
+                depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+                depthAttachment.resolveImageView = nullptr;
+                depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                depthAttachment.loadOp = _Vd2VkLoadOp(actions.depthTargetAction->loadAction);
+                depthAttachment.storeOp = _Vd2VkStoreOp(actions.depthTargetAction->storeAction);
+                depthAttachment.clearValue = {
+                    .depthStencil = {
+                        .depth = actions.depthTargetAction->clearDepth
+                    }
+                };
 
-                dsAttachment.imageView = _depthTargetView;
-                dsAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                dsAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-                dsAttachment.resolveImageView = nullptr;
-                dsAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                dsAttachment.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
-                dsAttachment.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
-                dsAttachment.clearValue = {};
+                hasStencil = FormatHelpers::IsStencilFormat(texDesc.format);
+                if(hasStencil) {
+                    stencilAttachment = depthAttachment;
+                    stencilAttachment.loadOp = _Vd2VkLoadOp(actions.stencilTargetAction->loadAction);
+                    stencilAttachment.storeOp = _Vd2VkStoreOp(actions.stencilTargetAction->storeAction);
+                    stencilAttachment.clearValue = {
+                        .depthStencil = {
+                            .stencil = actions.stencilTargetAction->clearStencil
+                        }
+                    };
+                }
             }
 
+            auto& ctDesc = _bb.colorTgt->GetTextureObject()->GetDesc();
 
             const VkRenderingInfoKHR render_info {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
-                .renderArea = VkRect2D{ {0, 0}, {GetDesc().GetWidth(), GetDesc().GetHeight()} },
+                .renderArea = VkRect2D{ {0, 0}, {ctDesc.width, ctDesc.height} },
                 .layerCount = 1,
                 .colorAttachmentCount = 1,
                 .pColorAttachments = &colorAttachmentRef,
-                .pDepthAttachment = hasDepth ? &dsAttachment : nullptr,
-                .pStencilAttachment = hasStencil ? &dsAttachment : nullptr,   
+                .pDepthAttachment = hasDepth ? &depthAttachment : nullptr,
+                .pStencilAttachment = hasStencil ? &stencilAttachment : nullptr,   
             };
 
             vkCmdBeginRenderingKHR(cb, &render_info);
         }
 
-        void VisitAttachments(AttachmentVisitor visitor) override {
-            visitor(_colorTarget, VisitedAttachmentType::ColorAttachment);
-            
-            // Depth
-            if (_depthTarget)
-            {
-                bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
-                auto type = hasStencil
-                    ? VisitedAttachmentType::DepthStencilAttachment
-                    : VisitedAttachmentType::DepthAttachment;
-                visitor(_depthTarget, type);
-            }
-        }
+        //void VisitAttachments(AttachmentVisitor visitor) override {
+        //    visitor(_colorTarget, VisitedAttachmentType::ColorAttachment);
+        //    
+        //    // Depth
+        //    if (_depthTarget)
+        //    {
+        //        bool hasStencil = Helpers::FormatHelpers::IsStencilFormat(_depthTarget->GetDesc().format);
+        //        auto type = hasStencil
+        //            ? VisitedAttachmentType::DepthStencilAttachment
+        //            : VisitedAttachmentType::DepthAttachment;
+        //        visitor(_depthTarget, type);
+        //    }
+        //}
 
     };
 
-    class VulkanSwapChain : public SwapChain{
+    class VulkanSwapChain : public ISwapChain{
         friend class _SCFB;
+
+        common::sp<VulkanDevice> _dev;
 
         VK::priv::SurfaceContainer _surf;
            
@@ -164,8 +250,8 @@ namespace Veldrid
         //VkRenderPass _renderPassNoClearLoad;
         //VkRenderPass _renderPassClear;
 
-        sp<VulkanTexture> _depthTarget;
-        std::vector<sp<_SCFB>> _fbs;
+        common::sp<VulkanTexture> _depthTarget;
+        std::vector<BackBufferContainer> _fbs;
         //std::vector<Framebuffer::Description> _fbDesc;
 
         VkSwapchainKHR _deviceSwapchain;
@@ -178,9 +264,12 @@ namespace Veldrid
         bool _currentImageInUse;
 
         VulkanSwapChain(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
-            ) : SwapChain(dev, desc){
+        ) 
+            : ISwapChain(desc)
+            , _dev(dev)
+        {
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
             _currentImageIndex = 0;
             _currentImageInUse = true;
@@ -203,8 +292,8 @@ namespace Veldrid
 
         ~VulkanSwapChain();
 
-        static sp<SwapChain> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<ISwapChain> Make(
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
         );
 
@@ -218,7 +307,7 @@ namespace Veldrid
         void MarkCurrentImageInUse() { _currentImageInUse = true; }
 
     public:
-        sp<Framebuffer> GetBackBuffer() override;
+        common::sp<IFrameBuffer> GetBackBuffer() override;
 
         void Resize(
             std::uint32_t width, 
@@ -239,5 +328,5 @@ namespace Veldrid
         //virtual State SwapBuffers() override;
     };
 
-} // namespace Veldrid
+} // namespace alloy
 

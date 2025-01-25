@@ -1,30 +1,35 @@
 #pragma once
 
-#include "veldrid/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
+#include "alloy/RenderPass.hpp"
 
 #include <volk.h>
 
 #include <vector>
 #include <functional>
 
-namespace Veldrid
+namespace alloy::vk
 {
     class VulkanDevice;
     class VulkanTexture;
+    class VulkanTextureView;
+    class VulkanRenderTarget;
 
-    class VulkanFramebufferBase : public Framebuffer{
+    class VulkanFrameBufferBase : public IFrameBuffer{
     public:
-        enum class VisitedAttachmentType {
-            ColorAttachment, DepthAttachment, DepthStencilAttachment
-        };
-        using AttachmentVisitor = std::function<void(const sp<VulkanTexture>&, VisitedAttachmentType)>;
+        //enum class VisitedAttachmentType {
+        //    ColorAttachment, DepthAttachment, DepthStencilAttachment
+        //};
+        //using AttachmentVisitor = std::function<void(const sp<VulkanTexture>&, VisitedAttachmentType)>;
 
     protected:
+
+        common::sp<VulkanDevice> dev;
         
 
-        VulkanFramebufferBase(
-            const sp<GraphicsDevice>& dev
-        ) : Framebuffer(dev)
+        VulkanFrameBufferBase(
+            const common::sp<VulkanDevice>& dev
+        ) : dev(dev)
         { 
             //CreateCompatibleRenderPasses(
             //    renderPassNoClear, renderPassNoClearLoad, renderPassClear,
@@ -42,7 +47,7 @@ namespace Veldrid
             VkRenderPass& clear
         );
 
-        virtual ~VulkanFramebufferBase();
+        virtual ~VulkanFrameBufferBase();
 
 
         //virtual const VkFramebuffer& GetHandle() const = 0;
@@ -51,31 +56,31 @@ namespace Veldrid
         //virtual VkRenderPass GetRenderPassNoClear_Load() const = 0;
         //virtual VkRenderPass GetRenderPassClear() const = 0;
 
-        virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) = 0;
-        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) = 0;
+        //virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) = 0;
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb, const RenderPassAction& actions) = 0;
 
-        virtual void VisitAttachments(AttachmentVisitor visitor) = 0;
+        //virtual void VisitAttachments(AttachmentVisitor visitor) = 0;
 
     };
 
-    class VulkanFramebuffer : public VulkanFramebufferBase{
+    
+
+    class VulkanFrameBuffer : public VulkanFrameBufferBase{
 
         //VkFramebuffer _fb;
         //VkRenderPass renderPassNoClear;
         //VkRenderPass renderPassNoClearLoad;
         //VkRenderPass renderPassClear;
 
-        std::vector<VkImageView> _attachmentViews;
+        std::vector<common::sp<VulkanTextureView>> _colorTgts;
+        common::sp<VulkanTextureView> _dsTgt;
 
-        Description description;
+        // /Description description;
 
-        VulkanFramebuffer(
-            const sp<GraphicsDevice>& dev,
-            const Description& desc,
-            bool isPresented = false
+        VulkanFrameBuffer(
+            const common::sp<VulkanDevice>& dev
         ) 
-            : VulkanFramebufferBase(dev)
-            , description(desc)
+            : VulkanFrameBufferBase(dev)
         { 
 
             //CreateCompatibleRenderPasses(
@@ -85,10 +90,10 @@ namespace Veldrid
         }
 
     public:
-        ~VulkanFramebuffer();
+        ~VulkanFrameBuffer();
 
-        static sp<Framebuffer> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<IFrameBuffer> Make(
+            const common::sp<VulkanDevice>& dev,
             const Description& desc,
             bool isPresented = false
         );
@@ -99,13 +104,35 @@ namespace Veldrid
         //virtual VkRenderPass GetRenderPassNoClear_Load() const {return renderPassNoClearLoad;}
         //virtual VkRenderPass GetRenderPassClear() const {return renderPassClear;}
 
-        virtual const Description& GetDesc() const {return description;}
+        virtual OutputDescription GetDesc() override;
 
-        virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) override;
-        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb) override;
+        
+        bool HasDepthTarget() const {return _dsTgt != nullptr;}
 
-        virtual void VisitAttachments(AttachmentVisitor visitor);
+        //virtual void TransitionToAttachmentLayout(VkCommandBuffer cb) override;
+        virtual void InsertCmdBeginDynamicRendering(VkCommandBuffer cb, const RenderPassAction& actions) override;
+
+        //virtual void VisitAttachments(AttachmentVisitor visitor);
 
     };
-} // namespace Veldrid
+    
+
+    class VulkanRenderTarget : public IRenderTarget {
+        VulkanTextureView& _rt;
+        common::sp<VulkanFrameBuffer> _fb;
+
+    public:
+        VulkanRenderTarget (
+            const common::sp<VulkanFrameBuffer> fb,
+            VulkanTextureView& rt
+        )
+            : _rt(rt)
+            , _fb(fb)
+        { }
+
+        
+        virtual ITextureView& GetTexture() const override;
+
+    };
+} // namespace alloy
 

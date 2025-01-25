@@ -1,6 +1,6 @@
 #include "VulkanBindableResource.hpp"
 
-#include "veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
 
 #include <vector>
 
@@ -9,7 +9,7 @@
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
 
-namespace Veldrid
+namespace alloy::vk
 {
     using _ResKind = IBindableResource::ResourceKind;
     VkDescriptorType VdToVkResourceKind(IBindableResource::ResourceKind kind, bool dynamic, bool writable){
@@ -34,15 +34,14 @@ namespace Veldrid
     }
 
     VulkanResourceLayout::~VulkanResourceLayout(){
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
         for(auto& b : _bindings)
             for (const auto& info : b.sets) {
-                vkDestroyDescriptorSetLayout(vkDev->LogicalDev(), info.layout, nullptr);
+                vkDestroyDescriptorSetLayout(_dev->LogicalDev(), info.layout, nullptr);
             }
     }
     
-    sp<ResourceLayout> VulkanResourceLayout::Make(
-        const sp<VulkanDevice>& dev,
+    common::sp<IResourceLayout> VulkanResourceLayout::Make(
+        const common::sp<VulkanDevice>& dev,
         const Description& desc
     ){
         auto& elements = desc.elements;
@@ -114,7 +113,7 @@ namespace Veldrid
                 std::vector<VkDescriptorType> _descriptorTypes {s.elementIdInList.size()};
                 std::vector<VkDescriptorSetLayoutBinding> bindings {s.elementIdInList.size()};
 
-                VK::priv::DescriptorResourceCounts& drcs = s.resourceCounts;
+                alloy::vk::DescriptorResourceCounts& drcs = s.resourceCounts;
                 //    .uniformBufferCount = uniformBufferCount,
                 //    .sampledImageCount = sampledImageCount,
                 //    .samplerCount = samplerCount,
@@ -139,9 +138,9 @@ namespace Veldrid
                     auto& e = elements[s.elementIdInList[i]];
                     bindings[i].binding = i;
                     bindings[i].descriptorCount = 1;
-                    VkDescriptorType descriptorType = VK::priv::VdToVkDescriptorType(e.kind, e.options);
+                    VkDescriptorType descriptorType = VdToVkDescriptorType(e.kind, e.options);
                     bindings[i].descriptorType = descriptorType;
-                    bindings[i].stageFlags = VK::priv::VdToVkShaderStages(e.stages);
+                    bindings[i].stageFlags = VdToVkShaderStages(e.stages);
                     //if (e.options.dynamicBinding) {
                     //    s.dynamicBufferCount += 1;
                     //}
@@ -189,16 +188,15 @@ namespace Veldrid
         //dsl->_dynamicBufferCount = dynamicBufferCount;
         //dsl->_drcs = drcs;
 
-        return sp<ResourceLayout>(dsl);
+        return common::sp<IResourceLayout>(dsl);
     }
 
     VulkanResourceSet::~VulkanResourceSet(){
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
 
     }
 
-    sp<ResourceSet> VulkanResourceSet::Make(
-            const sp<VulkanDevice>& dev,
+    common::sp<IResourceSet> VulkanResourceSet::Make(
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
     ){
         VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(desc.layout.get());
@@ -210,7 +208,7 @@ namespace Veldrid
         //std::vector<sp<BindableResource>> _refCounts;
         std::unordered_set<VulkanTexture*> texReadOnly, texRW;
         
-        std::vector<Veldrid::VK::priv::_DescriptorSet> descSetsAllocated;
+        std::vector<_DescriptorSet> descSetsAllocated;
 
         for(auto& b : bindings) {
 
@@ -260,7 +258,7 @@ namespace Veldrid
                             }
                             descriptorWrites[i].pImageInfo = &imageInfos[i];
 
-                            auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
+                            auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
                             if(elem.options.writable)
                                 texRW.insert(vkTex);
                             else
@@ -291,24 +289,24 @@ namespace Veldrid
         descSet->_texRW = std::move(texRW);
         descSet->_descSet = std::move(descSetsAllocated);
 
-        return sp(descSet);
+        return common::sp(descSet);
     }
 
-    void VulkanResourceSet::VisitElements(ElementVisitor visitor) {
-        VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(description.layout.get());
+    //void VulkanResourceSet::VisitElements(ElementVisitor visitor) {
+    //    VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(description.layout.get());
+    //
+    //    auto& boundResources = description.boundResources;
+    //    auto descriptorWriteCount = boundResources.size();
+    //    assert(descriptorWriteCount == vkLayout->GetDesc().elements.size());
+    //
+    //    for (int i = 0; i < descriptorWriteCount; i++)
+    //    {
+    //        auto& elem = vkLayout->GetDesc().elements[i];
+    //        auto type = elem.kind;
+    //    }
+    //
+    //}
 
-        auto& boundResources = description.boundResources;
-        auto descriptorWriteCount = boundResources.size();
-        assert(descriptorWriteCount == vkLayout->GetDesc().elements.size());
-
-        for (int i = 0; i < descriptorWriteCount; i++)
-        {
-            auto& elem = vkLayout->GetDesc().elements[i];
-            auto type = elem.kind;
-        }
-
-    }
-
-} // namespace Veldrid
+} // namespace alloy
 
 

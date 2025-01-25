@@ -4,14 +4,14 @@
 #include <d3d12.h>
 #include <D3D12MemAlloc.h>
 
-//veldrid public headers
-#include "veldrid/common/RefCnt.hpp"
+//alloy public headers
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SyncObjects.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/SwapChain.hpp"
-#include "veldrid/CommandQueue.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/SwapChain.hpp"
+#include "alloy/CommandQueue.hpp"
 
 //standard library headers
 #include <string>
@@ -27,11 +27,11 @@
 #include "DXCResourceFactory.hpp"
 #include "D3DDescriptorHeapMgr.hpp"
 
-namespace Veldrid{
+namespace alloy::dxc{
 
     class DXCFence;
     class DXCCommandQueue;
-    class DXCQueue : public RefCntBase{
+    class DXCQueue : public common::RefCntBase{
     private:
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> _queue;
         D3D12_COMMAND_LIST_TYPE _queueType;
@@ -48,7 +48,7 @@ namespace Veldrid{
 
     public:
 
-        static sp<DXCQueue> Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType);
+        static common::sp<DXCQueue> Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType);
 
 
         ~DXCQueue();
@@ -73,7 +73,7 @@ namespace Veldrid{
     };
 
     
-    class DXCCommandQueue : public CommandQueue{
+    class DXCCommandQueue : public ICommandQueue{
 
         ID3D12CommandQueue* _q;
         D3D12_COMMAND_LIST_TYPE _qType;
@@ -95,13 +95,13 @@ namespace Veldrid{
 
         //virtual void Reset() override;
 
-        virtual void EncodeSignalFence(Fence* fence, uint64_t value) override;
+        virtual void EncodeSignalEvent(IEvent* evt, uint64_t value) override;
 
-        virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
+        virtual void EncodeWaitForEvent(IEvent* evt, uint64_t value) override;
 
-        virtual void SubmitCommand(CommandList* cmd) override;
+        virtual void SubmitCommand(ICommandList* cmd) override;
         
-        virtual sp<CommandList> CreateCommandList() override;
+        virtual common::sp<ICommandList> CreateCommandList() override;
 
     };
 
@@ -172,11 +172,7 @@ namespace Veldrid{
     
     };
 
-    class DXCDevice : public  GraphicsDevice, public DXCResourceFactory {
-
-    public:
-
-
+    class DXCDevice : public  IGraphicsDevice, public DXCResourceFactory {
 
     private:
         Microsoft::WRL::ComPtr<IDXGIAdapter1> _adp;
@@ -190,16 +186,17 @@ namespace Veldrid{
         //Microsoft::WRL::ComPtr<ID3D12CommandAllocator> _cmdAlloc;
         DXCAutoFence _waitIdleFence;
 
-        Microsoft::WRL::ComPtr<D3D12MA::Allocator> _alloc;
+        D3D12MA::Allocator* _alloc;
+        D3D12MA::Pool* _umaPool;
 
-        Veldrid::DXC::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
+        alloy::dxc::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
         //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
         AdapterInfo _adpInfo;
 
-        GraphicsDevice::Features _commonFeat;
+        IGraphicsDevice::Features _commonFeat;
         D3D12DevCaps _dxcFeat;
 
         DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev);
@@ -213,36 +210,38 @@ namespace Veldrid{
 
         virtual void* GetNativeHandle() const override { return GetDevice(); }
 
-        static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options
+        static common::sp<IGraphicsDevice> Make(
+            const IGraphicsDevice::Options& options
         );
 
         //virtual const std::string& DeviceName() const override { return _devName; }
         //virtual const std::string& VendorName() const override { return ""; }
         //virtual const GraphicsApiVersion ApiVersion() const override { return _apiVer; }
-        virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
-        virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
+        virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
+        virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
         const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }
 
-        virtual ResourceFactory* GetResourceFactory() override { return this; };
+        virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
-        D3D12MA::Allocator* Allocator() const {return _alloc.Get();}
+        D3D12MA::Allocator* Allocator() const { return _alloc; }
+        D3D12MA::Pool* UMAPool() const {return _umaPool;}
 
         ID3D12CommandQueue* GetImplicitQueue() const {return _gfxQ->GetHandle(); } 
         //virtual void SubmitCommand(const CommandList* cmd) override;
-        virtual SwapChain::State PresentToSwapChain(
-            const std::vector<Semaphore*>& waitSemaphores,
-            SwapChain* sc) override;
+        virtual ISwapChain::State PresentToSwapChain(
+            ISwapChain* sc) override;
                
-        virtual CommandQueue* GetGfxCommandQueue() override;
-        virtual CommandQueue* GetCopyCommandQueue() override;
+        virtual ICommandQueue* GetGfxCommandQueue() override;
+        virtual ICommandQueue* GetCopyCommandQueue() override;
 
         virtual void WaitForIdle() override;
 
     };
 
-    class DXCFence : public Fence {
+    class DXCFence : public IEvent {
+
+        common::sp<DXCDevice> _dev;
 
         ID3D12Fence* _f;
         //SetEventOnCompletion will block until complete if handle is null
@@ -264,7 +263,7 @@ namespace Veldrid{
 
         //virtual void Reset() override;
 
-        virtual uint64_t GetCurrentValue() override {
+        virtual uint64_t GetSignaledValue() override {
             return _f->GetCompletedValue();
         }
         virtual void SignalFromCPU(uint64_t signalValue) override {
@@ -274,37 +273,35 @@ namespace Veldrid{
     };
 
     
-    class DXCBuffer : public Buffer{
+    class DXCBuffer : public IBuffer{
 
     private:
+        common::sp<DXCDevice> _dev;
         D3D12MA::Allocation* _buffer;
         //VmaAllocation _allocation;
 
         //VkBufferUsageFlags _usages;
         //VmaMemoryUsage _allocationType;
 
-        DXCDevice* _Dev() const {
-            return static_cast<DXCDevice*>(dev.get());
-        }
-
         DXCBuffer(
-            const sp<GraphicsDevice>& dev,
-            const Buffer::Description& desc
-        ) : 
-            Buffer(dev, desc)
+            const common::sp<DXCDevice>& dev,
+            const IBuffer::Description& desc
+        )
+            : IBuffer(desc)
+            , _dev(dev)
         {}
 
     public:
 
         virtual ~DXCBuffer();
 
-        virtual std::string GetDebugName() const override {
-            return "<VK_DEVBUF>";
-        }
+        //virtual std::string GetDebugName() const override {
+        //    return "<VK_DEVBUF>";
+        //}
 
-        static sp<Buffer> Make(
-            const sp<DXCDevice>& dev,
-            const Buffer::Description& desc
+        static common::sp<IBuffer> Make(
+            const common::sp<DXCDevice>& dev,
+            const IBuffer::Description& desc
         );
 
         
@@ -315,6 +312,11 @@ namespace Veldrid{
         virtual void* MapToCPU();
 
         virtual void UnMap();
+
+
+        virtual void SetDebugName(const std::string& name) {
+            GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
+        }
 
     };
 
@@ -344,19 +346,19 @@ namespace Veldrid{
 
     
 
-    class DXCVLDSemaphore : public Semaphore {
-
-        DXCAutoFence _fence;
-
-        DXCVLDSemaphore(const sp<GraphicsDevice>& dev) : Semaphore(dev) {}
-    public:
-        ~DXCVLDSemaphore() {}
-
-        static sp<Semaphore> Make(
-            const sp<DXCDevice>& dev
-        );
-
-        const DXCAutoFence& GetHandle() const { return _fence; }
-    };
+    //class DXCVLDSemaphore : public Semaphore {
+    //
+    //    DXCAutoFence _fence;
+    //
+    //    DXCVLDSemaphore(const sp<GraphicsDevice>& dev) : Semaphore(dev) {}
+    //public:
+    //    ~DXCVLDSemaphore() {}
+    //
+    //    static sp<Semaphore> Make(
+    //        const sp<DXCDevice>& dev
+    //    );
+    //
+    //    const DXCAutoFence& GetHandle() const { return _fence; }
+    //};
 
 }

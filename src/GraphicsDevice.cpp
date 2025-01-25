@@ -1,9 +1,9 @@
-#include "veldrid/GraphicsDevice.hpp"
+#include "alloy/GraphicsDevice.hpp"
 
-namespace Veldrid
+namespace alloy
 {
     const GraphicsApiVersion GraphicsApiVersion::Unknown = {};
 
 
-} // namespace Veldrid
+} // namespace alloy
 

@@ -3,17 +3,18 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
-#include "veldrid/Texture.hpp"
-#include "veldrid/Sampler.hpp"
+#include "alloy/Texture.hpp"
+#include "alloy/Sampler.hpp"
 
 #include <vector>
 
-namespace Veldrid
+namespace alloy::vk
 {
     class VulkanDevice;
     
-    class VulkanTexture : public Texture{
+    class VulkanTexture : public ITexture{
 
+        common::sp<VulkanDevice> _dev;
         VkImage _img;
         VmaAllocation _allocation;
 
@@ -26,27 +27,28 @@ namespace Veldrid
 
 
         VulkanTexture(
-            const sp<GraphicsDevice>& dev,
-            const Texture::Description& desc
-        );
-
+            const common::sp<VulkanDevice>& dev,
+            const ITexture::Description& desc
+        ) : ITexture(desc)
+          , _dev(dev)
+        { }
 
     public:
 
         ~VulkanTexture();
 
         const VkImage& GetHandle() const { return _img; }
+        const VulkanDevice& GetDevice() const { return *_dev; }
         bool IsOwnTexture() const {return _allocation != VK_NULL_HANDLE; }
-        VulkanDevice* GetDevice() const;
 
-        static sp<Texture> Make(
-            const sp<VulkanDevice>& dev,
-            const Texture::Description& desc
+        static common::sp<ITexture> Make(
+            const common::sp<VulkanDevice>& dev,
+            const ITexture::Description& desc
         );
 
-        static sp<Texture> WrapNative(
-            const sp<VulkanDevice>& dev,
-            const Texture::Description& desc,
+        static common::sp<ITexture> WrapNative(
+            const common::sp<VulkanDevice>& dev,
+            const ITexture::Description& desc,
             VkImageLayout layout,
             VkAccessFlags accessFlag,
             VkPipelineStageFlags pipelineFlag,
@@ -56,8 +58,8 @@ namespace Veldrid
         virtual void WriteSubresource(
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+            Point3D dstOrigin,
+            Size3D writeSize,
             const void* src,
             uint32_t srcRowPitch,
             uint32_t srcDepthPitch
@@ -69,8 +71,8 @@ namespace Veldrid
             uint32_t dstDepthPitch,
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth
+            Point3D srcOrigin,
+            Size3D readSize
         ) override;
 
         virtual SubresourceLayout GetSubresourceLayout(
@@ -96,21 +98,21 @@ namespace Veldrid
     };
 
 
-    VkImageUsageFlags VdToVkTextureUsage(const Texture::Description::Usage& vdUsage);
+    VkImageUsageFlags VdToVkTextureUsage(const ITexture::Description::Usage& vdUsage);
     
-    VkImageType VdToVkTextureType(const Texture::Description::Type& type);
+    VkImageType VdToVkTextureType(const ITexture::Description::Type& type);
 
     
 
-    class VulkanTextureView : public TextureView {
+    class VulkanTextureView : public ITextureView {
 
         VkImageView _view;
 
         VulkanTextureView(
-            const sp<VulkanTexture>& target,
-            const TextureView::Description& desc
+            const common::sp<VulkanTexture>& target,
+            const ITextureView::Description& desc
         ) :
-            TextureView(target,desc)
+            ITextureView(target,desc)
         {}
 
     public:
@@ -119,23 +121,23 @@ namespace Veldrid
 
         const VkImageView& GetHandle() const { return _view; }
 
-        static sp<TextureView> Make(
-            const sp<VulkanTexture>& target,
-            const TextureView::Description& desc
+        static common::sp<VulkanTextureView> Make(
+            const common::sp<VulkanTexture>& target,
+            const ITextureView::Description& desc
         );
 
     };
 
-    class VulkanSampler : public Sampler{
+    class VulkanSampler : public ISampler{
 
         VkSampler _sampler;
 
-        sp<VulkanDevice> _dev;
+        common::sp<VulkanDevice> _dev;
 
         VulkanSampler(
-            const sp<VulkanDevice>& dev,
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
-        ) : Sampler(desc)
+        ) : ISampler(desc)
           , _dev(dev)
         {}
 
@@ -145,12 +147,12 @@ namespace Veldrid
 
         const VkSampler& GetHandle() const { return _sampler; }
 
-        static sp<VulkanSampler> Make(
-            const sp<VulkanDevice>& dev,
-            const Sampler::Description& desc
+        static common::sp<VulkanSampler> Make(
+            const common::sp<VulkanDevice>& dev,
+            const ISampler::Description& desc
         );
 
     };
 
-} // namespace Veldrid
+} // namespace alloy
 

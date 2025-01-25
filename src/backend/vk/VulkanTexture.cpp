@@ -1,30 +1,23 @@
 #include "VulkanTexture.hpp"
 
-#include "veldrid/common/Macros.h"
-#include "veldrid/common/Common.hpp"
-#include "veldrid/Helpers.hpp"
+#include "alloy/common/Macros.h"
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 #include "VkCommon.hpp"
 #include "VulkanDevice.hpp"
 #include "VkTypeCvt.hpp"
 
-namespace Veldrid {
+namespace alloy::vk {
     
-    VulkanTexture::VulkanTexture(const sp<GraphicsDevice>& dev, const Texture::Description& desc)
-        : Texture(dev, desc)
-    { }
-
-    Veldrid::VulkanTexture::~VulkanTexture() {
+    VulkanTexture::~VulkanTexture() {
         if(IsOwnTexture()){
-            auto _dev = reinterpret_cast<VulkanDevice*>(dev.get());
             vmaDestroyImage(_dev->Allocator(), _img, _allocation);
         }
     }
 
-    
-    VulkanDevice* VulkanTexture::GetDevice() const { return static_cast<VulkanDevice*>(dev.get()); }
-
-	sp<Texture> VulkanTexture::Make(const sp<VulkanDevice>& dev, const Texture::Description& desc)
+	common::sp<ITexture> VulkanTexture::Make(const common::sp<VulkanDevice>& dev, 
+                                             const ITexture::Description& desc)
 	{
         //_gd = gd;
         //_width = description.Width;
@@ -57,10 +50,10 @@ namespace Veldrid {
             imageCI.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
             imageCI.usage = VdToVkTextureUsage(desc.usage);
             imageCI.tiling = isStaging ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
-            imageCI.format = Veldrid::VK::priv::VdToVkPixelFormat(desc.format, desc.usage.depthStencil);
+            imageCI.format = VdToVkPixelFormat(desc.format, desc.usage.depthStencil);
             imageCI.flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
-            imageCI.samples = Veldrid::VK::priv::VdToVkSampleCount(desc.sampleCount);
+            imageCI.samples = VdToVkSampleCount(desc.sampleCount);
             if (isCubemap)
             {
                 imageCI.flags |= VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -192,13 +185,13 @@ namespace Veldrid {
 
 		
 
-		return sp<Texture>(tex);
+		return common::sp<ITexture>(tex);
 	}
 
 
-    sp<Texture> VulkanTexture::WrapNative(
-        const sp<VulkanDevice>& dev, 
-        const Texture::Description& desc,
+    common::sp<ITexture> VulkanTexture::WrapNative(
+        const common::sp<VulkanDevice>& dev, 
+        const ITexture::Description& desc,
         VkImageLayout layout,
         VkAccessFlags accessFlag,
         VkPipelineStageFlags pipelineFlag,
@@ -229,12 +222,12 @@ namespace Veldrid {
 //
         //    ClearIfRenderTarget();
         //    RefCount = new ResourceRefCount(DisposeCore);
-        return sp(tex);
+        return common::sp(tex);
     }
 
     
     static std::uint32_t CalculateSubresource(
-        const Veldrid::Texture::Description& desc,
+        const alloy::ITexture::Description& desc,
         std::uint32_t mipLevel, std::uint32_t arrayLayer
     ) {
         return arrayLayer * desc.mipLevels+ mipLevel;
@@ -243,18 +236,17 @@ namespace Veldrid {
     void VulkanTexture::WriteSubresource(
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+        Point3D dstOrigin,
+        Size3D writeSize,
         const void* src,
         uint32_t srcRowPitch,
         uint32_t srcDepthPitch
     ) {
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
         void* mappedData;
-        VK_CHECK(vmaMapMemory(vkDev->Allocator(), _allocation, &mappedData));
+        VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
-        auto subResLayout = GetSubresourceLayout(mipLevel, description.mipLevels, SubresourceAspect::Color);
-        auto elementSize = Helpers::FormatHelpers::GetSizeInBytes(description.format);
+        auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
+        auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
 
         auto pDst = (char*)mappedData + subResLayout.offset;
 
@@ -266,18 +258,18 @@ namespace Veldrid {
         //                     + x*elementSize 
         //                     + offset
 
-        auto pDstZ = pDst + dstZ * subResLayout.depthPitch;
+        auto pDstZ = pDst + dstOrigin.z * subResLayout.depthPitch;
         auto pSrcZ = (const char*)src;
 
-        for(uint32_t z = 0; z < depth; z++) {
+        for(uint32_t z = 0; z < writeSize.depth; z++) {
             auto pSrcY = pSrcZ;
-            auto pDstY = pDstZ + dstY * subResLayout.rowPitch;
-            for(uint32_t y = 0; y < height; y++) {
+            auto pDstY = pDstZ + dstOrigin.y * subResLayout.rowPitch;
+            for(uint32_t y = 0; y < writeSize.height; y++) {
                 
                 auto pSrcX = pSrcY;
-                auto pDstX = pDstY + dstX * elementSize;
+                auto pDstX = pDstY + dstOrigin.x * elementSize;
 
-                memcpy(pDstX, pSrcX, width * elementSize);
+                memcpy(pDstX, pSrcX, writeSize.width * elementSize);
 
                 pSrcY += srcRowPitch;
                 pDstY += subResLayout.rowPitch;
@@ -287,7 +279,7 @@ namespace Veldrid {
             pDstZ += subResLayout.depthPitch;
         }
                                                       
-        vmaUnmapMemory(vkDev->Allocator(), _allocation);
+        vmaUnmapMemory(_dev->Allocator(), _allocation);
     }
 
     void VulkanTexture::ReadSubresource(
@@ -296,15 +288,14 @@ namespace Veldrid {
         uint32_t dstDepthPitch,
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        Point3D srcOrigin,
+        Size3D readSize
     ) {
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
         void* mappedData;
-        VK_CHECK(vmaMapMemory(vkDev->Allocator(), _allocation, &mappedData));
+        VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
-        auto subResLayout = GetSubresourceLayout(mipLevel, description.mipLevels, SubresourceAspect::Color);
-        auto elementSize = Helpers::FormatHelpers::GetSizeInBytes(description.format);
+        auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
+        auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
 
         auto pSrc = (char*)mappedData + subResLayout.offset;
 
@@ -316,18 +307,18 @@ namespace Veldrid {
         //                     + x*elementSize 
         //                     + offset
 
-        auto pSrcZ = pSrc + srcZ * subResLayout.depthPitch;
+        auto pSrcZ = pSrc + srcOrigin.z * subResLayout.depthPitch;
         auto pDstZ = (char*)dst;
 
-        for(uint32_t z = 0; z < depth; z++) {
-            auto pSrcY = pSrcZ + srcY * subResLayout.rowPitch;
+        for(uint32_t z = 0; z < readSize.depth; z++) {
+            auto pSrcY = pSrcZ + srcOrigin.y * subResLayout.rowPitch;
             auto pDstY = pDstZ;
-            for(uint32_t y = 0; y < height; y++) {
+            for(uint32_t y = 0; y < readSize.height; y++) {
                 
-                auto pSrcX = pSrcY + srcX * elementSize;
+                auto pSrcX = pSrcY + srcOrigin.x * elementSize;
                 auto pDstX = pDstY;
 
-                memcpy(pDstX, pSrcX, width * elementSize);
+                memcpy(pDstX, pSrcX, readSize.width * elementSize);
 
                 pSrcY += subResLayout.rowPitch;
                 pDstY += dstRowPitch;
@@ -337,19 +328,17 @@ namespace Veldrid {
             pDstZ += dstDepthPitch;
         }
                                                       
-        vmaUnmapMemory(vkDev->Allocator(), _allocation);
+        vmaUnmapMemory(_dev->Allocator(), _allocation);
     }
 
 
     
-    Texture::SubresourceLayout VulkanTexture::GetSubresourceLayout(
+    ITexture::SubresourceLayout VulkanTexture::GetSubresourceLayout(
             uint32_t mipLevel,
             uint32_t arrayLayer,
             SubresourceAspect aspect
     ) {
-        auto vkDev = PtrCast<VulkanDevice>(dev.get());
-
-
+        
         VkImageSubresource subResDesc {
             //VkImageAspectFlags    aspectMask;
             .mipLevel = mipLevel,
@@ -371,9 +360,9 @@ namespace Veldrid {
         
         VkSubresourceLayout outLayout{ };
 
-        vkGetImageSubresourceLayout(vkDev->LogicalDev(), _img, &subResDesc, &outLayout);
+        vkGetImageSubresourceLayout(_dev->LogicalDev(), _img, &subResDesc, &outLayout);
 
-        Texture::SubresourceLayout ret {};
+        ITexture::SubresourceLayout ret {};
         ret.offset = outLayout.offset;
         ret.rowPitch = outLayout.rowPitch;
         ret.depthPitch = outLayout.depthPitch;
@@ -428,7 +417,7 @@ namespace Veldrid {
         barrier.image = _img;
         auto& aspectMask = barrier.subresourceRange.aspectMask;
         if (description.usage.depthStencil) {
-            aspectMask = Helpers::FormatHelpers::IsStencilFormat(description.format)
+            aspectMask = FormatHelpers::IsStencilFormat(description.format)
                 ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
                 : VK_IMAGE_ASPECT_DEPTH_BIT;
         }
@@ -460,28 +449,31 @@ namespace Veldrid {
     
     VulkanTextureView::~VulkanTextureView() {
         auto vkTex = static_cast<VulkanTexture*>(target.get());
-        auto _dev = vkTex->GetDevice();
-        vkDestroyImageView(_dev->LogicalDev(), _view, nullptr);
+        auto& _dev = vkTex->GetDevice();
+        vkDestroyImageView(_dev.LogicalDev(), _view, nullptr);
     }
 
-	sp<TextureView> VulkanTextureView::Make(
-		const sp<VulkanTexture>& target,
-		const TextureView::Description& desc
+	common::sp<VulkanTextureView> VulkanTextureView::Make(
+		const common::sp<VulkanTexture>& target,
+		const ITextureView::Description& desc
 	){
-        VulkanDevice* dev = target->GetDevice();
-        auto format = desc.format == PixelFormat::Unknown ? target->GetDesc().format : desc.format;
+        auto& dev = target->GetDevice();
         auto& targetDesc = target->GetDesc();
-
+        
         VkImageViewCreateInfo imageViewCI{};
         imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         //VkTexture tex = Util.AssertSubtype<Texture, VkTexture>(description.Target);
         imageViewCI.image = target->GetHandle();
-        imageViewCI.format = Veldrid::VK::priv::VdToVkPixelFormat(format, targetDesc.usage.depthStencil);
+        imageViewCI.format = VdToVkPixelFormat(targetDesc.format, targetDesc.usage.depthStencil);
 
         VkImageAspectFlags aspectFlags;
         if (targetDesc.usage.depthStencil)
         {
             aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+
+            if(FormatHelpers::IsStencilFormat(targetDesc.format)){
+                aspectFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
         }
         else
         {
@@ -506,32 +498,32 @@ namespace Veldrid {
         {
             switch (targetDesc.type)
             {
-            case Texture::Description::Type::Texture1D:
+            case ITexture::Description::Type::Texture1D:
                 imageViewCI.viewType = desc.arrayLayers == 1
                     ? VkImageViewType::VK_IMAGE_VIEW_TYPE_1D
                     : VkImageViewType::VK_IMAGE_VIEW_TYPE_1D_ARRAY;
                 break;
-            case Texture::Description::Type::Texture2D:
+            case ITexture::Description::Type::Texture2D:
                 imageViewCI.viewType = desc.arrayLayers == 1
                     ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D
                     : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY;
                 break;
-            case Texture::Description::Type::Texture3D:
+            case ITexture::Description::Type::Texture3D:
                 imageViewCI.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_3D;
                 break;
             }
         }
 
         VkImageView vkImgView;
-        vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &vkImgView);
+        vkCreateImageView(dev.LogicalDev(), &imageViewCI, nullptr, &vkImgView);
 
         auto imgView = new VulkanTextureView(target, desc);
         imgView->_view = vkImgView;
 
-        return sp(imgView);
+        return common::sp(imgView);
 	}
 
-    VkImageUsageFlags VdToVkTextureUsage(const Texture::Description::Usage& vdUsage)
+    VkImageUsageFlags VdToVkTextureUsage(const ITexture::Description::Usage& vdUsage)
     {
         VkImageUsageFlags vkUsage{
               VkImageUsageFlagBits::VK_IMAGE_USAGE_TRANSFER_SRC_BIT
@@ -556,15 +548,15 @@ namespace Veldrid {
         return vkUsage;
     }
 
-    VkImageType VdToVkTextureType(const Texture::Description::Type& type)
+    VkImageType VdToVkTextureType(const ITexture::Description::Type& type)
     {
         switch (type)
         {
-        case Texture::Description::Type::Texture1D:
+        case ITexture::Description::Type::Texture1D:
             return VkImageType::VK_IMAGE_TYPE_1D;
-        case Texture::Description::Type::Texture2D:
+        case ITexture::Description::Type::Texture2D:
             return VkImageType::VK_IMAGE_TYPE_2D;
-        case Texture::Description::Type::Texture3D:
+        case ITexture::Description::Type::Texture3D:
             return VkImageType::VK_IMAGE_TYPE_3D;
         default:
             return VK_IMAGE_TYPE_MAX_ENUM;
@@ -577,42 +569,42 @@ namespace Veldrid {
     }
 
 
-    sp<VulkanSampler> VulkanSampler::Make(
-        const sp<VulkanDevice>& dev,
-        const Sampler::Description& desc
+    common::sp<VulkanSampler> VulkanSampler::Make(
+        const common::sp<VulkanDevice>& dev,
+        const ISampler::Description& desc
     ){
         VkFilter minFilter, magFilter;
         VkSamplerMipmapMode mipmapMode;
-        Veldrid::VK::priv::GetFilterParams(desc.filter, minFilter, magFilter, mipmapMode);
+        GetFilterParams(desc.filter, minFilter, magFilter, mipmapMode);
 
         VkSamplerCreateInfo samplerCI{};
 
         bool compareEnable = desc.comparisonKind != nullptr;
         
         samplerCI.sType = VkStructureType::VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerCI.addressModeU =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeU);
-        samplerCI.addressModeV =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeV);
-        samplerCI.addressModeW =  Veldrid::VK::priv::VdToVkSamplerAddressMode(desc.addressModeW);
+        samplerCI.addressModeU =  VdToVkSamplerAddressMode(desc.addressModeU);
+        samplerCI.addressModeV =  VdToVkSamplerAddressMode(desc.addressModeV);
+        samplerCI.addressModeW =  VdToVkSamplerAddressMode(desc.addressModeW);
         samplerCI.minFilter = minFilter;
         samplerCI.magFilter = magFilter;
         samplerCI.mipmapMode = mipmapMode;
         samplerCI.compareEnable = compareEnable,
         samplerCI.compareOp = compareEnable
-            ? Veldrid::VK::priv::VdToVkCompareOp(*desc.comparisonKind)
+            ? VdToVkCompareOp(*desc.comparisonKind)
             : VkCompareOp::VK_COMPARE_OP_NEVER,
-        samplerCI.anisotropyEnable = desc.filter == Sampler::Description::SamplerFilter::Anisotropic;
+        samplerCI.anisotropyEnable = desc.filter == ISampler::Description::SamplerFilter::Anisotropic;
         samplerCI.maxAnisotropy = desc.maximumAnisotropy;
         samplerCI.minLod = desc.minimumLod;
         samplerCI.maxLod = desc.maximumLod;
         samplerCI.mipLodBias = desc.lodBias;
-        samplerCI.borderColor = Veldrid::VK::priv::VdToVkSamplerBorderColor(desc.borderColor);
+        samplerCI.borderColor = VdToVkSamplerBorderColor(desc.borderColor);
 
         VkSampler rawSampler;
         vkCreateSampler(dev->LogicalDev(), &samplerCI, nullptr, &rawSampler);
 
         auto* sampler = new VulkanSampler(dev, desc);
         sampler->_sampler = rawSampler;
-        return sp<VulkanSampler>(sampler);
+        return common::sp<VulkanSampler>(sampler);
     }
 
 }

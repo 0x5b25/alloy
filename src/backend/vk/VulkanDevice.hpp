@@ -3,13 +3,13 @@
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
-#include "veldrid/common/RefCnt.hpp"
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SyncObjects.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/SwapChain.hpp"
-#include "veldrid/CommandQueue.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/SwapChain.hpp"
+#include "alloy/CommandQueue.hpp"
 
 #include <deque>
 #include <map>
@@ -19,10 +19,10 @@
 #include "VkDescriptorPoolMgr.hpp"
 #include "VulkanResourceFactory.hpp"
 
-class _VkCtx;
 
-namespace Veldrid
+namespace alloy::vk
 {
+    class _VkCtx;
     class VulkanBuffer;
     class VulkanDevice;
     //class VulkanResourceFactory;
@@ -52,7 +52,7 @@ namespace Veldrid
 
         void _ReleaseCmdPoolHolder(_CmdPoolContainer* holder);
 
-        sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
+        common::sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
 
     public:
         _CmdPoolMgr(VkDevice dev, std::uint32_t queueFamily)
@@ -69,10 +69,10 @@ namespace Veldrid
             }
         }
 
-        sp<_CmdPoolContainer> GetOnePool() { return _AcquireCmdPoolHolder(); }
+        common::sp<_CmdPoolContainer> GetOnePool() { return _AcquireCmdPoolHolder(); }
     };
 
-    struct _CmdPoolContainer : public RefCntBase {
+    struct _CmdPoolContainer : public common::RefCntBase {
         VkCommandPool pool;
         _CmdPoolMgr* mgr;
         std::thread::id boundID;
@@ -85,7 +85,7 @@ namespace Veldrid
         void FreeBuffer(VkCommandBuffer buf);
     };
 
-    class VulkanCommandQueue : public CommandQueue {
+    class VulkanCommandQueue : public ICommandQueue {
 
         VulkanDevice* _dev;
         _CmdPoolMgr _cmdPoolMgr;
@@ -109,19 +109,19 @@ namespace Veldrid
 
         VkQueue GetHandle() const {return _q;}
 
-        virtual void EncodeSignalFence(Fence* fence, uint64_t value) override;
+        virtual void EncodeSignalEvent(IEvent* evt, uint64_t value) override;
 
-        virtual void EncodeWaitForFence(Fence* fence, uint64_t value) override;
+        virtual void EncodeWaitForEvent(IEvent* evt, uint64_t value) override;
 
-        virtual void SubmitCommand(CommandList* cmd) override;
+        virtual void SubmitCommand(ICommandList* cmd) override;
 
 
         
-        virtual sp<CommandList> CreateCommandList() override;
+        virtual common::sp<ICommandList> CreateCommandList() override;
 
     };
 
-    class VulkanDevice : public GraphicsDevice {
+    class VulkanDevice : public IGraphicsDevice, public VulkanResourceFactory {
 
     public:
         union Features {
@@ -146,13 +146,13 @@ namespace Veldrid
 
     private:
 
-        sp<_VkCtx> _ctx;
+        common::sp<_VkCtx> _ctx;
 
         PhyDevInfo _phyDev;
         VkDevice _dev;
         VmaAllocator _allocator;
         //_CmdPoolMgr _cmdPoolMgr;
-        VK::priv::_DescriptorPoolMgr _descPoolMgr;
+        _DescriptorPoolMgr _descPoolMgr;
 
         VulkanCommandQueue* _gfxQ;
         VulkanCommandQueue* _copyQ;
@@ -160,7 +160,6 @@ namespace Veldrid
 
         //VkSurfaceKHR _surface;
         //bool _isOwnSurface;
-        VulkanResourceFactory _resFactory;
 
         AdapterInfo _adpInfo;
 
@@ -169,7 +168,7 @@ namespace Veldrid
 
         //std::string _devName, _devVendor;
         //std::string _drvName, _drvInfo;
-        GraphicsDevice::Features _commonFeat;
+        IGraphicsDevice::Features _commonFeat;
 
         VulkanDevice();
 
@@ -177,8 +176,8 @@ namespace Veldrid
 
         ~VulkanDevice();
 
-        static sp<GraphicsDevice> Make(
-            const GraphicsDevice::Options& options
+        static common::sp<IGraphicsDevice> Make(
+            const IGraphicsDevice::Options& options
         );
 
 
@@ -186,10 +185,10 @@ namespace Veldrid
         
         virtual void* GetNativeHandle() const override { return _dev; }
 
-        virtual const GraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
-        virtual const GraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
+        virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
+        virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
-        virtual ResourceFactory* GetResourceFactory() override { return &_resFactory; };
+        virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
         const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
         const VkDevice& LogicalDev() const {return _dev;}
@@ -213,53 +212,51 @@ namespace Veldrid
 
     public:
         //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-        VK::priv::_DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
+        _DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
     //Interface
     public:
 
         //virtual void SubmitCommand(const CommandList* cmd) override;
-        virtual SwapChain::State PresentToSwapChain(
-            const std::vector<Semaphore*>& waitSemaphores,
-            SwapChain* sc) override;
+        virtual ISwapChain::State PresentToSwapChain(
+            ISwapChain* sc) override;
 
-        virtual CommandQueue* GetGfxCommandQueue() override;
-        virtual CommandQueue* GetCopyCommandQueue() override;
+        virtual ICommandQueue* GetGfxCommandQueue() override;
+        virtual ICommandQueue* GetCopyCommandQueue() override;
 
         //virtual bool WaitForFence(const sp<Fence>& fence, std::uint32_t timeOutNs) override;
         void WaitForIdle() override {vkDeviceWaitIdle(_dev);}
     };
 
-    class VulkanBuffer : public Buffer{
+    class VulkanBuffer : public IBuffer{
 
     private:
+        common::sp<VulkanDevice> _dev;
+
         VkBuffer _buffer;
         VmaAllocation _allocation;
 
         //VkBufferUsageFlags _usages;
         //VmaMemoryUsage _allocationType;
 
-        VulkanDevice* _Dev() const {
-            return reinterpret_cast<VulkanDevice*>(dev.get());
-        }
-
         VulkanBuffer(
-            const sp<GraphicsDevice>& dev,
-            const Buffer::Description& desc
-        ) : 
-            Buffer(dev, desc)
+            const common::sp<VulkanDevice>& dev,
+            const IBuffer::Description& desc
+        ) 
+            : IBuffer(desc)
+            , _dev(dev)
         {}
 
     public:
 
         virtual ~VulkanBuffer();
 
-        virtual std::string GetDebugName() const override {
-            return "<VK_DEVBUF>";
-        }
+        //virtual std::string GetDebugName() const override {
+        //    return "<VK_DEVBUF>";
+        //}
 
-        static sp<Buffer> Make(
-            const sp<VulkanDevice>& dev,
-            const Buffer::Description& desc
+        static common::sp<IBuffer> Make(
+            const common::sp<VulkanDevice>& dev,
+            const IBuffer::Description& desc
         );
 
         const VkBuffer& GetHandle() const {return _buffer;}
@@ -268,31 +265,41 @@ namespace Veldrid
 
         virtual void UnMap();
 
-    };
-
-    class VulkanFence : public Fence {
-
-    private:
-
-        VkSemaphore  _timelineSem;
-
-        VulkanDevice* _Dev() const {
-            return static_cast<VulkanDevice*>(dev.get());
+        virtual void SetDebugName(const std::string & name) override {
+            // Check for a valid function pointer
+	        if (_dev->GetFeatures().commandListDebugMarkers)
+	        {
+	        	VkDebugMarkerObjectNameInfoEXT nameInfo = {};
+	        	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+	        	nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+	        	nameInfo.object = (uint64_t)_buffer;
+	        	nameInfo.pObjectName = name.c_str();
+	        	vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+	        }
         }
 
-        VulkanFence(const sp<GraphicsDevice>& dev) : Fence(dev) {}
+    };
+
+    class VulkanFence : public IEvent {
+
+    private:
+        common::sp<VulkanDevice> _dev;
+        VkSemaphore  _timelineSem;
+
+
+        VulkanFence(const common::sp<VulkanDevice>& dev) : _dev(dev) {}
 
     public:
 
         ~VulkanFence();
 
-        static sp<Fence> Make(
-            const sp<VulkanDevice>& dev
+        static common::sp<IEvent> Make(
+            const common::sp<VulkanDevice>& dev
         );
 
         const VkSemaphore& GetHandle() const { return _timelineSem; }
     
-        virtual uint64_t GetCurrentValue() override;
+        virtual uint64_t GetSignaledValue() override;
         virtual void SignalFromCPU(uint64_t signalValue) override;
         virtual bool WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) override;
         bool WaitFromCPU(uint64_t expectedValue) {
@@ -301,23 +308,5 @@ namespace Veldrid
 
     };
     
-    class VulkanSemaphore : public Semaphore {
-
-    private:
-        VkSemaphore _sem;
-
-        VulkanSemaphore(const sp<GraphicsDevice>& dev) : Semaphore(dev) {}
-
-    public:
-        ~VulkanSemaphore();
-
-        static sp<Semaphore> Make(
-            const sp<VulkanDevice>& dev
-        );
-
-        const VkSemaphore& GetHandle() const { return _sem; }
-
-    };
-
-} // namespace Veldrid
+} // namespace alloy
 

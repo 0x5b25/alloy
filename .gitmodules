@@ -20,3 +20,6 @@
 [submodule "src/backend/vk/3rd-party/dxil-spirv"]
 	path = src/backend/vk/3rd-party/dxil-spirv
 	url = https://github.com/HansKristian-Work/dxil-spirv.git
+[submodule "demo/imgui"]
+	path = demo/imgui
+	url = https://github.com/ocornut/imgui.git

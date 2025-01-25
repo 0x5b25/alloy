@@ -1,8 +1,8 @@
 #include "DXCCommandList.hpp"
 
 
-#include "veldrid/common/Common.hpp"
-#include "veldrid/Helpers.hpp"
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 #include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
@@ -10,11 +10,14 @@
 #include "DXCTexture.hpp"
 #include "DXCPipeline.hpp"
 #include "DXCFrameBuffer.hpp"
+#include "DXCBindableResource.hpp"
 
-namespace Veldrid
+namespace alloy::dxc
 {
 
-    sp<DXCCommandList> DXCCommandList::Make(const sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type) {
+    common::sp<DXCCommandList> DXCCommandList::Make( const common::sp<DXCDevice>& dev,
+                                                     D3D12_COMMAND_LIST_TYPE type 
+    ) {
 
         auto pDev = dev->GetDevice();
 
@@ -35,309 +38,32 @@ namespace Veldrid
             ID3D12GraphicsCommandList7* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
-            return sp(new DXCCommandList7(dev, pAllocator, pNewCmdList));
+            return common::sp(new DXCCommandList7(dev, pAllocator, pNewCmdList));
         }
         else if(dev->GetDevCaps().SupportMeshShader()) {
             ID3D12GraphicsCommandList6* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
-            return sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
+            return common::sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
         }
 
-        return sp(new DXCCommandList(dev, pAllocator, pCmdList));
+        return common::sp(new DXCCommandList(dev, pAllocator, pCmdList));
 
     }
 
-    //const VkAccessFlags READ_MASK =
-    //    VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
-    //    VK_ACCESS_INDEX_READ_BIT |
-    //    VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
-    //    VK_ACCESS_UNIFORM_READ_BIT |
-    //    VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
-    //    VK_ACCESS_SHADER_READ_BIT |
-    //    //VK_ACCESS_SHADER_WRITE_BIT = 0x00000040,
-    //    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-    //    //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT = 0x00000100,
-    //    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-    //    //VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT = 0x00000400,
-    //    VK_ACCESS_TRANSFER_READ_BIT |
-    //    //VK_ACCESS_TRANSFER_WRITE_BIT = 0x00001000,
-    //    VK_ACCESS_HOST_READ_BIT |
-    //    //VK_ACCESS_HOST_WRITE_BIT = 0x00004000,
-    //    VK_ACCESS_MEMORY_READ_BIT |
-    //    //VK_ACCESS_MEMORY_WRITE_BIT = 0x00010000,
-    //    // Provided by VK_VERSION_1_3
-    //    //VK_ACCESS_NONE |
-    //    // Provided by VK_EXT_transform_feedback
-    //    //VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT = 0x02000000,
-    //    // Provided by VK_EXT_transform_feedback
-    //    VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT |
-    //    // Provided by VK_EXT_transform_feedback
-    //    //VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT = 0x08000000,
-    //    // Provided by VK_EXT_conditional_rendering
-    //    VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT |
-    //    // Provided by VK_EXT_blend_operation_advanced
-    //    VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT |
-    //    // Provided by VK_KHR_acceleration_structure
-    //    VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR |
-    //    // Provided by VK_KHR_acceleration_structure
-    //    //VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR = 0x00400000,
-    //    // Provided by VK_EXT_fragment_density_map
-    //    VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT |
-    //    // Provided by VK_KHR_fragment_shading_rate
-    //    VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR |
-    //    // Provided by VK_NV_device_generated_commands
-    //    VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_NV;
-    //    // Provided by VK_NV_device_generated_commands
-    //    //VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV = 0x00040000,
-    //    // Provided by VK_NV_shading_rate_image
-//
-    //constexpr bool _IsReadAccess(VkAccessFlags access) {
-    //    return (READ_MASK & access) != 0;
-    //}
-//
-    //constexpr bool _HasAccessHarzard(VkAccessFlags src, VkAccessFlags dst) {
-    //    return (src != VK_ACCESS_NONE && dst != VK_ACCESS_NONE)
-    //        && ((~READ_MASK)&(src | dst));
-    //    //find anyone with a write access
-    //}
-//
-    //void _DevResRegistry::RegisterBufferUsage(
-    //    const sp<Buffer>& buffer,
-    //    VkPipelineStageFlags stage,
-    //    VkAccessFlags access
-    //) {
-    //    auto vkBuf = PtrCast<VulkanBuffer>(buffer.get());
-    //    _res.insert(buffer);
-//
-    //    //Find usages
-    //    auto res = _bufRefs.find(vkBuf);
-    //    if (res != _bufRefs.end()) {
-    //        //There is a access dependency
-    //        auto& [thisBuf, prevRef] = *res;
-    //        //And a potential hazard
-    //        if (_HasAccessHarzard(prevRef.access, access)) {
-    //            //Add one entry to sync infos
-    //            _bufSyncs.push_back({ vkBuf, prevRef,{ stage, access} });
-    //            //and clear old references
-    //            prevRef.stage = stage;
-    //            prevRef.access = access;
-    //        }
-    //        else {
-    //            //gather all read references
-    //            prevRef.stage |= stage;
-    //            prevRef.access &= access;
-    //        }
-    //        
-    //    }
-    //    else {
-    //        //This is a first time use
-    //        _bufRefs.insert({ vkBuf, {stage, access} });
-    //    }
-    //}
-//
-    //void _DevResRegistry::RegisterTexUsage(
-    //    const sp<Texture>& tex,
-    //    VkImageLayout requiredLayout,
-    //    VkPipelineStageFlags stage,
-    //    VkAccessFlags access
-    //) {
-    //    auto vkTex = PtrCast<VulkanTexture>(tex.get());
-    //    _res.insert(tex);
-//
-    //    //Find usages
-    //    auto res = _texRefs.find(vkTex);
-    //    if (vkTex->GetLayout() != requiredLayout) {
-    //        //Transition needed if curr layout != required layout
-    //        //Always add barrier
-    //        TexRef* prevRef;
-    //        if (res != _texRefs.end()) {
-    //            //There is a access dependency
-    //            auto& [thisTex, _prevRef] = *res;
-    //            prevRef = &_prevRef;
-    //            
-    //        }
-    //        else {
-    //            const auto&[ entryIt, _insertRes] = _texRefs.insert({ 
-    //                vkTex, 
-    //                {
-    //                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
-    //                    0, 
-    //                    vkTex->GetLayout()
-    //                } 
-    //            });
-    //            std::pair<VulkanTexture* const, TexRef> & entry = *entryIt;
-    //            prevRef = &entry.second;
-    //        }
-//
-    //        //Add one entry to sync infos
-    //        _texSyncs.push_back({ vkTex, *prevRef,{ stage, access, requiredLayout} });
-    //        prevRef->stage = stage;
-    //        prevRef->access = access;
-    //        prevRef->layout = requiredLayout;
-    //        vkTex->SetLayout(requiredLayout);
-    //    }
-    //    else {
-    //        //Add barrier when there is a access hazard
-    //        if (res != _texRefs.end()) {
-    //            auto& [thisTex, prevRef] = *res;
-    //            if (_HasAccessHarzard(prevRef.access, access)) {
-    //                _texSyncs.push_back({ vkTex, prevRef,{ stage, access, requiredLayout} });
-    //                prevRef.stage = stage;
-    //                prevRef.access = access;
-    //            }
-    //            else {
-    //                //There is a access dependency
-    //                prevRef.stage |= stage;
-    //                prevRef.access &= access;
-    //            }
-    //        }
-    //        else {
-    //            //This is a first time use
-    //            _texRefs.insert({ vkTex, {stage, access, requiredLayout} });
-    //        }
-    //    }
-    //}
-//
-    //void _DevResRegistry::ModifyTexUsage(
-    //    const sp<Texture>& tex,
-    //    VkImageLayout layout,
-    //    VkPipelineStageFlags stage,
-    //    VkAccessFlags access
-    //) {
-    //    auto vkTex = PtrCast<VulkanTexture>(tex.get());
-    //    
-    //    //Find usages
-    //    auto res = _texRefs.find(vkTex);
-    //    assert(res != _texRefs.end());
-//
-    //    auto& ref = (*res).second;
-    //    ref.layout = layout;
-    //    ref.access = access;
-    //    ref.stage = stage;
-    //}
-//
-//
-    //bool _DevResRegistry::InsertPipelineBarrierIfNecessary(
-    //    VkCommandBuffer cb
-    //) {
-    //    if (_bufSyncs.empty() && _texSyncs.empty()) {
-    //        return false;
-    //    }
-//
-    //    VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    //    VkPipelineStageFlags dstStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-//
-    //    std::vector<VkBufferMemoryBarrier> bufBarriers;
-    //    for (auto& [thisBuf, prevRef, currRef] : _bufSyncs) {
-    //        srcStageFlags |= prevRef.stage;
-    //        dstStageFlags |= currRef.stage;
-    //        bufBarriers.push_back({VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER});
-    //        auto& barrier = bufBarriers.back();
-//
-    //        barrier.srcAccessMask = prevRef.access;
-    //        barrier.dstAccessMask = currRef.access;
-    //        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //        barrier.buffer = thisBuf->GetHandle();
-    //        //TODO : Currently includes the whole buffer. Maybe add finer grain control later.
-    //        barrier.offset = 0;
-    //        barrier.size = thisBuf->GetDesc().sizeInBytes;
-    //    }
-//
-    //    std::vector<VkImageMemoryBarrier> imgBarriers;
-    //    for (auto& [thisTex, prevRef, currRef] : _texSyncs) {
-    //        srcStageFlags |= prevRef.stage;
-    //        dstStageFlags |= currRef.stage;
-    //        imgBarriers.push_back({ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER });
-    //        auto& desc = thisTex->GetDesc();
-    //        auto& barrier = imgBarriers.back();
-//
-    //        barrier.oldLayout = prevRef.layout;
-    //        barrier.newLayout = currRef.layout;
-    //        barrier.srcAccessMask = prevRef.access;
-    //        barrier.dstAccessMask = currRef.access;
-    //        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    //        barrier.image = thisTex->GetHandle();
-    //        auto& aspectMask = barrier.subresourceRange.aspectMask;
-    //        if (desc.usage.depthStencil) {
-    //            aspectMask = Helpers::FormatHelpers::IsStencilFormat(desc.format)
-    //                ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
-    //                : VK_IMAGE_ASPECT_DEPTH_BIT;
-    //        }
-    //        else {
-    //            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    //        }
-    //        barrier.subresourceRange.baseMipLevel = 0;
-    //        barrier.subresourceRange.levelCount = desc.mipLevels;
-    //        barrier.subresourceRange.baseArrayLayer = 0;
-    //        barrier.subresourceRange.layerCount = desc.arrayLayers;
-//
-    //    }
-//
-    //    //VkMemoryBarrier{};
-    //    //VkBufferMemoryBarrier{};
-    //    //VkImageMemoryBarrier{};
-    //    vkCmdPipelineBarrier(
-    //        cb,
-    //        srcStageFlags,
-    //        dstStageFlags,
-    //        0,
-    //        0, nullptr,
-    //        bufBarriers.size(), bufBarriers.data(),
-    //        imgBarriers.size(), imgBarriers.data());
-    //    
-    //    _bufSyncs.clear();
-    //    _texSyncs.clear();
-//
-    //    return true;
-    //}
-
-
-    #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentRenderPass != nullptr))
-    #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentRenderPass == nullptr))
+    #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentPass != nullptr))
+    #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentPass == nullptr))
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
-    DXCCommandList::~DXCCommandList(){
-        _cmdList->Release();
-        _cmdAlloc->Release();
-    }
-     
-    void DXCCommandList::Begin(){
+    
 
-        _currentPipeline = nullptr;
-        _resourceSets.clear();
+    void DXCRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
 
-        _currentRenderPass = nullptr;
-        _rndPasses.clear();
-
-        _devRes.clear();
-        _miscResReg.clear();
-        // Command list allocators can only be reset when the associated 
-        // command lists have finished execution on the GPU; apps should use 
-        // fences to determine GPU execution progress.
-        ThrowIfFailed(_cmdAlloc->Reset());
-
-        // However, when ExecuteCommandList() is called on a particular command 
-        // list, that command list can then be reset at any time and must be before 
-        // re-recording.
-        ThrowIfFailed(_cmdList->Reset(_cmdAlloc, nullptr));
-
-    }
-    void DXCCommandList::End(){
-
-        ThrowIfFailed(_cmdList->Close());
-    }
-
-    void DXCCommandList::SetPipeline(const sp<Pipeline>& pipeline){
-
-        auto dxcPipeline = PtrCast<DXCPipelineBase>(pipeline.get());
+        auto dxcPipeline = PtrCast<DXCGraphicsPipeline>(pipeline.get());
         assert(dxcPipeline != _currentPipeline);
-        _miscResReg.insert(pipeline);
-        bool isComputePipeline = pipeline->IsComputePipeline();
+        resources.insert(pipeline);
 
-        dxcPipeline->CmdBindPipeline(_cmdList);
+        dxcPipeline->CmdBindPipeline(cmdList);
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -348,209 +74,9 @@ namespace Veldrid
         //Mark current pipeline
         _currentPipeline = dxcPipeline;
     }
-
-    void DXCCommandList::BeginRenderPass(const sp<Framebuffer>& fb){
-        CHK_RENDERPASS_ENDED();
-        ////Record render pass
-        //#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
-        _rndPasses.emplace_back();
-        _currentRenderPass = &_rndPasses.back();
-        //
-        auto dxcfb = PtrCast<DXCFrameBufferBase>(fb.get());
-        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-        rtvHandles.reserve(dxcfb->GetRTVCount());
-        for(uint32_t i = 0; i < dxcfb->GetRTVCount(); i++) {
-            rtvHandles.push_back(dxcfb->GetRTV(i));
-        }
-        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle;
-        if(dxcfb->HasDSV()) {
-            dsvHandle = dxcfb->GetDSV();
-        }
-        _cmdList->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE, dxcfb->HasDSV()?&dsvHandle : nullptr);
-
-
-        _currentRenderPass->fb = RefRawPtr(dxcfb);
-        //
-        //_currentRenderPass->clearColorTargets.resize(
-        //    vkfb->GetDesc().colorTargets.size(), {}
-        //);
-        //
-        //vkfb->VisitAttachments([&](
-        //    const sp<VulkanTexture>& vkTarget,
-        //    VulkanFramebufferBase::VisitedAttachmentType type) {
-        //
-        //        switch (type)
-        //        {
-        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::ColorAttachment: {
-        //            _resReg.RegisterTexUsage(vkTarget,
-        //                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        //                VK_ACCESS_SHADER_WRITE_BIT
-        //            );
-        //        }break;
-        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthAttachment: {
-        //            _resReg.RegisterTexUsage(vkTarget,
-        //                VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        //                VK_ACCESS_SHADER_WRITE_BIT
-        //            );
-        //        }break;
-        //        case Veldrid::VulkanFramebufferBase::VisitedAttachmentType::DepthStencilAttachment: {
-        //            _resReg.RegisterTexUsage(vkTarget,
-        //                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        //                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        //                VK_ACCESS_SHADER_WRITE_BIT
-        //            );
-        //        }break;
-        //        }
-        //    }
-        //);
-
-        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-
-        //Init attachment containers
-
-        //auto attachmentCount = fb->GetDesc().GetAttachmentCount();
-        //bool haveAnyAttachments = _currentFramebuffer.ColorTargets.Count > 0 || _currentFramebuffer.DepthTarget != null;
-        //bool haveAllClearValues = _depthClearValue.HasValue || _currentFramebuffer.DepthTarget == null;
-        //bool haveAnyClearValues = _depthClearValue.HasValue;
-        //for (int i = 0; i < _currentFramebuffer.ColorTargets.Count; i++)
-        //{
-        //    if (!_validColorClearValues[i])
-        //    {
-        //        haveAllClearValues = false;
-        //    }
-        //    else
-        //    {
-        //        haveAnyClearValues = true;
-        //    }
-        //}
-        
-        //Push back render pass begin info into draw* commands
-        //Start a renderpass as late as possible for barriers
-        //to work correctly
-        //VkRenderPassBeginInfo renderPassBI{};
-        //renderPassBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        //renderPassBI.renderArea = VkRect2D{(int)fb->GetDesc().GetWidth(), (int)fb->GetDesc().GetHeight()};
-        //renderPassBI.framebuffer = vkfb->GetHandle();
-        //
-        //renderPassBI.renderPass = vkfb->GetRenderPassNoClear_Load();
-        //vkCmdBeginRenderPass(_cmdBuf, &renderPassBI, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
-
-        //if (!haveAnyAttachments || !haveAllClearValues)
-        //{
-        //    renderPassBI.renderPass = _newFramebuffer
-        //        ? _currentFramebuffer.RenderPassNoClear_Init
-        //        : _currentFramebuffer.RenderPassNoClear_Load;
-        //    vkCmdBeginRenderPass(_cb, ref renderPassBI, VkSubpassContents.Inline);
-        //    _activeRenderPass = renderPassBI.renderPass;
-//
-        //    if (haveAnyClearValues)
-        //    {
-        //        if (_depthClearValue.HasValue)
-        //        {
-        //            ClearDepthStencilCore(_depthClearValue.Value.depthStencil.depth, (byte)_depthClearValue.Value.depthStencil.stencil);
-        //            _depthClearValue = null;
-        //        }
-//
-        //        for (uint i = 0; i < _currentFramebuffer.ColorTargets.Count; i++)
-        //        {
-        //            if (_validColorClearValues[i])
-        //            {
-        //                _validColorClearValues[i] = false;
-        //                VkClearValue vkClearValue = _clearValues[i];
-        //                RgbaFloat clearColor = new RgbaFloat(
-        //                    vkClearValue.color.float32_0,
-        //                    vkClearValue.color.float32_1,
-        //                    vkClearValue.color.float32_2,
-        //                    vkClearValue.color.float32_3);
-        //                ClearColorTarget(i, clearColor);
-        //            }
-        //        }
-        //    }
-        //}
-        //else
-        //{
-        //    // We have clear values for every attachment.
-        //    renderPassBI.renderPass = _currentFramebuffer.RenderPassClear;
-        //    fixed (VkClearValue* clearValuesPtr = &_clearValues[0])
-        //    {
-        //        renderPassBI.clearValueCount = attachmentCount;
-        //        renderPassBI.pClearValues = clearValuesPtr;
-        //        if (_depthClearValue.HasValue)
-        //        {
-        //            _clearValues[_currentFramebuffer.ColorTargets.Count] = _depthClearValue.Value;
-        //            _depthClearValue = null;
-        //        }
-        //        vkCmdBeginRenderPass(_cb, ref renderPassBI, VkSubpassContents.Inline);
-        //        _activeRenderPass = _currentFramebuffer.RenderPassClear;
-        //        Util.ClearArray(_validColorClearValues);
-        //    }
-        //}
-//
-        //_newFramebuffer = false;
-//
-//
-        //    
-        //if (_activeRenderPass.Handle != VkRenderPass.Null)
-        //{
-        //    EndCurrentRenderPass();
-        //}
-        //else if (!_currentFramebufferEverActive && _currentFramebuffer != null)
-        //{
-        //    // This forces any queued up texture clears to be emitted.
-        //    BeginCurrentRenderPass();
-        //    EndCurrentRenderPass();
-        //}
-//
-        //if (_currentFramebuffer != null)
-        //{
-        //    _currentFramebuffer.TransitionToFinalLayout(_cb);
-        //}
-//
-        //VkFramebufferBase vkFB = Util.AssertSubtype<Framebuffer, VkFramebufferBase>(fb);
-        //_currentFramebuffer = vkFB;
-        //_currentFramebufferEverActive = false;
-        //_newFramebuffer = true;
-        //Util.EnsureArrayMinimumSize(ref _scissorRects, Math.Max(1, (uint)vkFB.ColorTargets.Count));
-        //uint clearValueCount = (uint)vkFB.ColorTargets.Count;
-        //Util.EnsureArrayMinimumSize(ref _clearValues, clearValueCount + 1); // Leave an extra space for the depth value (tracked separately).
-        //Util.ClearArray(_validColorClearValues);
-        //Util.EnsureArrayMinimumSize(ref _validColorClearValues, clearValueCount);
-        //_currentStagingInfo.Resources.Add(vkFB.RefCount);
-//
-        //if (fb is VkSwapchainFramebuffer scFB)
-        //{
-        //    _currentStagingInfo.Resources.Add(scFB.Swapchain.RefCount);
-        //}
-    }
-    void DXCCommandList::EndRenderPass(){
-        CHK_RENDERPASS_BEGUN();
-        //vkCmdEndRenderPass(_cmdBuf);
-        DEBUGCODE(_currentRenderPass = nullptr);
-
-
-        //_currentFramebuffer.TransitionToIntermediateLayout(_cb);
-        //_activeRenderPass = VkRenderPass.Null;
-
-        //// Place a barrier between RenderPasses, so that color / depth outputs
-        //// can be read in subsequent passes.
-        //vkCmdPipelineBarrier(
-        //    _cb,
-        //    VkPipelineStageFlags.BottomOfPipe,
-        //    VkPipelineStageFlags.TopOfPipe,
-        //    VkDependencyFlags.None,
-        //    0,
-        //    null,
-        //    0,
-        //    null,
-        //    0,
-        //    null);
-    }
-
     
-    void DXCCommandList::SetVertexBuffer(
-        std::uint32_t index, const sp<Buffer>& buffer, std::uint32_t offset
+    void DXCRenderCmdEnc::SetVertexBuffer(
+        std::uint32_t index, const common::sp<BufferRange>& buffer
     ){
         //_resReg.RegisterBufferUsage(buffer,
         //    VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
@@ -560,24 +86,24 @@ namespace Veldrid
         
         CHK_PIPELINE_SET();
         
-        _devRes.insert(buffer);
+        resources.insert(buffer);
 
         auto gfxPipeline = PtrCast<DXCGraphicsPipeline>(_currentPipeline);
         auto& pipeDesc = gfxPipeline->GetDesc();
 
-        auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
+        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
         auto pRes = dxcBuffer->GetHandle();
 
         D3D12_VERTEX_BUFFER_VIEW view {};
-        view.BufferLocation = pRes->GetGPUVirtualAddress() + offset;
-        view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[0].stride;
-        view.SizeInBytes = dxcBuffer->GetDesc().sizeInBytes;
+        view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
+        view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[index].stride;
+        view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        _cmdList->IASetVertexBuffers(index, 1, &view);
+        cmdList->IASetVertexBuffers(index, 1, &view);
     }
 
-    void DXCCommandList::SetIndexBuffer(
-        const sp<Buffer>& buffer, IndexFormat format, std::uint32_t offset
+    void DXCRenderCmdEnc::SetIndexBuffer(
+        const common::sp<BufferRange>& buffer, IndexFormat format
     ){
         //_resReg.RegisterBufferUsage(buffer,
         //    VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
@@ -585,39 +111,38 @@ namespace Veldrid
         //);
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         //VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer.get());
-        //vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, Veldrid::VK::priv::VdToVkIndexFormat(format));
+        //vkCmdBindIndexBuffer(_cmdBuf, vkBuffer->GetHandle(), offset, alloy::VK::priv::VdToVkIndexFormat(format));
     
-        _devRes.insert(buffer);
+        resources.insert(buffer);
         
-        auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
+        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
         auto pRes = dxcBuffer->GetHandle();
 
         D3D12_INDEX_BUFFER_VIEW view{};
         view.Format = VdToD3DIndexFormat(format);
-        view.BufferLocation = pRes->GetGPUVirtualAddress() + offset;
-        view.SizeInBytes = dxcBuffer->GetDesc().sizeInBytes;
+        view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
+        view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        _cmdList->IASetIndexBuffer(&view);
+        cmdList->IASetIndexBuffer(&view);
     }
 
     
-    void DXCCommandList::SetGraphicsResourceSet(const sp<ResourceSet>& rs){
+    void DXCRenderCmdEnc::SetGraphicsResourceSet(const common::sp<IResourceSet>& rs){
         CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
-        assert(!_currentPipeline->IsComputePipeline());
 
         
-        _devRes.insert(rs);
+        resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
         auto heaps = d3dkrs->GetHeaps();
 
-        _cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
+        cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
         for(uint32_t i = 0; i < heaps.size(); i++) {
 
-            _cmdList->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            cmdList->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
 
         //auto& entry = _resourceSets[slot];
@@ -625,132 +150,49 @@ namespace Veldrid
         //entry.resSet = RefRawPtr(vkrs);
         //entry.offsets = dynamicOffsets;
     }
+
+    void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
+
+        auto dxcPipeline = PtrCast<DXCComputePipeline>(pipeline.get());
+        assert(dxcPipeline != _currentPipeline);
+        resources.insert(pipeline);
+
+        dxcPipeline->CmdBindPipeline(cmdList);
+
+        //ensure resource set counts
+        //auto setCnt = vkPipeline->GetResourceSetCount();
+        //if (setCnt > _resourceSets.size()) {
+        //    _resourceSets.resize(setCnt, {});
+        //}
+
+        //Mark current pipeline
+        _currentPipeline = dxcPipeline;
+    }
         
-    void DXCCommandList::SetComputeResourceSet(const sp<ResourceSet>& rs){
+    void DXCComputeCmdEnc::SetComputeResourceSet(const common::sp<IResourceSet>& rs){
         CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
-        assert(_currentPipeline->IsComputePipeline());
 
-        _devRes.insert(rs);
+        resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
         auto heaps = d3dkrs->GetHeaps();
 
-        _cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
+        cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
         for(uint32_t i = 0; i < heaps.size(); i++) {
 
-            _cmdList->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            cmdList->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
     }
 
-    
-    void DXCCommandList::ClearColorTarget(
-        std::uint32_t slot, 
-        float r, float g, float b, float a
-    ){
-        CHK_RENDERPASS_BEGUN();
-
-        if(_currentRenderPass->fb->GetRTVCount() < slot) {
-            assert(false);
-        } else {
-
-            auto rtv = _currentRenderPass->fb->GetRTV(slot);
-
-            float clearColor[4] = {r, g, b, a};
-
-            _cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-        }
-
-        //VkClearAttachment clearAttachment{};
-        //clearAttachment.clearValue.color.float32[0] = r;
-        //clearAttachment.clearValue.color.float32[1] = g;
-        //clearAttachment.clearValue.color.float32[2] = b;
-        //clearAttachment.clearValue.color.float32[3] = a;
-        //
-        ////if (_activeRenderPass != VkRenderPass.Null)
-        //{
-        //    auto& fb = _currentRenderPass->fb;
-        //    clearAttachment.colorAttachment = slot;
-        //    clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-        //
-        //    auto colorTex = fb->GetDesc().colorTargets[slot].target;
-        //    VkClearRect clearRect{};
-        //    clearRect.baseArrayLayer = 0;
-        //    clearRect.layerCount = 1;
-        //    clearRect.rect = {0, 0, colorTex->GetDesc().width, colorTex->GetDesc().height};
-        //
-        //    vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-        //}
-        //else
-        //{
-        //    // Queue up the clear value for the next RenderPass.
-        //    _clearValues[index] = clearValue;
-        //    _validColorClearValues[index] = true;
-        //}
-    }
-
-    void DXCCommandList::ClearDepthStencil(float depth, std::uint8_t stencil){
-        CHK_RENDERPASS_BEGUN();
-
-        if(!_currentRenderPass->fb->HasDSV()) {
-            assert(false);
-        } else {
-            D3D12_CLEAR_FLAGS clearFlags = D3D12_CLEAR_FLAG_DEPTH;
-            if(_currentRenderPass->fb->DSVHasStencil()) {
-                clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
-            }
-
-            auto dsv = _currentRenderPass->fb->GetDSV();
-
-            _cmdList->ClearDepthStencilView(
-                dsv,
-                clearFlags,
-                depth, stencil,
-                0, nullptr
-            );
-        }
-
-        //VkClearAttachment clearAttachment{};
-        //clearAttachment.clearValue.depthStencil.depth = depth;
-        //clearAttachment.clearValue.depthStencil.stencil = stencil;
-        //
-        ////if (_activeRenderPass != VkRenderPass.Null)
-        //{
-        //    auto& fb = _currentRenderPass->fb;
-        //    
-        //    clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-        //    if(Helpers::FormatHelpers::IsStencilFormat(
-        //        fb->GetDesc().depthTarget.target->GetDesc().format
-        //    )){
-        //        clearAttachment.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-        //    }                        
-        //
-        //    auto renderableWidth = fb->GetDesc().GetWidth();
-        //    auto renderableHeight = fb->GetDesc().GetHeight();
-        //    if (renderableWidth > 0 && renderableHeight > 0)
-        //    {
-        //        VkClearRect clearRect{};
-        //        clearRect.baseArrayLayer = 0;
-        //        clearRect.layerCount = 1;
-        //        clearRect.rect = {0, 0, renderableWidth, renderableHeight};
-        //
-        //        vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-        //    }
-        //}
-        //else
-        //{
-        //    // Queue up the clear value for the next RenderPass.
-        //    _depthClearValue = clearValue;
-        //}
-    }
 
 
-    void DXCCommandList::SetViewport(std::uint32_t index, const Viewport& viewport){
-        //#TODO: dx12 requires all viewports set as an atomic operation. Changes required.
-        auto gd = PtrCast<DXCDevice>(dev.get());
-        if (index == 0 || gd->GetFeatures().multipleViewports)
+    void DXCRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport){
+        ///#TODO: dx12 requires all viewports set as an atomic operation. Changes required.
+
+        if (viewport.size() == 1 || dev->GetFeatures().multipleViewports)
         {
             //bool flip = gd->SupportsFlippedYDirection();
             //float vpY = flip
@@ -759,308 +201,93 @@ namespace Veldrid
             //float vpHeight = flip
             //    ? -viewport.height
             //    : viewport.height;
-            
-            D3D12_VIEWPORT d3dvp{};
-            d3dvp.TopLeftX = viewport.x;
-            d3dvp.TopLeftY = viewport.y;
-            d3dvp.Width = viewport.width;
-            d3dvp.Height = viewport.height;
-            d3dvp.MinDepth = viewport.minDepth;
-            d3dvp.MaxDepth = viewport.maxDepth;
-            
-            _cmdList->RSSetViewports(1, &d3dvp);
+            std::vector<D3D12_VIEWPORT> vps(viewport.size());
+            for(uint32_t i = 0; i < viewport.size(); i++) {
+                vps[i].TopLeftX = viewport[i].x;
+                vps[i].TopLeftY = viewport[i].y;
+                vps[i].Width    = viewport[i].width;
+                vps[i].Height   = viewport[i].height;
+                vps[i].MinDepth = viewport[i].minDepth;
+                vps[i].MaxDepth = viewport[i].maxDepth;
+            }
+            cmdList->RSSetViewports(vps.size(), vps.data());
         }
     }
-    void DXCCommandList::SetFullViewport(std::uint32_t index) {
-        CHK_RENDERPASS_BEGUN();
-        auto& fb = _currentRenderPass->fb;
-        SetViewport(index, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
-    }
-    void DXCCommandList::SetFullViewports() {
-        CHK_RENDERPASS_BEGUN();
-        auto& fb = _currentRenderPass->fb;
-        SetViewport(0, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
-        for (unsigned index = 1; index < fb->GetDesc().colorTargets.size(); index++)
-        {
-            SetViewport(index, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
+    void DXCRenderCmdEnc::SetFullViewports() {
+        auto rtCnt = _fb.colorTargetActions.size();
+        //auto desc = _fb->GetDesc();
+
+        std::vector<D3D12_VIEWPORT> vps;
+        vps.reserve(rtCnt);
+
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            D3D12_VIEWPORT vp {
+                .TopLeftX = 0,
+                .TopLeftY = 0,
+                .Width    = (float)texDesc.width,
+                .Height   = (float)texDesc.height,
+                .MinDepth = 0,
+                .MaxDepth = 1,
+            };
+
+            vps.push_back(vp);
         }
+        cmdList->RSSetViewports(vps.size(), vps.data());
     }
 
-    void DXCCommandList::SetScissorRect(
-        std::uint32_t index, 
-        std::uint32_t x, std::uint32_t y, 
-        std::uint32_t width, std::uint32_t height
+    void DXCRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects
     ){
         
-        //#TODO: dx12 requires all scissor rects set as an atomic operation. Changes required.
-        auto gd = PtrCast<DXCDevice>(dev.get());
-        if (index == 0 || gd->GetFeatures().multipleViewports) {
+        ///#TODO: dx12 requires all scissor rects set as an atomic operation. Changes required.
+        if (rects.size() == 1 || dev->GetFeatures().multipleViewports) {
 
-            D3D12_RECT scissor{(int)x, (int)y, x+width, y+height};
+            
+            std::vector<D3D12_RECT> srs(rects.size());
+            for(uint32_t i = 0; i < rects.size(); i++) {
+                srs[i].left = rects[i].x;
+                srs[i].top = rects[i].y;
+                srs[i].right = rects[i].x + rects[i].width;
+                srs[i].bottom = rects[i].y + rects[i].height;
+            }
             //if (_scissorRects[index] != scissor)
             //{
             //    _scissorRects[index] = scissor;
-            _cmdList->RSSetScissorRects(1, &scissor);
+            cmdList->RSSetScissorRects(srs.size(), srs.data());
             //}
         }
     }
-    void DXCCommandList::SetFullScissorRect(std::uint32_t index){
-        CHK_RENDERPASS_BEGUN();
-        auto& fb = _currentRenderPass->fb;
-        SetScissorRect(index, 0, 0, fb->GetDesc().GetWidth(), fb->GetDesc().GetHeight());
-    }
-    void DXCCommandList::SetFullScissorRects() {
-        CHK_RENDERPASS_BEGUN();
-        auto& fb = _currentRenderPass->fb;
+    void DXCRenderCmdEnc::SetFullScissorRects(){
+        
+        auto rtCnt = _fb.colorTargetActions.size();
 
-        SetScissorRect(0, 0, 0, fb->GetDesc().GetWidth(), fb->GetDesc().GetHeight());
+        std::vector<D3D12_RECT> srs;
+        srs.reserve(rtCnt);
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            D3D12_RECT sr {
+                .left = 0,
+                .top = 0,
+                .right    =  (LONG)texDesc.width,
+                .bottom   =  (LONG)texDesc.height,
+            };
 
-        for (unsigned index = 1; index < fb->GetDesc().colorTargets.size(); index++)
-        {
-            SetScissorRect(index, 0, 0, fb->GetDesc().GetWidth(), fb->GetDesc().GetHeight());
+
+            srs.push_back(sr);
         }
+        
+        cmdList->RSSetScissorRects(srs.size(), srs.data());
     }
 
-    //void DXCCommandList::_RegisterResourceSetUsage(VkPipelineBindPoint bindPoint) {
-    //    VkPipelineStageFlags accessStage = 0;
-    //    switch (bindPoint)
-    //    {
-    //    case VK_PIPELINE_BIND_POINT_GRAPHICS:
-    //        accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-    //        break;
-    //    case VK_PIPELINE_BIND_POINT_COMPUTE:
-    //        accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    //        break;
-    //    case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR:
-    //        accessStage = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-    //        break;
-    //    default:
-    //        break;
-    //    }
-    //   
-    //    for (auto& set : _resourceSets) {
-    //        if (!set.isNewlyChanged) continue;
-    //
-    //        assert(set.resSet != nullptr); // all sets should be set already
-    //        auto& desc = set.resSet->GetDesc();
-    //        VulkanResourceLayout* vkLayout = PtrCast<VulkanResourceLayout>(desc.layout.get());
-    //        for (unsigned i = 0; i < desc.boundResources.size(); i++) {
-    //            auto& elem = vkLayout->GetDesc().elements[i];
-    //            auto& res = desc.boundResources[i];
-    //            auto type = elem.kind;
-    //            bool writable = elem.options.writable;
-    //            using _ResKind = IBindableResource::ResourceKind;
-    //            switch (type) {
-    //            case _ResKind::UniformBuffer: {
-    //                auto* range = PtrCast<BufferRange>(res.get());
-    //                auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
-    //                _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, VK_ACCESS_SHADER_READ_BIT);
-    //            } break;
-    //            case _ResKind::StorageBuffer: {
-    //                VkAccessFlags accessFlags = VK_ACCESS_SHADER_READ_BIT;
-    //                if(writable) {
-    //                    accessFlags |= VK_ACCESS_SHADER_WRITE_BIT;
-    //                }
-    //                auto* range = PtrCast<BufferRange>(res.get());
-    //                auto* rangedVkBuffer = reinterpret_cast<VulkanBuffer*>(range->GetBufferObject());
-    //                _resReg.RegisterBufferUsage(RefRawPtr(rangedVkBuffer), accessStage, accessFlags);
-    //            } break;
-    //
-    //            case _ResKind::Texture: {
-    //                auto* vkTexView = PtrCast<VulkanTextureView>(res.get());
-    //                auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTarget().get());
-    //                if(writable) {
-    //                    _resReg.RegisterTexUsage(
-    //                        RefRawPtr(vkTex),
-    //                        VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
-    //                        accessStage,
-    //                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
-    //                    );
-    //
-    //                } else {
-    //                    _resReg.RegisterTexUsage(
-    //                        RefRawPtr(vkTex),
-    //                        VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    //                        accessStage, VK_ACCESS_SHADER_READ_BIT);
-    //                }
-    //            }break;
-    //            default:break;
-    //            }
-    //        }
-    //    }
-    //
-    //    _resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-    //}
-
-    //void DXCCommandList::_FlushNewResourceSets(
-    //    VkPipelineBindPoint bindPoint
-    //) {
-    //    auto pipeline = _currentPipeline;
-    //    auto resourceSetCount = pipeline->GetResourceSetCount();
-    //
-    //    std::vector<VkDescriptorSet> descriptorSets;
-    //    descriptorSets.reserve(resourceSetCount);
-    //    std::vector<std::uint32_t> dynamicOffsets;
-    //    dynamicOffsets.reserve(pipeline->GetDynamicOffsetCount());
-    //
-    //    //Segment tracker, since newly bound res sets may not be continguous
-    //    unsigned currentBatchFirstSet = 0;
-    //    for (unsigned currentSlot = 0; currentSlot < resourceSetCount; currentSlot++)
-    //    {
-    //        bool batchEnded 
-    //            =  !_resourceSets[currentSlot].isNewlyChanged
-    //            || currentSlot == resourceSetCount - 1;
-    //
-    //        if (_resourceSets[currentSlot].isNewlyChanged)
-    //        {
-    //            //Flip the flag, since this set has been read
-    //            _resourceSets[currentSlot].isNewlyChanged = false;
-    //            // Increment ref count on first use of a set.
-    //            _miscResReg.insert(_resourceSets[currentSlot].resSet);
-    //
-    //            VulkanResourceSet* vkSet = _resourceSets[currentSlot].resSet.get();
-    //            auto& desc = vkSet->GetDesc();
-    //            VulkanResourceLayout* vkLayout = PtrCast<VulkanResourceLayout>(desc.layout.get());
-    //            
-    //            descriptorSets.push_back(vkSet->GetHandle());
-    //
-    //            auto& curSetOffsets = _resourceSets[currentSlot].offsets;
-    //            //for (unsigned i = 0; i < curSetOffsets.size(); i++)
-    //            //{
-    //            //    dynamicOffsets[currentBatchDynamicOffsetCount] = curSetOffsets.Get(i);
-    //            //    currentBatchDynamicOffsetCount += 1;
-    //            //}
-    //            dynamicOffsets.insert(dynamicOffsets.end(), curSetOffsets.begin(), curSetOffsets.end());
-    //        }
-    //
-    //        if (batchEnded)
-    //        {
-    //            if (!descriptorSets.empty())
-    //            {
-    //                // Flush current batch.
-    //                vkCmdBindDescriptorSets(
-    //                    _cmdBuf,
-    //                    bindPoint,
-    //                    pipeline->GetLayout(),
-    //                    currentBatchFirstSet,
-    //                    descriptorSets.size(),
-    //                    descriptorSets.data(),
-    //                    dynamicOffsets.size(),
-    //                    dynamicOffsets.data());
-    //
-    //                descriptorSets.clear();
-    //                dynamicOffsets.clear();
-    //            }
-    //
-    //            currentBatchFirstSet = currentSlot + 1;
-    //        }
-    //    }
-    //}
-
-    //void DXCCommandList::PreDrawCommand(){
-    //    //Run some checks
-    //    //TODO:Handle renderpass end after begun but no draw command
-    //    CHK_RENDERPASS_BEGUN();
-    //    //We have a pipeline
-    //    assert(_currentPipeline != nullptr);
-    //    //And the pipeline is a graphics one
-    //    assert(!_currentPipeline->IsComputePipeline());
-    //
-    //    //Register resource sets
-    //    _RegisterResourceSetUsage(VK_PIPELINE_BIND_POINT_GRAPHICS);
-    //
-    //    //Begin renderpass
-    //    VulkanFramebufferBase* vkfb = _currentRenderPass->fb.get();
-    //    _currentRenderPass->fb = RefRawPtr(vkfb);
-    //
-    //    VkRenderPassBeginInfo renderPassBI{};
-    //    renderPassBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    //    renderPassBI.renderArea = VkRect2D{ {0, 0}, {vkfb->GetDesc().GetWidth(), vkfb->GetDesc().GetHeight()} };
-    //    renderPassBI.framebuffer = vkfb->GetHandle();
-    //
-    //    renderPassBI.renderPass = vkfb->GetRenderPassNoClear_Load();
-    //    vkCmdBeginRenderPass(_cmdBuf, &renderPassBI, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
-    //
-    //    //Clear values?        
-    //    std::vector<VkClearAttachment> clearAttachments;
-    //    for (unsigned i = 0; i < _currentRenderPass->clearColorTargets.size(); i++) {
-    //        if (_currentRenderPass->clearColorTargets[i].has_value()) {
-    //            clearAttachments.push_back({});
-    //            VkClearAttachment& clearAttachment = clearAttachments.back();
-    //            clearAttachment.clearValue.color = _currentRenderPass->clearColorTargets[i].value();
-    //            ////if (_activeRenderPass != VkRenderPass.Null)
-    //            //{
-    //            //    auto& fb = _currentRenderPass->fb;
-    //                clearAttachment.colorAttachment = i;
-    //                clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-    //            //
-    //                
-    //            //
-    //            //    vkCmdClearAttachments(_cmdBuf, 1, &clearAttachment, 1, &clearRect);
-    //            //}
-    //            //else
-    //            //{
-    //            //    // Queue up the clear value for the next RenderPass.
-    //            //    _clearValues[index] = clearValue;
-    //            //    _validColorClearValues[index] = true;
-    //            //}
-    //        }
-    //    }
-    //    if (_currentRenderPass->clearDSTarget.has_value()) {
-    //        clearAttachments.push_back({});
-    //        VkClearAttachment& clearAttachment = clearAttachments.back();
-    //        clearAttachment.clearValue.depthStencil = _currentRenderPass->clearDSTarget.value();
-    //        auto& fb = _currentRenderPass->fb;
-    //        
-    //        clearAttachment.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-    //        if(Helpers::FormatHelpers::IsStencilFormat(
-    //            fb->GetDesc().depthTarget.target->GetDesc().format
-    //        )){
-    //            clearAttachment.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-    //        }     
-    //       
-    //    }
-    //
-    //    if (!clearAttachments.empty()) {
-    //        VkClearRect clearRect{};
-    //        clearRect.baseArrayLayer = 0;
-    //        clearRect.layerCount = 1;
-    //        clearRect.rect = { 0, 0, vkfb->GetDesc().GetWidth(), vkfb->GetDesc().GetHeight()};
-    //        vkCmdClearAttachments(
-    //            _cmdBuf, 
-    //            clearAttachments.size(), clearAttachments.data(),
-    //            1, &clearRect
-    //        );
-    //    }
-    //
-    //    //Bind resource sets
-    //    _FlushNewResourceSets(VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS);
-    //    
-    //    //Begin render pass
-    //
-    //    //Might have image transition commands?
-    //    //    TransitionImages(_preDrawSampledImages, VkImageLayout.ShaderReadOnlyOptimal);
-    //    //    _preDrawSampledImages.Clear();
-    //    //
-    //    //    EnsureRenderPassActive();
-    //    //
-    //    //    FlushNewResourceSets(
-    //    //        _currentGraphicsResourceSets,
-    //    //        _graphicsResourceSetsChanged,
-    //    //        _currentGraphicsPipeline.ResourceSetCount,
-    //    //        VkPipelineBindPoint.Graphics,
-    //    //        _currentGraphicsPipeline.PipelineLayout);
-    //}
-
-    void DXCCommandList::Draw(
+    void DXCRenderCmdEnc::Draw(
         std::uint32_t vertexCount, std::uint32_t instanceCount,
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        _cmdList->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
+        cmdList->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
     }
     
-    void DXCCommandList::DrawIndexed(
+    void DXCRenderCmdEnc::DrawIndexed(
         std::uint32_t indexCount, std::uint32_t instanceCount, 
         std::uint32_t indexStart, std::uint32_t vertexOffset, 
         std::uint32_t instanceStart
@@ -1068,14 +295,15 @@ namespace Veldrid
         //PreDrawCommand();
         //vkCmdDrawIndexed(_cmdBuf, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         
-        _cmdList->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        cmdList->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
     }
     
-    void DXCCommandList::DrawIndirect(
+#if 0
+    void DXCRenderCmdEnc::DrawIndirect(
         const sp<Buffer>& indirectBuffer, 
         std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride
     ){
-        //#TODO: revisit vulkan drawindirect, parameters seem incomplete
+        ///#TODO: revisit vulkan drawindirect, parameters seem incomplete
         //_resReg.RegisterBufferUsage(indirectBuffer,
         //    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
         //    VK_ACCESS_INDIRECT_COMMAND_READ_BIT
@@ -1087,12 +315,12 @@ namespace Veldrid
         //vkCmdDrawIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
 
-    void DXCCommandList::DrawIndexedIndirect(
+    void DXCRenderCmdEnc::DrawIndexedIndirect(
         const sp<Buffer>& indirectBuffer, 
         std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride
     ){
         
-        //#TODO: revisit vulkan drawindexedindirect, parameters seem incomplete
+        ///#TODO: revisit vulkan drawindexedindirect, parameters seem incomplete
         //_resReg.RegisterBufferUsage(indirectBuffer,
         //    VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
         //    VK_ACCESS_INDIRECT_COMMAND_READ_BIT
@@ -1102,37 +330,20 @@ namespace Veldrid
         //VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
         //vkCmdDrawIndexedIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
-
+#endif
     
-    void DXCCommandList::PreDispatchCommand() {
-        ////Run some checks
-        ////TODO:Handle renderpass end after begun but no draw command
-        //CHK_RENDERPASS_ENDED();
-        ////We have a pipeline
-        //assert(_currentPipeline != nullptr);
-        ////And the pipeline is a compute one
-        //assert(_currentPipeline->IsComputePipeline());
-        //
-        ////Register resource sets
-        //_RegisterResourceSetUsage(VK_PIPELINE_BIND_POINT_COMPUTE);
-        //
-        ////Bind resource sets
-        //_FlushNewResourceSets(VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE);
-        //
-        ////Begin render pass
-        
-    }
 
-    void DXCCommandList::Dispatch(
+    void DXCComputeCmdEnc::Dispatch(
         std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
     ){
         //PreDispatchCommand();
         //vkCmdDispatch(_cmdBuf, groupCountX, groupCountY, groupCountZ);
-        _cmdList->Dispatch(groupCountX, groupCountY, groupCountZ);
+        cmdList->Dispatch(groupCountX, groupCountY, groupCountZ);
     };
 
+#if 0
     void DXCCommandList::DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) {
-        //#TODO: revisit vulkan DispatchIndirect, parameters seem incomplete
+        ///#TODO: revisit vulkan DispatchIndirect, parameters seem incomplete
         //The name of the stage flag is slightly confusing, but the spec is 
         //otherwisely very clear it aplies to compute :
         //
@@ -1158,24 +369,25 @@ namespace Veldrid
         //VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(indirectBuffer.get());
         //vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
     };
-
+#endif
     //static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
     //{
     //    return ((arrayLayer * mipLevelCount) + mipLevel);
     //};
 
-    void DXCCommandList::ResolveTexture(const sp<Texture>& source, const sp<Texture>& destination) {
+    void DXCTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source,
+                                           const common::sp<ITexture>& destination) {
         
         auto* dxcSource = PtrCast<DXCTexture>(source.get());
-        _devRes.insert(source);
+        resources.insert(source);
         auto* dxcDestination = PtrCast<DXCTexture>(destination.get());
-        _devRes.insert(destination);
+        resources.insert(destination);
         
         //TODO:Implement full image layout tracking and transition systems
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
         //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferDstOptimal);
 
-        _cmdList->ResolveSubresource(
+        cmdList->ResolveSubresource(
             dxcSource->GetHandle(),
             0,
             dxcDestination->GetHandle(),
@@ -1183,361 +395,138 @@ namespace Veldrid
             dxcDestination->GetHandle()->GetDesc().Format);
     }
 
-    void DXCCommandList::CopyBufferToTexture(
-        const sp<Buffer>& source,
-        const Texture::Description& srcDesc,
-        std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
-        std::uint32_t srcMipLevel,
-        std::uint32_t srcBaseArrayLayer,
-        const sp<Texture>& destination,
-        std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
+    void DXCTransferCmdEnc::CopyBufferToTexture(
+        const common::sp<BufferRange>& src,
+        std::uint32_t srcBytesPerRow,
+        std::uint32_t srcBytesPerImage,
+        const common::sp<ITexture>& dst,
+        const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-        std::uint32_t layerCount
+        const Size3D& copySize
     ){
-        CHK_RENDERPASS_ENDED();
 
-        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source.get());
-        auto* dstDxcTexture = PtrCast<DXCTexture>(destination.get());
+        auto* srcDxcBuffer = PtrCast<DXCBuffer>(src->GetBufferObject());
+        auto* dstDxcTexture = PtrCast<DXCTexture>(dst.get());
 
-        //auto GetDimension = [](std::uint32_t largestLevelDimension, std::uint32_t mipLevel)->std::uint32_t{
-        //    std::uint32_t ret = largestLevelDimension;
-        //    ret >>= mipLevel;
-        //    //for (std::uint32_t i = 0; i < mipLevel; i++)
-        //    //{
-        //    //    ret /= 2;
-        //    //}
-        //    return std::max(1U, ret);
-        //};
-//
-        //VkSubresourceLayout srcLayout{};
-        //{
-        //    std::uint32_t subresource = srcBaseArrayLayer * srcDesc.mipLevels + srcMipLevel;
-        //    std::uint32_t blockSize 
-        //        = Helpers::FormatHelpers::IsCompressedFormat(srcDesc.format)
-        //            ? 4u 
-        //            : 1u;
-        //    std::uint32_t mipWidth = GetDimension(srcDesc.width, srcMipLevel);
-        //    std::uint32_t mipHeight = GetDimension(srcDesc.height, srcMipLevel);
-        //    std::uint32_t mipDepth = GetDimension(srcDesc.depth, srcMipLevel);
-        //    std::uint32_t rowPitch = Helpers::FormatHelpers::GetRowPitch(mipWidth, srcDesc.format);
-        //    std::uint32_t depthPitch = Helpers::FormatHelpers::GetDepthPitch(rowPitch, mipHeight, srcDesc.format);
-//
-        //    
-        //    srcLayout.rowPitch = rowPitch,
-        //    srcLayout.depthPitch = depthPitch,
-        //    srcLayout.arrayPitch = depthPitch,
-        //    srcLayout.size = depthPitch,
-        //    srcLayout.offset = Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer);
-        //}
-//
-        //VkSubresourceLayout srcLayout = srcVkTexture.GetSubresourceLayout(
-        //    srcVkTexture.CalculateSubresource(srcMipLevel, srcBaseArrayLayer));
-        //VkImage dstImage = dstImg->GetHandle();
-        //dstVkTexture.TransitionImageLayout(
-        //    cb,
-        //    dstMipLevel,
-        //    1,
-        //    dstBaseArrayLayer,
-        //    layerCount,
-        //    VkImageLayout.TransferDstOptimal);
+        auto& srcDesc = dst->GetDesc(); 
 
-        
-
-        std::uint32_t mipWidth, mipHeight, mipDepth;
-        Helpers::GetMipDimensions(
-            srcDesc, srcMipLevel, mipWidth, mipHeight, mipDepth);
-        
-        std::uint32_t blockSize = Helpers::FormatHelpers::IsCompressedFormat(srcDesc.format) ? 4u : 1u;
-        std::uint32_t bufferRowLength = std::max(mipWidth, blockSize);
-        std::uint32_t bufferImageHeight = std::max(mipHeight, blockSize);
-        std::uint32_t compressedX = srcX / blockSize;
-        std::uint32_t compressedY = srcY / blockSize;
-        std::uint32_t blockSizeInBytes = blockSize == 1
-            ? Helpers::FormatHelpers::GetSizeInBytes(srcDesc.format)
-            : Helpers::FormatHelpers::GetBlockSizeInBytes(srcDesc.format);
-        std::uint32_t rowPitch = Helpers::FormatHelpers::GetRowPitch(bufferRowLength, srcDesc.format);
-        std::uint32_t depthPitch = Helpers::FormatHelpers::GetDepthPitch(
-            rowPitch, bufferImageHeight, srcDesc.format);
-
-        std::uint32_t copyWidth = std::min(width, mipWidth);
-        std::uint32_t copyheight = std::min(height, mipHeight);
-
-        //VkBufferImageCopy regions{};
-        //    regions.bufferOffset = Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer)
-        //        + (srcZ * depthPitch)
-        //        + (compressedY * rowPitch)
-        //        + (compressedX * blockSizeInBytes);
-        //    regions.bufferRowLength = bufferRowLength;
-        //    regions.bufferImageHeight = bufferImageHeight;
-        //    regions.imageExtent = {copyWidth, copyheight, depth};
-        //    regions.imageOffset = {(int)dstX, (int)dstY, (int)dstZ};
-        //
-        //VkImageSubresourceLayers &dstSubresource = regions.imageSubresource;
-        //
-        //dstSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-        //dstSubresource.layerCount = layerCount;
-        //dstSubresource.mipLevel = dstMipLevel;
-        //dstSubresource.baseArrayLayer = dstBaseArrayLayer;
-        //
-        //vkCmdCopyBufferToImage(
-        //    _cmdBuf, srcBuffer->GetHandle(), 
-        //    dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions);
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
         dstSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            srcMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+            dstMipLevel, dstDxcTexture->GetDesc().mipLevels, dstBaseArrayLayer);
    
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcBuffer->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        srcSubresource.PlacedFootprint.Offset = 
-            Helpers::ComputeSubresourceOffset(srcDesc, srcMipLevel, srcBaseArrayLayer)
-                + (srcZ * depthPitch)
-                + (compressedY * rowPitch)
-                + (compressedX * blockSizeInBytes);
+        srcSubresource.PlacedFootprint.Offset = src->GetShape().GetOffsetInBytes();
         srcSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(srcDesc.format);
-        srcSubresource.PlacedFootprint.Footprint.Width = srcDesc.width;
-        srcSubresource.PlacedFootprint.Footprint.Height = srcDesc.height;
-        srcSubresource.PlacedFootprint.Footprint.Depth = srcDesc.depth;
-        srcSubresource.PlacedFootprint.Footprint.RowPitch = rowPitch;
+        srcSubresource.PlacedFootprint.Footprint.Width = copySize.width;
+        srcSubresource.PlacedFootprint.Footprint.Height = copySize.height;
+        srcSubresource.PlacedFootprint.Footprint.Depth = copySize.depth;
+        srcSubresource.PlacedFootprint.Footprint.RowPitch = srcBytesPerRow;
 
         D3D12_BOX srcRegion {};
-        srcRegion.left = srcX;
-        srcRegion.top = srcY;
-        srcRegion.front = srcZ;
-        srcRegion.right = srcX + width;
-        srcRegion.bottom = srcY + height;
-        srcRegion.back = srcZ + depth;
+        srcRegion.left = 0;
+        srcRegion.top = 0;
+        srcRegion.front = 0;
+        srcRegion.right = copySize.width;
+        srcRegion.bottom = copySize.height;
+        srcRegion.back = copySize.depth;
 
-        //vkCmdCopyImageToBuffer(
-        //    _cmdBuf,
-        //    srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        //    dstBuffer->GetHandle(), layerCount, layers.data());
+        cmdList->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
+                                   &srcSubresource, &srcRegion);
 
-        _cmdList->CopyTextureRegion(&dstSubresource, dstX, dstY, dstZ, &srcSubresource, &srcRegion);
-
-        //if ((dstVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    dstVkTexture.TransitionImageLayout(
-        //        cb,
-        //        dstMipLevel,
-        //        1,
-        //        dstBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
-            
     }
 
     
-    void DXCCommandList::CopyTextureToBuffer(
-        const sp<Texture>& source,
-        std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
+    void DXCTransferCmdEnc::CopyTextureToBuffer(
+        const common::sp<ITexture>& src,
+        const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
-        const sp<Buffer>& destination,
-        const Texture::Description& dstDesc,
-        std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
-        std::uint32_t dstMipLevel,
-        std::uint32_t dstBaseArrayLayer,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-        std::uint32_t layerCount
+        const common::sp<BufferRange>& dst,
+        std::uint32_t dstBytesPerRow,
+        std::uint32_t dstBytesPerImage,
+        const Size3D& copySize
     ) {
-        CHK_RENDERPASS_ENDED();
 
-        _devRes.insert(source);
-        _devRes.insert(destination);
+        resources.insert(src);
+        resources.insert(dst);
 
-        auto srcDxcTexture = PtrCast<DXCTexture>(source.get());
-        auto dstDxcTexture = PtrCast<DXCTexture>(destination.get());
+        auto srcImage = PtrCast<DXCTexture>(src.get());
+        auto dstBuffer = PtrCast<DXCBuffer>(dst->GetBufferObject());
 
-        auto srcTexture = PtrCast<DXCTexture>(source.get());
-        auto srcImage = srcTexture->GetHandle();
-
-        //TODO: Transition layout if necessary
-        //srcVkTexture.TransitionImageLayout(
-        //    cb,
-        //    srcMipLevel,
-        //    1,
-        //    srcBaseArrayLayer,
-        //    layerCount,
-        //    VkImageLayout.TransferSrcOptimal);
-
-        auto dstBuffer = PtrCast<DXCBuffer>(destination.get());
-
-        //VkImageAspectFlags aspect = (srcVkTexture->GetDesc().usage.depthStencil)
-        //    ? VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
-        //    : VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-        
-        std::uint32_t mipWidth, mipHeight, mipDepth;
-        Helpers::GetMipDimensions(dstDesc, dstMipLevel, mipWidth, mipHeight, mipDepth);
-        std::uint32_t blockSize = Helpers::FormatHelpers::IsCompressedFormat(srcTexture->GetDesc().format) ? 4u : 1u;
-        std::uint32_t bufferRowLength = std::max(mipWidth, blockSize);
-        std::uint32_t bufferImageHeight = std::max(mipHeight, blockSize);
-        std::uint32_t compressedDstX = dstX / blockSize;
-        std::uint32_t compressedDstY = dstY / blockSize;
-        std::uint32_t blockSizeInBytes = blockSize == 1
-            ? Helpers::FormatHelpers::GetSizeInBytes(dstDesc.format)
-            : Helpers::FormatHelpers::GetBlockSizeInBytes(dstDesc.format);
-        std::uint32_t rowPitch = Helpers::FormatHelpers::GetRowPitch(bufferRowLength, dstDesc.format);
-        std::uint32_t depthPitch = Helpers::FormatHelpers::GetDepthPitch(
-            rowPitch, bufferImageHeight, dstDesc.format);
-
-        //std::vector<VkBufferImageCopy> layers (layerCount);
-        //for(unsigned layer = 0; layer < layerCount; layer++)
-        //{
-        //    //VkSubresourceLayout dstLayout = dstVkTexture.GetSubresourceLayout(
-        //    //    dstVkTexture.CalculateSubresource(dstMipLevel, dstBaseArrayLayer + layer));
-        //
-        //    VkBufferImageCopy &region = layers[layer];
-        //    
-        //    region.bufferRowLength = bufferRowLength;
-        //    region.bufferImageHeight = bufferImageHeight;
-        //    region.bufferOffset =  Helpers::ComputeSubresourceOffset(dstDesc, dstMipLevel, dstBaseArrayLayer)//dstLayout.offset
-        //        + (dstZ * depthPitch)
-        //        + (compressedDstY * rowPitch)
-        //        + (compressedDstX * blockSizeInBytes);
-        //    region.imageExtent = { width, height, depth };
-        //    region.imageOffset = { (int)srcX, (int)srcY, (int)srcZ };
-        //
-        //    VkImageSubresourceLayers& srcSubresource = region.imageSubresource;
-        //    srcSubresource.aspectMask = aspect;
-        //    srcSubresource.layerCount = 1;
-        //    srcSubresource.mipLevel = srcMipLevel;
-        //    srcSubresource.baseArrayLayer = srcBaseArrayLayer + layer;            
-        //    
-        //}
+        auto srcDesc = srcImage->GetDesc();
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
-        srcSubresource.pResource = srcDxcTexture->GetHandle();
+        srcSubresource.pResource = srcImage->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
         srcSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            srcMipLevel, srcDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+            srcMipLevel, srcImage->GetDesc().mipLevels, srcBaseArrayLayer);
    
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
-        dstSubresource.pResource = dstDxcTexture->GetHandle();
+        dstSubresource.pResource = dstBuffer->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        dstSubresource.PlacedFootprint.Offset = 
-            Helpers::ComputeSubresourceOffset(dstDesc, dstMipLevel, dstBaseArrayLayer)//dstLayout.offset
-                + (dstZ * depthPitch)
-                + (compressedDstY * rowPitch)
-                + (compressedDstX * blockSizeInBytes);
-        dstSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(dstDesc.format);
-        dstSubresource.PlacedFootprint.Footprint.Width = dstDesc.width;
-        dstSubresource.PlacedFootprint.Footprint.Height = dstDesc.height;
-        dstSubresource.PlacedFootprint.Footprint.Depth = dstDesc.depth;
-        dstSubresource.PlacedFootprint.Footprint.RowPitch = rowPitch;
+        dstSubresource.PlacedFootprint.Offset = dst->GetShape().GetOffsetInBytes();
+        dstSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(srcDesc.format);
+        dstSubresource.PlacedFootprint.Footprint.Width = copySize.width;
+        dstSubresource.PlacedFootprint.Footprint.Height = copySize.height;
+        dstSubresource.PlacedFootprint.Footprint.Depth = copySize.depth;
+        dstSubresource.PlacedFootprint.Footprint.RowPitch = dstBytesPerRow;
 
         D3D12_BOX srcRegion {};
-        srcRegion.left = srcX;
-        srcRegion.top = srcY;
-        srcRegion.front = srcZ;
-        srcRegion.right = srcX + width;
-        srcRegion.bottom = srcY + height;
-        srcRegion.back = srcZ + depth;
-
-        //vkCmdCopyImageToBuffer(
-        //    _cmdBuf,
-        //    srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        //    dstBuffer->GetHandle(), layerCount, layers.data());
-
-        _cmdList->CopyTextureRegion(&dstSubresource, dstX, dstY, dstZ, &srcSubresource, &srcRegion);
+        srcRegion.left  = srcOrigin.x;
+        srcRegion.top   = srcOrigin.y;
+        srcRegion.front = srcOrigin.z;
+        srcRegion.right  = srcOrigin.x + copySize.width;
+        srcRegion.bottom = srcOrigin.y + copySize.height;
+        srcRegion.back   = srcOrigin.z + copySize.depth;
 
 
-        //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    srcVkTexture.TransitionImageLayout(
-        //        cb,
-        //        srcMipLevel,
-        //        1,
-        //        srcBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
+        cmdList->CopyTextureRegion(&dstSubresource, 0, 0, 0, &srcSubresource, &srcRegion);
     }
 
-    void DXCCommandList::CopyBuffer(
-        const sp<Buffer>& source, std::uint32_t sourceOffset,
-        const sp<Buffer>& destination, std::uint32_t destinationOffset, 
+    void DXCTransferCmdEnc::CopyBuffer(
+        const common::sp<BufferRange>& source,
+        const common::sp<BufferRange>& destination,
         std::uint32_t sizeInBytes
     ){
-        CHK_RENDERPASS_ENDED();
-        //_resReg.RegisterBufferUsage(source,
-        //    VK_PIPELINE_STAGE_TRANSFER_BIT,
-        //    VK_ACCESS_TRANSFER_READ_BIT
-        //);
-        //_resReg.RegisterBufferUsage(destination,
-        //    VK_PIPELINE_STAGE_TRANSFER_BIT,
-        //    VK_ACCESS_TRANSFER_WRITE_BIT
-        //);
 
-        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source.get());
-        auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination.get());
+        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
+        auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject());
 
-        _devRes.insert(source);
-        _devRes.insert(destination);
+        resources.insert(source);
+        resources.insert(destination);
 
-        //VkMemoryBarrier barrier;
-        //barrier.sType = VkStructureType.MemoryBarrier;
-        //barrier.srcAccessMask = VkAccessFlags.TransferWrite;
-        //barrier.dstAccessMask = VkAccessFlags.VertexAttributeRead;
-        //barrier.pNext = null;
-        //vkCmdPipelineBarrier(
-        //    _cb,
-        //    VkPipelineStageFlags.Transfer, VkPipelineStageFlags.VertexInput,
-        //    VkDependencyFlags.None,
-        //    1, ref barrier,
-        //    0, null,
-        //    0, null);
-
-        _cmdList->CopyBufferRegion(
-            dstDxcBuffer->GetHandle(), destinationOffset,
-            srcDxcBuffer->GetHandle(), sourceOffset,
+        cmdList->CopyBufferRegion(
+            dstDxcBuffer->GetHandle(), destination->GetShape().GetOffsetInBytes(),
+            srcDxcBuffer->GetHandle(), source->GetShape().GetOffsetInBytes(),
             sizeInBytes
         );
     }
                 
-    void DXCCommandList::CopyTexture(
-        const sp<Texture>& source,
-        std::uint32_t srcX, std::uint32_t srcY, std::uint32_t srcZ,
+    void DXCTransferCmdEnc::CopyTexture(
+        const common::sp<ITexture>& src,
+        const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
-        const sp<Texture>& destination,
-        std::uint32_t dstX, std::uint32_t dstY, std::uint32_t dstZ,
+        const common::sp<ITexture>& dst,
+        const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
-        std::uint32_t layerCount
+        const Size3D& copySize
     ){
-        CHK_RENDERPASS_ENDED();
-
         
+        resources.insert(src);
+        resources.insert(dst);
 
-        //_resReg.RegisterTexUsage(source,
-        //    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        //    VK_PIPELINE_STAGE_TRANSFER_BIT,
-        //    VK_ACCESS_TRANSFER_READ_BIT
-        //);
-        //_resReg.RegisterTexUsage(destination,
-        //    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        //    VK_PIPELINE_STAGE_TRANSFER_BIT,
-        //    VK_ACCESS_TRANSFER_WRITE_BIT
-        //);
-//
-        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-
-        
-        _devRes.insert(source);
-        _devRes.insert(destination);
-
-        auto srcDxcTexture = PtrCast<DXCTexture>(source.get());
-        auto dstDxcTexture = PtrCast<DXCTexture>(destination.get());
+        auto srcDxcTexture = PtrCast<DXCTexture>(src.get());
+        auto dstDxcTexture = PtrCast<DXCTexture>(dst.get());
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
@@ -1553,57 +542,180 @@ namespace Veldrid
             dstMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
 
         D3D12_BOX srcRegion {};
-        srcRegion.left = srcX;
-        srcRegion.top = srcY;
-        srcRegion.front = srcZ;
-        srcRegion.right = srcX + width;
-        srcRegion.bottom = srcY + height;
-        srcRegion.back = srcZ + depth;
+        srcRegion.left  = srcOrigin.x;
+        srcRegion.top   = srcOrigin.y;
+        srcRegion.front = srcOrigin.z;
+        srcRegion.right  = srcOrigin.x + copySize.width;
+        srcRegion.bottom = srcOrigin.y + copySize.height;
+        srcRegion.back   = srcOrigin.z + copySize.depth;
 
-        //TODO: Insert transition commands if necessary
-        //srcVkTexture.TransitionImageLayout(
-        //    cb,
-        //    srcMipLevel,
-        //    1,
-        //    srcBaseArrayLayer,
-        //    layerCount,
-        //    VkImageLayout.TransferSrcOptimal);
-//
-        //dstVkTexture.TransitionImageLayout(
-        //    cb,
-        //    dstMipLevel,
-        //    1,
-        //    dstBaseArrayLayer,
-        //    layerCount,
-        //    VkImageLayout.TransferDstOptimal);
+        cmdList->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
+                                   &srcSubresource, &srcRegion);
 
-        _cmdList->CopyTextureRegion(&dstSubresource, dstX, dstY, dstZ, &srcSubresource, &srcRegion);
-
-        //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    srcVkTexture.TransitionImageLayout(
-        //        cb,
-        //        srcMipLevel,
-        //        1,
-        //        srcBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
-//
-        //if ((dstVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    dstVkTexture.TransitionImageLayout(
-        //        cb,
-        //        dstMipLevel,
-        //        1,
-        //        dstBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
     }
 
-    void DXCCommandList::GenerateMipmaps(const sp<Texture>& texture){
-        //#TODO: remove this function as mipmap generation needs more flexiblity in infcanvas
+    void DXCTransferCmdEnc::GenerateMipmaps(const common::sp<ITexture>& texture){
+        ///#TODO: remove this function as mipmap generation needs more flexiblity in infcanvas
+    }
+
+    DXCCommandList::~DXCCommandList(){
+        for(auto* p : _passes) {
+            delete p;
+        }
+        _cmdList->Release();
+        _cmdAlloc->Release();
+    }
+     
+    void DXCCommandList::Begin(){
+
+        for(auto* p : _passes) {
+            delete p;
+        }
+
+        _passes.clear();
+        _currentPass = nullptr;
+
+        _devRes.clear();
+        // Command list allocators can only be reset when the associated 
+        // command lists have finished execution on the GPU; apps should use 
+        // fences to determine GPU execution progress.
+        ThrowIfFailed(_cmdAlloc->Reset());
+
+        // However, when ExecuteCommandList() is called on a particular command 
+        // list, that command list can then be reset at any time and must be before 
+        // re-recording.
+        ThrowIfFailed(_cmdList->Reset(_cmdAlloc, nullptr));
+
+    }
+    void DXCCommandList::End(){
+
+        if(_currentPass != nullptr) {
+            assert(false);
+        }
+
+        ThrowIfFailed(_cmdList->Close());
+    }
+
+
+    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const RenderPassAction& actions) {
+        CHK_RENDERPASS_ENDED();
+        ////Record render pass
+
+        //auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
+
+        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc(_dev.get(), _cmdList, actions);
+
+        ///#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
+        _passes.push_back(pNewEnc);
+        _currentPass = pNewEnc;
+        //
+
+        
+        auto colorAttachmentCnt = actions.colorTargetActions.size();
+
+        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
+        rtvHandles.reserve(colorAttachmentCnt);
+        for(auto& action : actions.colorTargetActions) {
+            auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
+            rtvHandles.push_back(dxcView->GetHandle());
+        }
+        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle { };
+        if(actions.depthTargetAction.has_value()) {
+            auto dxcView 
+                = common::PtrCast<DXCRenderTargetBase>(actions.depthTargetAction->target.get());
+            dsvHandle = dxcView->GetHandle();
+        }
+        else if(actions.stencilTargetAction.has_value()) {
+            auto dxcView 
+                = common::PtrCast<DXCRenderTargetBase>(actions.stencilTargetAction->target.get());
+            dsvHandle = dxcView->GetHandle();
+        }
+
+        _cmdList->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE, 
+            dsvHandle.ptr?&dsvHandle : nullptr);
+
+        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+
+        for(auto& action : actions.colorTargetActions) {
+
+            auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
+
+            if(action.loadAction == alloy::LoadAction::Clear){
+                auto rtv = dxcView->GetHandle();
+
+                float clearColor[4] = {action.clearColor.r, 
+                                       action.clearColor.g,
+                                       action.clearColor.b, 
+                                       action.clearColor.a};
+
+                _cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+            }
+        }
+
+        
+        D3D12_CLEAR_FLAGS clearFlags = (D3D12_CLEAR_FLAGS)0;
+        float depthClear = 0;
+        uint8_t stencilClear = 0;
+
+        if(actions.depthTargetAction.has_value()) {
+            
+            if(actions.depthTargetAction->loadAction == alloy::LoadAction::Clear) {
+                clearFlags |= D3D12_CLEAR_FLAG_DEPTH;
+                depthClear = actions.depthTargetAction->clearDepth;
+            }
+        }
+        
+        if(actions.stencilTargetAction.has_value()) {
+            if(actions.stencilTargetAction->loadAction == alloy::LoadAction::Clear) {
+                clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
+                stencilClear = actions.stencilTargetAction->clearStencil;
+            }
+        }
+
+
+        if(clearFlags != 0) {
+            _cmdList->ClearDepthStencilView(
+                dsvHandle,
+                clearFlags,
+                depthClear, stencilClear,
+                0, nullptr
+            );
+        }
+        
+
+        
+        return *pNewEnc;
+    }
+
+    IComputeCommandEncoder& DXCCommandList::BeginComputePass() {
+        
+        CHK_RENDERPASS_ENDED();
+        ////Record render pass
+
+        auto* pNewEnc = new DXCComputeCmdEnc(_dev.get(), _cmdList);
+        _passes.push_back(pNewEnc);
+        _currentPass = pNewEnc;
+
+        return *pNewEnc;
+    }
+    ITransferCommandEncoder& DXCCommandList::BeginTransferPass() {
+        
+        CHK_RENDERPASS_ENDED();
+        ////Record render pass
+
+        auto* pNewEnc = new DXCTransferCmdEnc(_dev.get(), _cmdList);
+        _passes.push_back(pNewEnc);
+        _currentPass = pNewEnc;
+
+        return *pNewEnc;
+    }
+    //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+    void DXCCommandList::EndPass() {
+        
+        CHK_RENDERPASS_BEGUN();
+        _currentPass->EndPass();
+        _currentPass = nullptr;
     }
 
     static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
@@ -1804,45 +916,58 @@ namespace Veldrid
             auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
             auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
 
-            barriers.emplace_back();
-            auto& barrier = barriers.back();
+            D3D12_RESOURCE_BARRIER barrier { };
+            bool isBarrierNecessary = true;
 
-            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
+            if (!syncAfter || !syncBefore) {
+                isBarrierNecessary = false;
+            }else if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
                 barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
                 barrier.UAV.pResource = nullptr;
             }
-            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
-                
-                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
-                _devRes.insert(barrierDesc.resource);
-                auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
-                
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcBuffer->GetHandle();
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            }
-            else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+            else {
+                if (std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
 
-                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
-                _devRes.insert(texDesc.resource);
-                auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
+                    auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
+                    _devRes.insert(barrierDesc.resource);
+                    auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
 
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcTex->GetHandle();
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                    dxcBarrierFlags.SyncAfter = syncAfter;
+                    dxcBarrierFlags.SyncBefore = syncBefore;
+                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
+                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                    barrier.Transition.pResource = dxcBuffer->GetHandle();
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                }
+                else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+
+                    auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
+                    _devRes.insert(texDesc.resource);
+                    auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
+
+                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                    dxcBarrierFlags.SyncAfter = syncAfter;
+                    dxcBarrierFlags.SyncBefore = syncBefore;
+                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
+                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                    barrier.Transition.pResource = dxcTex->GetHandle();
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                }
+
+                if (barrier.Transition.StateBefore == barrier.Transition.StateAfter) {
+                    isBarrierNecessary = false;
+                }
             }
+
+            if (isBarrierNecessary) {
+                barriers.push_back(barrier);
+            }
+
         }
 
-
-        _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+        if(!barriers.empty())
+            _cmdList->ResourceBarrier(barriers.size(), barriers.data());
 
     }
 
@@ -1920,7 +1045,7 @@ namespace Veldrid
                 barrier.SyncBefore = syncBefore;
                 auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
                 _devRes.insert(texDesc.resource);
-                auto dxcTex = PtrCast<DXCTexture>(texDesc.resource.get());
+                auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
                 
                 _PopulateBarrierAccess(desc.memBarrier, barrier);
                 _PopulateTextureBarrier(texDesc, barrier);
@@ -1958,5 +1083,5 @@ namespace Veldrid
 
 
 
-} // namespace Veldrid
+} // namespace alloy
 

@@ -48,11 +48,11 @@ class IHLSLCompiler {
 public:
     virtual ~IHLSLCompiler() {}
     
-    virtual std::vector<uint8_t> Compile(const std::wstring& source, 
+    virtual std::vector<uint8_t> Compile(const std::string& source, 
                                        const std::wstring& entryPoint,
                                        ShaderType type,
                                        ShaderModel model = ShaderModel::SM_6_0,
-                                       OptimizationLevel optLevel = OptimizationLevel::Level3) = 0;
+                                         OptimizationLevel optLevel = OptimizationLevel::Debug) = 0;
 
     static IHLSLCompiler* Create();
 };

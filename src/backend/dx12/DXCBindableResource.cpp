@@ -1,20 +1,20 @@
 #include "DXCBindableResource.hpp"
 
-#include "veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
 #include "D3DTypeCvt.hpp"
 #include "DXCDevice.hpp"
 #include "DXCTexture.hpp"
 #include <d3d12.h>
 
-namespace Veldrid
+namespace alloy::dxc
 { 
 
-    sp<ResourceLayout> DXCResourceLayout::Make(const sp<DXCDevice> &dev, const Description &desc)
+    common::sp<IResourceLayout> DXCResourceLayout::Make(const common::sp<DXCDevice> &dev, const Description &desc)
     {
         auto pDev = dev->GetDevice();
 
-        Shader::Stages combinedShaderResAccess;
-        Shader::Stages samplerAccess;
+        IShader::Stages combinedShaderResAccess;
+        IShader::Stages samplerAccess;
 
         std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
         std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
@@ -97,7 +97,7 @@ namespace Veldrid
             return nullptr;
         }
 
-        auto layout = sp(new DXCResourceLayout(dev, desc));
+        auto layout = common::sp(new DXCResourceLayout(dev, desc));
         layout->_rootSig = rootSignature;
 
         return layout;
@@ -105,8 +105,8 @@ namespace Veldrid
 
 
 
-    sp<ResourceSet> DXCResourceSet::Make(
-        const sp<DXCDevice>& dev,
+    common::sp<IResourceSet> DXCResourceSet::Make(
+        const common::sp<DXCDevice>& dev,
         const Description& desc
     ) {
         auto pDev = dev->GetDevice();
@@ -115,9 +115,8 @@ namespace Veldrid
 
         //Root signature can only have 64 DWORDS
 
-
-        Shader::Stages combinedShaderResAccess;
-        Shader::Stages samplerAccess;
+        IShader::Stages combinedShaderResAccess;
+        IShader::Stages samplerAccess;
 
         //std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
         //std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
@@ -256,14 +255,14 @@ namespace Veldrid
 
                         pRes = rangedDXCBuffer->GetHandle();
                     } else {
-                        auto* texView = PtrCast<TextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTarget().get());
+                        auto* texView = PtrCast<ITextureView>(elem.get());
+                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
                         auto& texDesc = dxcTex->GetDesc();
                         auto& viewDesc = texView->GetDesc();
                         uavDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
 
                         switch(texDesc.type) {
-                            case Texture::Description::Type::Texture1D : {
+                            case ITexture::Description::Type::Texture1D : {
                                 if(texDesc.arrayLayers > 1) {
                                     uavDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                                     uavDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -275,7 +274,7 @@ namespace Veldrid
                                 }
                             }break;
 
-                            case Texture::Description::Type::Texture2D : {
+                            case ITexture::Description::Type::Texture2D : {
                                 if(texDesc.arrayLayers > 1) {
                                     uavDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
                                     uavDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -289,9 +288,9 @@ namespace Veldrid
                                 }
                             }break;
 
-                            case Texture::Description::Type::Texture3D : {
+                            case ITexture::Description::Type::Texture3D : {
                                 if(texDesc.arrayLayers > 1) {
-                                    //#TODO: handle tex array & texture type mismatch
+                                    ///#TODO: handle tex array & texture type mismatch
                                     assert(false);
                                 } else {
                                     uavDesc.Texture3D.FirstWSlice = 0;
@@ -327,17 +326,17 @@ namespace Veldrid
 
                         pRes = rangedDXCBuffer->GetHandle();
                     } else {
-                        auto* texView = PtrCast<TextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTarget().get());
+                        auto* texView = PtrCast<ITextureView>(elem.get());
+                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
                         auto& texDesc = dxcTex->GetDesc();
                         auto& viewDesc = texView->GetDesc();
 
                         srvDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
         
 
-                        //#TODO: consider ResourceMinLODClamp
+                        ///#TODO: consider ResourceMinLODClamp
                         switch(texDesc.type) {
-                            case Texture::Description::Type::Texture1D : {
+                            case ITexture::Description::Type::Texture1D : {
                                 if(texDesc.arrayLayers > 1) {
                                     srvDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                                     srvDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -351,7 +350,7 @@ namespace Veldrid
                                 }
                             }break;
 
-                            case Texture::Description::Type::Texture2D : {
+                            case ITexture::Description::Type::Texture2D : {
                                 if(texDesc.arrayLayers > 1) {
                                     srvDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
                                     srvDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -367,9 +366,9 @@ namespace Veldrid
                                 }
                             }break;
 
-                            case Texture::Description::Type::Texture3D : {
+                            case ITexture::Description::Type::Texture3D : {
                                 if(texDesc.arrayLayers > 1) {
-                                    //#TODO: handle tex array & texture type mismatch
+                                    ///#TODO: handle tex array & texture type mismatch
                                     assert(false);
                                 } else {
                                     srvDesc.Texture3D.MostDetailedMip = viewDesc.baseMipLevel;
@@ -395,7 +394,7 @@ namespace Veldrid
 
             case IBindableResource::ResourceKind::Sampler : {
 
-                auto* sampler = PtrCast<Sampler>(elem.get());
+                auto* sampler = PtrCast<ISampler>(elem.get());
                 auto& desc = sampler->GetDesc();
 
                 D3D12_SAMPLER_DESC samplerDesc {};
@@ -408,19 +407,19 @@ namespace Veldrid
                     samplerDesc.ComparisonFunc = VdToD3DCompareOp(*desc.comparisonKind);
 
                 switch (desc.borderColor) {
-                    case Sampler::Description::BorderColor::TransparentBlack : 
+                    case ISampler::Description::BorderColor::TransparentBlack : 
                        samplerDesc.BorderColor[0] = 0;
                        samplerDesc.BorderColor[1] = 0;
                        samplerDesc.BorderColor[2] = 0;
                        samplerDesc.BorderColor[3] = 0; break;
                        
-                    case Sampler::Description::BorderColor::OpaqueBlack : 
+                    case ISampler::Description::BorderColor::OpaqueBlack : 
                        samplerDesc.BorderColor[0] = 0;
                        samplerDesc.BorderColor[1] = 0;
                        samplerDesc.BorderColor[2] = 0;
                        samplerDesc.BorderColor[3] = 1; break;
                        
-                    case Sampler::Description::BorderColor::OpaqueWhite : 
+                    case ISampler::Description::BorderColor::OpaqueWhite : 
                        samplerDesc.BorderColor[0] = 1;
                        samplerDesc.BorderColor[1] = 1;
                        samplerDesc.BorderColor[2] = 1;
@@ -444,7 +443,7 @@ namespace Veldrid
 
         }
 
-        auto resSet = sp(new DXCResourceSet(dev, desc));
+        auto resSet = common::sp(new DXCResourceSet(dev, desc));
         resSet->_descHeap = std::move(descHeap);
 
         return resSet;
@@ -457,6 +456,6 @@ namespace Veldrid
         }
     }
 
-} // namespace Veldrid
+} // namespace alloy
 
 

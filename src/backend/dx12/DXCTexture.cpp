@@ -1,6 +1,6 @@
 #include "DXCTexture.hpp"
 
-#include "veldrid/common/Common.hpp"
+#include "alloy/common/Common.hpp"
 
 #include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
@@ -9,7 +9,7 @@
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
 
-namespace Veldrid {
+namespace alloy::dxc {
 
     uint32_t DXCTexture::ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
     {
@@ -32,34 +32,30 @@ namespace Veldrid {
         }
     }
 
-    DXCDevice* DXCTexture::GetDevice() const {
-        return PtrCast<DXCDevice>(dev.get());
-    }
-
-    sp<Texture> DXCTexture::Make(
-        const sp<DXCDevice>& dev,
-        const Texture::Description& desc
+    common::sp<ITexture> DXCTexture::Make(
+        const common::sp<DXCDevice>& dev,
+        const ITexture::Description& desc
     ) {
         D3D12_RESOURCE_DESC resourceDesc = {};
-        switch(desc.type) {
-            case Texture::Description::Type::Texture1D: {
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = 1;
-                resourceDesc.DepthOrArraySize = desc.arrayLayers;
-            }break;
-            case Texture::Description::Type::Texture2D: {
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = desc.height;
-                resourceDesc.DepthOrArraySize = desc.arrayLayers;
-            }break;
-            case Texture::Description::Type::Texture3D: { 
-                resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D; 
-                resourceDesc.Width = desc.width;
-                resourceDesc.Height = desc.height;
-                resourceDesc.DepthOrArraySize = desc.depth;
-            }break;
+        switch (desc.type) {
+        case ITexture::Description::Type::Texture1D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = 1;
+            resourceDesc.DepthOrArraySize = desc.arrayLayers;
+        }break;
+        case ITexture::Description::Type::Texture2D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = desc.height;
+            resourceDesc.DepthOrArraySize = desc.arrayLayers;
+        }break;
+        case ITexture::Description::Type::Texture3D: {
+            resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+            resourceDesc.Width = desc.width;
+            resourceDesc.Height = desc.height;
+            resourceDesc.DepthOrArraySize = desc.depth;
+        }break;
         }
         //For buffers Alignment must be 64KB (D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) or 0, 
         //which is effectively 64KB.
@@ -68,9 +64,9 @@ namespace Veldrid {
         resourceDesc.Format = VdToD3DPixelFormat(desc.format, desc.usage.depthStencil);
         resourceDesc.SampleDesc.Count = 1;
 
-        //#TODO: enable high quality MSAA
+        ///#TODO: enable high quality MSAA
         if ((desc.usage.depthStencil || desc.usage.renderTarget)
-            && desc.type == Texture::Description::Type::Texture2D) {
+            && desc.type == ITexture::Description::Type::Texture2D) {
             resourceDesc.SampleDesc.Count = (uint32_t)desc.sampleCount;
             //switch(desc.sampleCount) {
             //    case SampleCount::x1 : resourceDesc.SampleDesc.Count = 1; break;
@@ -80,7 +76,8 @@ namespace Veldrid {
             //    case SampleCount::x16: resourceDesc.SampleDesc.Count = 16; break;
             //    case SampleCount::x32: resourceDesc.SampleDesc.Count = 32 break;
             //}
-        } else {
+        }
+        else {
             resourceDesc.SampleDesc.Count = 1;
         }
         resourceDesc.SampleDesc.Quality = 0;
@@ -90,32 +87,34 @@ namespace Veldrid {
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         //if(desc.usage.sampled)         resourceDesc.Flags |= ;
-        if(desc.usage.storage)         resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        if(desc.usage.renderTarget)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        if(desc.usage.depthStencil)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (desc.usage.storage)         resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        if (desc.usage.renderTarget)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (desc.usage.depthStencil)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         //if(desc.usage.cubemap)         resourceDesc.Flags |= ;
         //if(desc.usage.generateMipmaps) resourceDesc.Flags |= ;
 
         D3D12MA::ALLOCATION_DESC allocationDesc = {};
         D3D12_RESOURCE_STATES resourceState;
 
-        D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
+        //D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
         //Make sure that we default to a invalid heap
         static_assert(D3D12_HEAP_TYPE_DEFAULT != (D3D12_HEAP_TYPE)0);
-        
-        if(dev->GetDevCaps().SupportUMA()) {
-            cpuAccessableLFB = D3D12_HEAP_TYPE_DEFAULT;
-        }else if(dev->GetDevCaps().SupportReBAR()) {   
-            cpuAccessableLFB = D3D12_HEAP_TYPE_GPU_UPLOAD;
-        }
 
-        if(desc.hostAccess != HostAccess::None) {
-            if( cpuAccessableLFB == 0) {
+        if (desc.hostAccess != HostAccess::None) {
+            if (dev->GetDevCaps().SupportUMA()) {
+                //allocationDesc.HeapType = D3D12_HEAP_TYPE_CUSTOM;
+                allocationDesc.CustomPool = dev->UMAPool();
+            }
+            else if (dev->GetDevCaps().SupportReBAR()) {
+                allocationDesc.HeapType = D3D12_HEAP_TYPE_GPU_UPLOAD;
+            }
+
+            else {
                 //Uh-oh, no host accessible texture for you!
                 return nullptr;
             }
 
-            //#TODO DX12 is very restrictive on host visible textures.
+            ///#TODO DX12 is very restrictive on host visible textures.
             // we must ensure following:
             //    * Layout is D3D12_TEXTURE_LAYOUT_ROW_MAJOR
             //    * only D3D12_RESOURCE_DIMENSION_TEXTURE_2D is supported.
@@ -125,38 +124,39 @@ namespace Veldrid {
             //    * Non-MSAA.
             //    * No D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL.
             //    * The format cannot be a YUV format.
-            
-            allocationDesc.HeapType = cpuAccessableLFB;
+
             //allocationDesc.ExtraHeapFlags |=   D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER
             //                                 | D3D12_HEAP_FLAG_SHARED;
-            
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        } else {
 
+            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         }
-        
-        switch (desc.hostAccess)
-        {        
-        case HostAccess::None:
+        else {
+
+    
+        //switch (desc.hostAccess)
+        //{        
+        //case HostAccess::None:
+        //    allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+        //    break;
+        //case HostAccess::PreferRead:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
+        //    break;
+        //case HostAccess::PreferWrite:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+        //    break;
+        //default:
+        //    //allocationDesc.HeapType = cpuAccessableLFB;
+        //    //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        //    //resourceState = D3D12_RESOURCE_STATE_COMMON;
+        //    break;
+        //}
             allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
-            break;
-        case HostAccess::PreferRead:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
-            break;
-        case HostAccess::PreferWrite:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
-            break;
-        default:
-            //allocationDesc.HeapType = cpuAccessableLFB;
-            //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            //resourceState = D3D12_RESOURCE_STATE_COMMON;
-            break;
-        }
 
+        }
         resourceState = D3D12_RESOURCE_STATE_COMMON;
 
         D3D12MA::Allocation* allocation;
@@ -193,25 +193,25 @@ namespace Veldrid {
         tex->_allocation = allocation;
         tex->SetResource(allocation->GetResource());
 
-        return sp(tex);
+        return common::sp(tex);
     }
 
-    sp<Texture> DXCTexture::WrapNative(
-        const sp<DXCDevice>& dev,
-        const Texture::Description& desc,
+    common::sp<DXCTexture> DXCTexture::WrapNative(
+        const common::sp<DXCDevice>& dev,
+        const ITexture::Description& desc,
         ID3D12Resource* nativeRes
     ) {
         auto tex = new DXCTexture{ dev, desc };
         tex->_allocation = nullptr;
         tex->SetResource(nativeRes);
-        return sp(tex);
+        return common::sp(tex);
     }
 
     void DXCTexture::WriteSubresource(
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+        Point3D dstOrigin,
+        Size3D writeSize,
         const void* src,
         uint32_t srcRowPitch,
         uint32_t srcDepthPitch
@@ -219,12 +219,12 @@ namespace Veldrid {
         auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
 
         D3D12_BOX dstBox {
-            .left = dstX,
-            .top = dstY,
-            .front = dstZ,
-            .right = dstX + width,
-            .bottom = dstY + height,
-            .back = dstZ + depth,
+            .left = dstOrigin.x,
+            .top = dstOrigin.y,
+            .front = dstOrigin.z,
+            .right = dstOrigin.x + writeSize.width,
+            .bottom = dstOrigin.y + writeSize.height,
+            .back = dstOrigin.z + writeSize.depth,
         };
 
         ThrowIfFailed(GetHandle()->WriteToSubresource(subResIdx, 
@@ -240,18 +240,18 @@ namespace Veldrid {
         uint32_t dstDepthPitch,
         uint32_t mipLevel,
         uint32_t arrayLayer,
-        uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-        std::uint32_t width, std::uint32_t height, std::uint32_t depth
+        Point3D srcOrigin,
+        Size3D readSize
     ) {
         auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
 
         D3D12_BOX srcBox {
-            .left = srcX,
-            .top = srcY,
-            .front = srcZ,
-            .right = srcX + width,
-            .bottom = srcY + height,
-            .back = srcZ + depth,
+            .left = srcOrigin.x,
+            .top = srcOrigin.y,
+            .front = srcOrigin.z,
+            .right = srcOrigin.x + readSize.width,
+            .bottom = srcOrigin.y + readSize.height,
+            .back = srcOrigin.z + readSize.depth,
         };
 
         ThrowIfFailed(GetHandle()->ReadFromSubresource(dst,
@@ -261,7 +261,7 @@ namespace Veldrid {
                                                        &srcBox));
     }
 
-    Texture::SubresourceLayout DXCTexture::GetSubresourceLayout(
+    ITexture::SubresourceLayout DXCTexture::GetSubresourceLayout(
             uint32_t mipLevel,
             uint32_t arrayLayer,
             SubresourceAspect aspect
@@ -305,7 +305,7 @@ namespace Veldrid {
         //_Out_writes_opt_(NumSubresources)  UINT64 *pRowSizeInBytes,
         //_Out_opt_  UINT64 *pTotalBytes
 
-        Texture::SubresourceLayout ret{};
+        ITexture::SubresourceLayout ret{};
         ret.offset = footprint.Offset;
         ret.rowPitch = footprint.Footprint.RowPitch;
         ret.depthPitch = ret.rowPitch * footprint.Footprint.Height;
@@ -316,6 +316,11 @@ namespace Veldrid {
         return ret;
     }
 
-
+    common::sp<DXCTextureView> DXCTextureView::Make (
+        const common::sp<DXCTexture>& tex,
+        const ITextureView::Description& desc
+    ) {
+        return common::sp(new DXCTextureView(tex, desc));
+    }
     
 }

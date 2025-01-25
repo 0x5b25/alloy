@@ -5,7 +5,7 @@
 
 #include "VkCommon.hpp"
 
-namespace Veldrid::VK::priv {
+namespace alloy::vk {
 
 	_DescriptorPoolMgr::~_DescriptorPoolMgr(){
 		////All dirty pools should be recycled by now.
@@ -94,7 +94,7 @@ namespace Veldrid::VK::priv {
 
 	_DescriptorSet _DescriptorPoolMgr::Allocate(VkDescriptorSetLayout layout){
 
-		sp<Container> toBeSwapped {nullptr};
+		common::sp<Container> toBeSwapped {nullptr};
 		_DescriptorSet allocated {};
 
 		VkDescriptorSetAllocateInfo allocInfo;

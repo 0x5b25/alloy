@@ -2,7 +2,7 @@
 
 #include <volk.h>
 
-#include "veldrid/Shader.hpp"
+#include "alloy/Shader.hpp"
 #include <dxil_spirv_c.h>
 
 #include <string>
@@ -98,7 +98,7 @@ namespace alloy::vk {
             unsigned int vk_flags;
         };
 
-        Veldrid::Shader::Stage currentStage;
+        IShader::Stage currentStage;
 
         std::unordered_map<std::string, ShaderStageIOInfo> shaderStageIoMap;
 
@@ -111,7 +111,7 @@ namespace alloy::vk {
 
         virtual ~SPVRemapper() { }
 
-        void SetStage(Veldrid::Shader::Stage stage) {currentStage = stage;}
+        void SetStage(IShader::Stage stage) {currentStage = stage;}
 
         virtual bool RemapSRV( const dxil_spv_d3d_binding& binding,
                               dxil_spv_srv_vulkan_binding& vk_binding
@@ -149,17 +149,14 @@ namespace alloy::vk {
                                    const ConverterCompilerArgs& compiler_args,
                                    SPVRemapper& remapper,
                                    SPIRVBlob& spirv);
-}
 
-namespace Veldrid
-{
     
     class VulkanDevice;
 
-    class VulkanShader : public Shader{
-        
-        VulkanDevice* _Dev() const {return reinterpret_cast<VulkanDevice*>(dev.get());}
+    class VulkanShader : public IShader{
 
+        common::sp<VulkanDevice> _dev;
+        
     private:
         //VkShaderModule _shaderModule;
         //std::string _name;
@@ -168,11 +165,12 @@ namespace Veldrid
         //VkShaderModule ShaderModule => _shaderModule;
 
         VulkanShader(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<VulkanDevice>& dev,
             const Description& desc,
             const std::span<std::uint8_t>& il
         ) 
-            : Shader(dev, desc)
+            : IShader(desc)
+            , _dev(dev)
             , _il(il.begin(), il.end())
         {}
        
@@ -180,17 +178,17 @@ namespace Veldrid
     public:
         //const VkShaderModule& GetHandle() const { return _shaderModule; }
 
-        std::span<uint8_t> GetDXIL() { return std::span<uint8_t>(_il); }
+        virtual const std::span<uint8_t> GetByteCode() override { return _il; }
 
         ~VulkanShader();
 
-        static sp<Shader> Make(
-            const sp<VulkanDevice>& dev,
-            const Shader::Description& desc,
+        static common::sp<IShader> Make(
+            const common::sp<VulkanDevice>& dev,
+            const IShader::Description& desc,
             const std::span<std::uint8_t>& il
         );
 
     };
 
-} // namespace Veldrid
+} // namespace alloy
 

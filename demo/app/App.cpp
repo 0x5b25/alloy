@@ -129,11 +129,11 @@ bool AppBase::Run(){
 #if defined(VLD_PLATFORM_WIN32)
     auto hWnd = glfwGetWin32Window(window);
     auto hInst = GetModuleHandle(NULL);
-    Veldrid::Win32SwapChainSource scSrc{ hWnd, nullptr };
+    alloy::Win32SwapChainSource scSrc{ hWnd, nullptr };
 #elif defined(VLD_PLATFORM_MACOS)
     //Get the NSWindow
     auto hWnd = glfwGetCocoaWindow(window);
-    Veldrid::NSWindowSwapChainSource scSrc(hWnd);
+    alloy::NSWindowSwapChainSource scSrc(hWnd);
 #endif
     OnAppStart(&scSrc, initialWidth, initialHeight);
 

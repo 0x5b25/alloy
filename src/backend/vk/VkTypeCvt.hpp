@@ -2,25 +2,25 @@
 
 #include <volk.h>
 
-#include "veldrid/Types.hpp"
-#include "veldrid/FixedFunctions.hpp"
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/Sampler.hpp"
-#include "veldrid/Texture.hpp"
+#include "alloy/Types.hpp"
+#include "alloy/FixedFunctions.hpp"
+#include "alloy/BindableResource.hpp"
+#include "alloy/Sampler.hpp"
+#include "alloy/Texture.hpp"
 
-namespace Veldrid::VK::priv {
+namespace alloy::vk {
     
-    VkSamplerAddressMode VdToVkSamplerAddressMode(Sampler::Description::AddressMode mode);
+    VkSamplerAddressMode VdToVkSamplerAddressMode(ISampler::Description::AddressMode mode);
 
     void GetFilterParams(
-        Sampler::Description::SamplerFilter filter,
+        ISampler::Description::SamplerFilter filter,
         VkFilter& minFilter,
         VkFilter& magFilter,
         VkSamplerMipmapMode& mipmapMode);
 
     VkDescriptorType VdToVkDescriptorType(
         IBindableResource::ResourceKind kind, 
-        ResourceLayout::Description::ElementDescription::Options options);
+        IResourceLayout::Description::ElementDescription::Options options);
 
     VkSampleCountFlagBits VdToVkSampleCount(SampleCount sampleCount);
 
@@ -30,10 +30,10 @@ namespace Veldrid::VK::priv {
 
     VkCullModeFlags VdToVkCullMode(RasterizerStateDescription::FaceCullMode cullMode);
 
-    VkBlendOp VdToVkBlendOp(BlendStateDescription::BlendFunction func);
+    VkBlendOp VdToVkBlendOp(AttachmentStateDescription::BlendFunction func);
 
     VkColorComponentFlags VdToVkColorWriteMask(
-        const BlendStateDescription::ColorWriteMask& mask
+        const AttachmentStateDescription::ColorWriteMask& mask
     );
 
     VkPrimitiveTopology VdToVkPrimitiveTopology(PrimitiveTopology topology);
@@ -43,16 +43,16 @@ namespace Veldrid::VK::priv {
     VkFormat VdToVkShaderDataType(ShaderDataType format);
 
     VkShaderStageFlags VdToVkShaderStages(
-        Shader::Stages stages);
+        IShader::Stages stages);
 
     VkShaderStageFlagBits VdToVkShaderStageSingle(
-        Shader::Stage stage);
+        IShader::Stage stage);
      
-    VkBorderColor VdToVkSamplerBorderColor(Sampler::Description::BorderColor borderColor);
+    VkBorderColor VdToVkSamplerBorderColor(ISampler::Description::BorderColor borderColor);
 
     VkIndexType VdToVkIndexFormat(IndexFormat format);
 
-    VkBlendFactor VdToVkBlendFactor(Veldrid::BlendStateDescription::BlendFactor factor);
+    VkBlendFactor VdToVkBlendFactor(alloy::AttachmentStateDescription::BlendFactor factor);
 
     VkCompareOp VdToVkCompareOp(ComparisonKind comparisonKind);
 

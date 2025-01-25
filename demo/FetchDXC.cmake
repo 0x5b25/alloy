@@ -61,9 +61,6 @@ add_library(dxc INTERFACE)
 set(DXC_INCLUDE_DIR "${DXC_SRC}/inc")
 target_include_directories(dxc INTERFACE "${DXC_INCLUDE_DIR}")
 
-
-set(testA "abcd")
-
 # Function to copy DLLs to target directory
 function(dxc_copy_binaries TARGET)
     

@@ -2,7 +2,7 @@
 
 #include <volk.h>
 
-#include "veldrid/BindableResource.hpp"
+#include "alloy/BindableResource.hpp"
 
 #include <unordered_set>
 #include <functional>
@@ -10,12 +10,12 @@
 
 #include "VkDescriptorPoolMgr.hpp"
 
-namespace Veldrid{
+namespace alloy::vk{
 
     class VulkanDevice;
     class VulkanTexture;
 
-    class VulkanResourceLayout : public ResourceLayout{
+    class VulkanResourceLayout : public IResourceLayout{
 
     public:
         struct BindSetInfo{
@@ -23,7 +23,7 @@ namespace Veldrid{
             uint32_t setIndexAllocated; //Actually allocated value
             std::vector<uint32_t> elementIdInList;
             VkDescriptorSetLayout layout;
-            VK::priv::DescriptorResourceCounts resourceCounts;
+            alloy::vk::DescriptorResourceCounts resourceCounts;
             uint32_t dynamicBufferCount;
         };
 
@@ -42,58 +42,65 @@ namespace Veldrid{
         };
 
     private:
+        common::sp<VulkanDevice> _dev;
         
         std::vector<ResourceBindInfo> _bindings;
         //std::uint32_t _dynamicBufferCount;
 
         VulkanResourceLayout(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
-        ) : ResourceLayout(dev, desc){}
+        ) 
+            : IResourceLayout(desc)
+            , _dev(dev)
+        { }
 
     public:
         ~VulkanResourceLayout();
 
-        static sp<ResourceLayout> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<IResourceLayout> Make(
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
         );
 
         //const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
         //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
-        //const Veldrid::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+        //const alloy::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
 
         const std::vector<ResourceBindInfo>& GetBindings() const {return _bindings;}
     };
 
-    class VulkanResourceSet : public ResourceSet{
+    class VulkanResourceSet : public IResourceSet{
     public:
         using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
+        
+        common::sp<VulkanDevice> _dev;
 
-        std::vector<Veldrid::VK::priv::_DescriptorSet> _descSet;
+        std::vector<alloy::vk::_DescriptorSet> _descSet;
 
         std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 
         VulkanResourceSet(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
         ) 
-            : ResourceSet(dev, desc)
+            : IResourceSet(desc)
+            , _dev(dev)
         {}
 
     public:
         ~VulkanResourceSet();
 
-        static sp<ResourceSet> Make(
-            const sp<VulkanDevice>& dev,
+        static common::sp<IResourceSet> Make(
+            const common::sp<VulkanDevice>& dev,
             const Description& desc
         );
 
         const auto& GetHandle() const { return _descSet; }
 
 
-        void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
-        void VisitElements(ElementVisitor visitor);
+        //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
+        //void VisitElements(ElementVisitor visitor);
     };
 }

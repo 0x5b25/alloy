@@ -5,31 +5,39 @@ project(veldridcpp
     LANGUAGES CXX)
 
 set(VLD_MISC_HEADERS
-    "include/veldrid/backend/Backends.hpp"
-    "include/veldrid/common/Common.hpp"
-    "include/veldrid/common/Macros.h"
-    "include/veldrid/common/RefCnt.hpp"
+    "include/alloy/backend/Backends.hpp"
+    "include/alloy/common/Common.hpp"
+    "include/alloy/common/Macros.h"
+    "include/alloy/common/RefCnt.hpp"
+    "include/alloy/common/Waitable.hpp"
+    "include/alloy/common/BitFlags.hpp"
 )
 
+set(VLD_MISC_SRCS
+
+    "src/common/Waitable.cpp"
+)
+
+
 set(VLD_IFACE_HEADERS
-    "include/veldrid/BindableResource.hpp"
-    "include/veldrid/CommandQueue.hpp"
-    "include/veldrid/Buffer.hpp"
-    "include/veldrid/CommandList.hpp"
-    "include/veldrid/DeviceResource.hpp"
-    "include/veldrid/SyncObjects.hpp"
-    "include/veldrid/FixedFunctions.hpp"
-    "include/veldrid/Framebuffer.hpp"
-    "include/veldrid/GraphicsDevice.hpp"
-    "include/veldrid/Helpers.hpp"
-    "include/veldrid/Pipeline.hpp"
-    "include/veldrid/ResourceFactory.hpp"
-    "include/veldrid/Sampler.hpp"
-    "include/veldrid/Shader.hpp"
-    "include/veldrid/SwapChain.hpp"
-    "include/veldrid/SwapChainSources.hpp"
-    "include/veldrid/Texture.hpp"
-    "include/veldrid/Types.hpp"
+    "include/alloy/RenderPass.hpp"
+    "include/alloy/CommandQueue.hpp"
+    "include/alloy/Buffer.hpp"
+    "include/alloy/CommandList.hpp"
+    "include/alloy/BindableResource.hpp"
+    "include/alloy/SyncObjects.hpp"
+    "include/alloy/FixedFunctions.hpp"
+    "include/alloy/FrameBuffer.hpp"
+    "include/alloy/GraphicsDevice.hpp"
+    "include/alloy/Helpers.hpp"
+    "include/alloy/Pipeline.hpp"
+    "include/alloy/ResourceFactory.hpp"
+    "include/alloy/Sampler.hpp"
+    "include/alloy/Shader.hpp"
+    "include/alloy/SwapChain.hpp"
+    "include/alloy/SwapChainSources.hpp"
+    "include/alloy/Texture.hpp"
+    "include/alloy/Types.hpp"
 )
 
 
@@ -38,13 +46,13 @@ set(VLD_IFACE_IMP_SRCS
     "src/BindableResource.cpp"
     "src/Shader.cpp"
     "src/Helpers.cpp"
-    "src/DeviceResource.cpp"
+    #"src/DeviceResource.cpp"
     "src/Backends.cpp"
 )
 
 source_group(
     TREE "${CMAKE_CURRENT_SOURCE_DIR}"
-    FILES ${VLD_MISC_HEADERS} ${VLD_IFACE_HEADERS} ${VLD_IFACE_IMP_SRCS})
+    FILES ${VLD_MISC_HEADERS} ${VLD_MISC_SRCS} ${VLD_IFACE_HEADERS} ${VLD_IFACE_IMP_SRCS})
 
 add_subdirectory("3rd-party")
 
@@ -54,7 +62,6 @@ if(WIN32)
     set(VLD_BACKEND_VK  true)
     set(VLD_BACKEND_MTL false)
 elseif(APPLE)
-    enable_language(OBJCXX)
     set(VLD_BACKEND_DXC false)
     set(VLD_BACKEND_VK  false)
     set(VLD_BACKEND_MTL true)
@@ -98,6 +105,7 @@ PrintBackendInfo()
 
 add_library(Veldrid STATIC
     ${VLD_MISC_HEADERS}
+    ${VLD_MISC_SRCS}
     ${VLD_IFACE_HEADERS}
     ${VLD_IFACE_IMP_SRCS}
     )
@@ -114,6 +122,9 @@ endif()
 
 if(${VLD_BACKEND_MTL})
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_MTL=1)
+    enable_language(OBJCXX)
+    #target_compile_options(Veldrid PRIVATE -fobjc-arc)
+    #target_compile_features(Veldrid PUBLIC objcxx_std_23)
     include("src/backend/mtl/CMakeLists.txt")
 endif()
 

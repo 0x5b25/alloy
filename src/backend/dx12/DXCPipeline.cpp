@@ -2,9 +2,9 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/Common.hpp"
-#include "veldrid/Helpers.hpp"
+//alloy public headers
+#include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 //standard library headers
 #include <string>
@@ -36,14 +36,14 @@
 using Microsoft::WRL::ComPtr;
 
 
-namespace Veldrid::VK::priv
+namespace alloy::VK::priv
 {
 
-} // namespace Veldrid::VK::priv
+} // namespace alloy::VK::priv
 
 
 
-namespace Veldrid
+namespace alloy::dxc
 {
 
     
@@ -56,9 +56,10 @@ namespace Veldrid
     }
 
 
-    DXCDevice* DXCPipelineBase::_Dev() {return static_cast<DXCDevice*>(dev.get());}
-
-    sp<Pipeline> DXCGraphicsPipeline::Make(const sp<DXCDevice> &dev, const GraphicsPipelineDescription &desc) {
+    common::sp<IGfxPipeline> DXCGraphicsPipeline::Make(
+        const common::sp<DXCDevice> &dev, 
+        const GraphicsPipelineDescription &desc
+    ) {
         // Define the vertex input layout.
         //D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         //{
@@ -94,7 +95,7 @@ namespace Veldrid
         */
 
         // Describe and create the graphics pipeline state object (PSO).
-        std::unordered_set<sp<RefCntBase>> refCnts;
+        std::unordered_set<common::sp<RefCntBase>> refCnts;
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc {};
         //psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
@@ -115,10 +116,10 @@ namespace Veldrid
 
         psoDesc.pRootSignature = dxcResLayout->GetHandle();
 
-        auto _FillShaderDesc = [&](sp<Veldrid::Shader> shader, D3D12_SHADER_BYTECODE& desc){
+        auto _FillShaderDesc = [&](common::sp<IShader> shader, D3D12_SHADER_BYTECODE& desc){
             auto dxcShader = static_cast<DXCShader*>(shader.get());
-            desc.BytecodeLength = dxcShader->GetDataSizeInBytes();
-            desc.pShaderBytecode = dxcShader->GetData();
+            desc.BytecodeLength = dxcShader->GetByteCode().size();
+            desc.pShaderBytecode = dxcShader->GetByteCode().data();
             refCnts.insert(shader);
         };
 
@@ -130,11 +131,11 @@ namespace Veldrid
         //
         //    switch (desc.stage)
         //    {
-        //    case Veldrid::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
-        //    case Veldrid::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
-        //    case Veldrid::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
-        //    case Veldrid::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
-        //    case Veldrid::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
+        //    case alloy::Shader::Stage::Vertex: _FillShaderDesc(shader, psoDesc.VS); break;
+        //    case alloy::Shader::Stage::Geometry: _FillShaderDesc(shader, psoDesc.GS); break;
+        //    case alloy::Shader::Stage::TessellationControl: _FillShaderDesc(shader, psoDesc.HS); break;
+        //    case alloy::Shader::Stage::TessellationEvaluation: _FillShaderDesc(shader, psoDesc.DS); break;
+        //    case alloy::Shader::Stage::Fragment: _FillShaderDesc(shader, psoDesc.PS); break;
         //    
         //    default: {
         //        //TODO: report unsupported shader stages
@@ -182,7 +183,7 @@ namespace Veldrid
             /*void OMSetBlendFactor(
               [in, optional] const FLOAT [4] BlendFactor
             );*/
-            auto& blendFactor = desc.blendState.blendConstant;
+            auto& blendFactor = desc.attachmentState.blendConstant;
         //blendStateCI.blendConstants[0] = blendFactor.r;
         //blendStateCI.blendConstants[1] = blendFactor.g;
         //blendStateCI.blendConstants[2] = blendFactor.b;
@@ -192,13 +193,13 @@ namespace Veldrid
             // BOOL AlphaToCoverageEnable;
             //BOOL IndependentBlendEnable;
 
-            auto attachmentsCount = desc.blendState.attachments.size();
+            auto attachmentsCount = desc.attachmentState.colorAttachments.size();
 
             assert(attachmentsCount <= 8);
 
             for (int i = 0; i < attachmentsCount; i++)
             {
-                auto vdDesc = desc.blendState.attachments[i];
+                auto vdDesc = desc.attachmentState.colorAttachments[i];
                 auto& attachmentState = blendState.RenderTarget[i];
 
                 /*typedef struct D3D12_RENDER_TARGET_BLEND_DESC
@@ -271,7 +272,7 @@ namespace Veldrid
                 attachmentState.BlendEnable = vdDesc.blendEnabled;
             }
 
-            blendState.AlphaToCoverageEnable = desc.blendState.alphaToCoverageEnabled;
+            blendState.AlphaToCoverageEnable = desc.attachmentState.alphaToCoverageEnabled;
        
         }
         /*        
@@ -463,8 +464,8 @@ namespace Veldrid
             {
                 auto& inputElement = inputDesc.elements[location];
 
-                iaDescs[targetIndex]./*LPCSTR*/ SemanticName = inputElement.name.c_str();
-                iaDescs[targetIndex]./*UINT*/ SemanticIndex = 0;
+                iaDescs[targetIndex]./*LPCSTR*/ SemanticName = SemanticToStr(inputElement.semantic.name);
+                iaDescs[targetIndex]./*UINT*/ SemanticIndex = inputElement.semantic.slot;
                 iaDescs[targetIndex]./*DXGI_FORMAT*/ Format = VdToD3DShaderDataType(inputElement.format);
                 iaDescs[targetIndex]./*UINT*/ InputSlot = binding;
                 iaDescs[targetIndex]./*UINT*/ AlignedByteOffset = inputElement.offset != 0 
@@ -475,7 +476,7 @@ namespace Veldrid
                 iaDescs[targetIndex]./*UINT*/ InstanceDataStepRate = 0;
                 
                 targetIndex += 1;
-                currentOffset += Helpers::FormatHelpers::GetSizeInBytes(inputElement.format);
+                currentOffset += FormatHelpers::GetSizeInBytes(inputElement.format);
             }
 
             targetLocation += inputDesc.elements.size();
@@ -571,18 +572,23 @@ namespace Veldrid
         */
 
         //Output formats
-        auto color_count = desc.outputs.colorAttachment.size();
+        auto color_count = desc.attachmentState.colorAttachments.size();
         if (color_count > 0) {
             
 
            psoDesc.NumRenderTargets = color_count;
            for (uint32_t i = 0; i < color_count; i++) {
-              psoDesc.RTVFormats[i] = VdToD3DPixelFormat(desc.outputs.colorAttachment[i].format, false);
+              psoDesc.RTVFormats[i] 
+                = VdToD3DPixelFormat(
+                    desc.attachmentState.colorAttachments[i].format,
+                    false);
            }
         }
 
-        if (desc.outputs.depthAttachment.has_value()) {
-            psoDesc.DSVFormat = VdToD3DPixelFormat(desc.outputs.depthAttachment.value().format, true);
+        if (desc.attachmentState.depthStencilAttachment.has_value()) {
+            psoDesc.DSVFormat = VdToD3DPixelFormat(
+                desc.attachmentState.depthStencilAttachment->depthStencilFormat,
+                true);
         }
 
         //pipeline->multiview.view_mask = MAX2(view_mask, 1);
@@ -662,17 +668,17 @@ namespace Veldrid
         /*void OMSetBlendFactor(
             [in, optional] const FLOAT [4] BlendFactor
         );*/
-        rawPipe->_blendConstants[0] = desc.blendState.blendConstant.r;
-        rawPipe->_blendConstants[1] = desc.blendState.blendConstant.g;
-        rawPipe->_blendConstants[2] = desc.blendState.blendConstant.b;
-        rawPipe->_blendConstants[3] = desc.blendState.blendConstant.a;
+        rawPipe->_blendConstants[0] = desc.attachmentState.blendConstant.r;
+        rawPipe->_blendConstants[1] = desc.attachmentState.blendConstant.g;
+        rawPipe->_blendConstants[2] = desc.attachmentState.blendConstant.b;
+        rawPipe->_blendConstants[3] = desc.attachmentState.blendConstant.a;
         
         rawPipe->_refCnts = std::move(refCnts);
 
         dxcResLayout->ref();
-        rawPipe->_rootSig = sp(dxcResLayout);
+        rawPipe->_rootSig = common::sp(dxcResLayout);
 
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
     
@@ -691,20 +697,20 @@ namespace Veldrid
 
     }
 
-    sp<Pipeline> DXCComputePipeline::Make(
-        const sp<DXCDevice>& dev,
+    common::sp<IComputePipeline> DXCComputePipeline::Make(
+        const common::sp<DXCDevice>& dev,
         const ComputePipelineDescription& desc
     ) {
         assert(false);
 
         
         // Describe and create the graphics pipeline state object (PSO).
-        std::unordered_set<sp<RefCntBase>> refCnts;
+        std::unordered_set<common::sp<RefCntBase>> refCnts;
         D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc {};
 
         auto dxcShader = static_cast<DXCShader*>(desc.computeShader.get());
-        psoDesc.CS.BytecodeLength = dxcShader->GetDataSizeInBytes();
-        psoDesc.CS.pShaderBytecode = dxcShader->GetData();
+        psoDesc.CS.BytecodeLength = dxcShader->GetByteCode().size();
+        psoDesc.CS.pShaderBytecode = dxcShader->GetByteCode().data();
         refCnts.insert(desc.computeShader);        
 
         auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());
@@ -720,9 +726,9 @@ namespace Veldrid
         rawPipe->_refCnts = std::move(refCnts);
         
         dxcResLayout->ref();
-        rawPipe->_rootSig = sp(dxcResLayout);
+        rawPipe->_rootSig = common::sp(dxcResLayout);
         
-        return sp(rawPipe);
+        return common::sp(rawPipe);
     }
 
     void DXCComputePipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
@@ -735,4 +741,4 @@ namespace Veldrid
         //pCmdList->OMSetBlendFactor(_blendConstants);
     }
 
-} // namespace Veldrid
+} // namespace alloy

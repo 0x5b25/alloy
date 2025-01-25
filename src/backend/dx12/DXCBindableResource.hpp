@@ -2,15 +2,15 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/RefCnt.hpp"
+//alloy public headers
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SyncObjects.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/SwapChain.hpp"
+#include "alloy/BindableResource.hpp"
+#include "alloy/Pipeline.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/SwapChain.hpp"
 
 //standard library headers
 #include <vector>
@@ -26,16 +26,19 @@
 //Local headers
 
 
-namespace Veldrid{
+namespace alloy::dxc {
 
     class DXCDevice;
     class DXCTexture;
 
-    class DXCResourceLayout : public ResourceLayout{
+    class DXCResourceLayout : public IResourceLayout{
     
         enum {
             MAX_ROOT_SIGNATURE_SIZE_DW = 64
         };
+
+        
+        common::sp<DXCDevice> dev;
 
         Microsoft::WRL::ComPtr<ID3D12RootSignature> _rootSig;
 
@@ -46,15 +49,17 @@ namespace Veldrid{
         //DescriptorResourceCounts _drcs;
     
         DXCResourceLayout(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             const Description& desc
-        ) : ResourceLayout(dev, desc){}
+        ) : IResourceLayout(desc)
+            , dev(dev)
+        {}
     
     public:
         virtual ~DXCResourceLayout() override {}
     
-        static sp<ResourceLayout> Make(
-            const sp<DXCDevice>& dev,
+        static common::sp<IResourceLayout> Make(
+            const common::sp<DXCDevice>& dev,
             const Description& desc
         );
 
@@ -66,12 +71,13 @@ namespace Veldrid{
         //const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
     };
     
-    class DXCResourceSet : public ResourceSet{ //Actually d3d12 descriptor heap?
+    class DXCResourceSet : public IResourceSet{ //Actually d3d12 descriptor heap?
     public:
         //using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
 //
     //    _DescriptorSet _descSet;
+        common::sp<DXCDevice> dev;
 //
     //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 //
@@ -79,17 +85,18 @@ namespace Veldrid{
         std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
-            const sp<GraphicsDevice>& dev,
+            const common::sp<DXCDevice>& dev,
             const Description& desc
         ) 
-            : ResourceSet(dev, desc)
+            : IResourceSet(desc)
+            , dev(dev)
         {}
 
     public:
         virtual ~DXCResourceSet() override;
 
-        static sp<ResourceSet> Make(
-            const sp<DXCDevice>& dev,
+        static common::sp<IResourceSet> Make(
+            const common::sp<DXCDevice>& dev,
             const Description& desc
         );
 //

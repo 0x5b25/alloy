@@ -5,20 +5,20 @@
 #include <d3d12.h>
 #include <D3D12MemAlloc.h>
 
-#include "veldrid/Texture.hpp"
-#include "veldrid/Sampler.hpp"
+#include "alloy/Texture.hpp"
+#include "alloy/Sampler.hpp"
 
 #include <vector>
 
-namespace Veldrid
+namespace alloy::dxc
 {
     class DXCDevice;
     
-    class DXCTexture : public Texture{
+    class DXCTexture : public ITexture{
     public:
         static uint32_t ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer);
     private:
-
+        common::sp<DXCDevice> dev;
         D3D12MA::Allocation* _allocation;
         ID3D12Resource* _res;
 
@@ -31,9 +31,12 @@ namespace Veldrid
 
 
         DXCTexture(
-            const sp<GraphicsDevice>& dev,
-            const Texture::Description& desc
-        ) : Texture(dev, desc) {}
+            const common::sp<DXCDevice>& dev,
+            const ITexture::Description& desc
+        ) 
+            : ITexture( desc) 
+            , dev(dev)
+        { }
 
         void SetResource(ID3D12Resource* res);
 
@@ -44,16 +47,15 @@ namespace Veldrid
 
         ID3D12Resource* GetHandle() const { return _res; }
         bool IsOwnTexture() const {return _allocation != nullptr; }
-        DXCDevice* GetDevice() const;
 
-        static sp<Texture> Make(
-            const sp<DXCDevice>& dev,
-            const Texture::Description& desc
+        static common::sp<ITexture> Make(
+            const common::sp<DXCDevice>& dev,
+            const ITexture::Description& desc
         );
 
-        static sp<Texture> WrapNative(
-            const sp<DXCDevice>& dev,
-            const Texture::Description& desc,
+        static common::sp<DXCTexture> WrapNative(
+            const common::sp<DXCDevice>& dev,
+            const ITexture::Description& desc,
             ID3D12Resource* nativeRes
         );
 
@@ -61,8 +63,8 @@ namespace Veldrid
         virtual void WriteSubresource(
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t dstX, uint32_t dstY, uint32_t dstZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+            Point3D dstOrigin,
+            Size3D writeSize,
             const void* src,
             uint32_t srcRowPitch,
             uint32_t srcDepthPitch
@@ -74,8 +76,8 @@ namespace Veldrid
             uint32_t dstDepthPitch,
             uint32_t mipLevel,
             uint32_t arrayLayer,
-            uint32_t srcX, uint32_t srcY, uint32_t srcZ,
-            std::uint32_t width, std::uint32_t height, std::uint32_t depth
+            Point3D srcOrigin,
+            Size3D readSize
         ) override;
 
         virtual SubresourceLayout GetSubresourceLayout(
@@ -108,45 +110,51 @@ namespace Veldrid
 
     
 
-    class DXCTextureView : public TextureView {
+    class DXCTextureView : public ITextureView {
     
     
     public:
         DXCTextureView(
-            sp<Texture>&& target,
-            const TextureView::Description& desc
+            common::sp<ITexture>&& target,
+            const ITextureView::Description& desc
         ) :
-            TextureView(std::move(target),desc)
+            ITextureView(std::move(target),desc)
         {}
     
     
         ~DXCTextureView() {}
+
+        static common::sp<DXCTextureView> Make (
+            const common::sp<DXCTexture>& tex,
+            const ITextureView::Description& desc
+        );
         
     };
 
-    //class DXCSampler : public Sampler{
-    //
-    //    VkSampler _sampler;
-    //
-    //    sp<DXCDevice> _dev;
-    //
-    //    DXCSampler(
-    //        const sp<DXCDevice>& dev
-    //    ) :
-    //        _dev(dev)
-    //    {}
-    //
-    //public:
-    //
-    //    ~DXCSampler();
-    //
-    //    const VkSampler& GetHandle() const { return _sampler; }
-    //
-    //    static sp<DXCSampler> Make(
-    //        const sp<DXCDevice>& dev,
-    //        const Sampler::Description& desc
-    //    );
-    //
-    //};
+    class DXCSampler : public ISampler{
+    
+        common::sp<DXCDevice> _dev;
+    
+        DXCSampler(
+            const common::sp<DXCDevice>& dev,
+            const ISampler::Description& desc
+        ) 
+          : ISampler(desc)
+          ,  _dev(dev)
+        {}
+    
+    public:
+    
+        ~DXCSampler() {}
+    
+    
+        static common::sp<ISampler> Make(
+            const common::sp<DXCDevice>& dev,
+            const ISampler::Description& desc
+        ) {
+            return common::sp(new DXCSampler(dev, desc));
+        }
+    
+    };
 
-} // namespace Veldrid
+} // namespace alloy

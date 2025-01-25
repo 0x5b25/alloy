@@ -60,7 +60,7 @@ namespace alloy::vk
         bool SPVRemapper::RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
                                         dxil_spv_vulkan_shader_stage_io& vulkan_variable
         ) {
-            if(currentStage == Veldrid::Shader::Stage::Vertex) return true;
+            if(currentStage == IShader::Stage::Vertex) return true;
             //auto io_map = (const vkd3d_shader_stage_io_map *)userdata;
             //const vkd3d_shader_stage_io_entry *e;
 
@@ -75,6 +75,7 @@ namespace alloy::vk
             if(iter == shaderStageIoMap.end())
             {
                 //ERR("Undefined semantic %s (%u).\n", d3d_input->semantic, d3d_input->semantic_index);
+                assert(false);
                 return false;
             }
 
@@ -98,6 +99,8 @@ namespace alloy::vk
             //if (!(e = io_map->Append(d3d_input.semantic, d3d_input.semantic_index)))
             {
                 //ERR("Duplicate semantic %s (%u).\n", d3d_input.semantic, d3d_input.semantic_index);
+
+                assert(false);
                 return false;
             }
 
@@ -229,6 +232,7 @@ namespace alloy::vk
             if (dxil_spv_parse_dxil_blob(dxil.data(), dxil.size(), &blob.blob) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_SHADER;
+                assert(false);
                 break;
             }
 
@@ -237,12 +241,14 @@ namespace alloy::vk
             if (!dxil_match_shader_stage(stage, compiler_args.shaderStage))
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
             if (dxil_spv_create_converter(blob.blob, &converter.converter) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
@@ -263,6 +269,7 @@ namespace alloy::vk
             {
                 //ERR("dxil-spirv does not support COMPUTE_SHADER_DERIVATIVES.\n");
                 ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+                assert(false);
                 break;
             }
 
@@ -285,7 +292,7 @@ namespace alloy::vk
 
             dxil_spv_converter_set_vertex_input_remapper(converter.converter, SPVRemapper_RemapVertexInput, &remapper);
 
-            //#TODO: support stream output?
+            ///#TODO: support stream output?
             //if (shader_interface_info->xfb_info)
             //    dxil_spv_converter_set_stream_output_remapper(converter, dxil_output_remap, (void *)shader_interface_info->xfb_info);
 
@@ -298,6 +305,7 @@ namespace alloy::vk
             if (dxil_spv_converter_run(converter.converter) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
@@ -306,6 +314,7 @@ namespace alloy::vk
             if (dxil_spv_converter_get_compiled_spirv(converter.converter, &compiled) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
@@ -367,19 +376,16 @@ namespace alloy::vk
         return ret;
     }
 
-} // namespace alloy::vk
 
-namespace Veldrid
-{
     
 
     VulkanShader::~VulkanShader(){
         //vkDestroyShaderModule(_Dev()->LogicalDev(), _shaderModule, nullptr);
     }
 
-    sp<Shader> VulkanShader::Make(
-        const sp<VulkanDevice>& dev,
-        const Shader::Description& desc,
+    common::sp<IShader> VulkanShader::Make(
+        const common::sp<VulkanDevice>& dev,
+        const IShader::Description& desc,
         const std::span<std::uint8_t>& il
     ){
         //VkShaderModuleCreateInfo shaderModuleCI {};
@@ -392,7 +398,7 @@ namespace Veldrid
         auto shader = new VulkanShader(dev, desc, il);
         //shader->_shaderModule = module;
 
-        return sp<Shader>(shader);
+        return common::sp<IShader>(shader);
     }
 
-} // namespace Veldrid
+} // namespace alloy::vk

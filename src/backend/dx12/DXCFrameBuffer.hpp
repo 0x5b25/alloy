@@ -1,6 +1,6 @@
 #pragma once
 
-#include "veldrid/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 
 
 //backend specific headers
@@ -11,12 +11,15 @@
 
 //Local headers
 
-namespace Veldrid
+namespace alloy::dxc
 {
     class DXCDevice;
     class DXCTexture;
 
-    class DXCFrameBufferBase : public Framebuffer{
+    class DXCFrameBuffer : public IFrameBuffer{
+
+        common::sp<DXCDevice> _dev;
+
     public:
         enum class VisitedAttachmentType {
             ColorAttachment, DepthAttachment, DepthStencilAttachment
@@ -26,9 +29,9 @@ namespace Veldrid
     protected:
         
 
-        DXCFrameBufferBase(
-            const sp<GraphicsDevice>& dev
-        ) : Framebuffer(dev)
+        DXCFrameBuffer(
+            const common::sp<DXCDevice>& dev
+        ) : _dev(dev)
         { 
             //CreateCompatibleRenderPasses(
             //    renderPassNoClear, renderPassNoClearLoad, renderPassClear,
@@ -38,30 +41,26 @@ namespace Veldrid
 
     public:
 
-        virtual ~DXCFrameBufferBase() override { }
+        virtual ~DXCFrameBuffer() override { }
+
+        virtual OutputDescription GetDesc() override;
 
         //virtual const VkFramebuffer& GetHandle() const = 0;
-
-        virtual uint32_t GetRTVCount() const = 0;
-        virtual bool HasDSV() const = 0;
-        virtual bool DSVHasStencil() const = 0;
-
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetRTV(uint32_t slot) const = 0;
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetDSV() const = 0;
-
 
         //virtual void VisitAttachments(AttachmentVisitor visitor) = 0;
 
     };
 
-    class DXCFrameBuffer : public DXCFrameBufferBase {
+    class DXCRenderTargetBase : public IRenderTarget {
 
-
+    public:
         
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const = 0;
+    };
 
-
+    class DXCRenderTarget : public DXCRenderTargetBase {
 
     };
 
 
-} // namespace Veldrid
+} // namespace alloy

@@ -2,15 +2,15 @@
 
 //3rd-party headers
 
-//veldrid public headers
-#include "veldrid/common/RefCnt.hpp"
+//alloy public headers
+#include "alloy/common/RefCnt.hpp"
 
-#include "veldrid/BindableResource.hpp"
-#include "veldrid/Pipeline.hpp"
-#include "veldrid/GraphicsDevice.hpp"
-#include "veldrid/SyncObjects.hpp"
-#include "veldrid/Buffer.hpp"
-#include "veldrid/SwapChain.hpp"
+#include "alloy/BindableResource.hpp"
+#include "alloy/Pipeline.hpp"
+#include "alloy/GraphicsDevice.hpp"
+#include "alloy/SyncObjects.hpp"
+#include "alloy/Buffer.hpp"
+#include "alloy/SwapChain.hpp"
 
 //standard library headers
 #include <vector>
@@ -28,14 +28,14 @@
 
 //Local headers
 
-namespace Veldrid::DXC {
+namespace alloy::dxc {
 
     class _DescriptorSet;
 
     class _DescriptorHeapMgr{
 
     public:
-        struct Container : public RefCntBase{
+        struct Container : public common::RefCntBase{
             ID3D12DescriptorHeap* pool;
             _DescriptorHeapMgr* mgr;
             uint32_t nextFreeSlot;
@@ -66,7 +66,7 @@ namespace Veldrid::DXC {
         //previously full pools, some sets might be freed, but at least one set is in use.
         std::unordered_set<Container*> _dirtyPools;
         //Currently active pool, that is not full.
-        sp<Container> _currentPool;
+        common::sp<Container> _currentPool;
     
         std::mutex _m_pool;
     
@@ -83,7 +83,7 @@ namespace Veldrid::DXC {
     //	void Init(VkDevice dev, unsigned maxSets);
     //	void DeInit();
     //
-        _DescriptorSet Allocate(const std::vector<sp<TextureView>>& res);
+        _DescriptorSet Allocate(const std::vector<common::sp<ITextureView>>& res);
     };
 
 
@@ -91,7 +91,7 @@ namespace Veldrid::DXC {
     class _DescriptorSet{
         DISABLE_COPY_AND_ASSIGN(_DescriptorSet);
     
-        sp<_DescriptorHeapMgr::Container> _pool;
+        common::sp<_DescriptorHeapMgr::Container> _pool;
         D3D12_CPU_DESCRIPTOR_HANDLE  _descSetStart;
         uint32_t _descCount;
     
@@ -103,7 +103,7 @@ namespace Veldrid::DXC {
         {}
     
         _DescriptorSet(
-            const sp<_DescriptorHeapMgr::Container>& pool,
+            const common::sp<_DescriptorHeapMgr::Container>& pool,
             const D3D12_CPU_DESCRIPTOR_HANDLE& descSetStart,
             uint32_t descCount
         )

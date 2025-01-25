@@ -3,7 +3,7 @@
 
 
 
-#add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
 
 
 #add_executable(VulkanTest 
@@ -29,17 +29,38 @@
 
 set(VLD_BACKEND_MTL_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/MetalDevice.mm"
-    "${CMAKE_CURRENT_LIST_DIR}/MetalDevice.hpp"
-    "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.hpp"
-    "${CMAKE_CURRENT_LIST_DIR}/MetalTexture.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/MetalTexture.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalDevice.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalTexture.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalTexture.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalPipeline.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalPipeline.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalCommandList.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalCommandList.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalShader.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalShader.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalBindableResource.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalBindableResource.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalResourceFactory.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalResourceFactory.h"
 
     "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.hpp"
+
+
+    "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.h"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${VLD_BACKEND_MTL_SRCS})
+
+add_library(metal_shader_converter_impl STATIC "${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m")
+target_compile_options(metal_shader_converter_impl PRIVATE  -fobjc-arc)
+target_link_libraries(metal_shader_converter_impl 
+    PRIVATE
+        "-framework Metal"
+        MetalShaderConverter)
 
 target_sources(Veldrid
     PRIVATE
@@ -50,6 +71,9 @@ target_link_libraries(Veldrid
         "-framework Foundation"
         "-framework Metal"
         "-framework QuartzCore"
+        MetalShaderConverter
+        demo_dep
+        metal_shader_converter_impl
     #    common
     #    glm
     #    vulkan

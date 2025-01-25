@@ -1,14 +1,14 @@
 #pragma once
 
-#include "Veldrid/ResourceBarrier.hpp"
+#include "alloy/ResourceBarrier.hpp"
 
 #include <volk.h>
 
-namespace Veldrid
+namespace alloy::vk
 {
     class VulkanCommandList;
     
     void BindBarrier(VulkanCommandList* cmdBuf, const std::vector<alloy::BarrierDescription>& barriers);
 
-} // namespace Veldrid
+} // namespace alloy
 

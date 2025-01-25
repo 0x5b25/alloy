@@ -1,22 +1,22 @@
 #include "VkSurfaceUtil.hpp"
 
-#include "veldrid/common/Macros.h"
+#include "alloy/common/Macros.h"
 
 #include <cassert>
 
 
-namespace Veldrid::VK::priv{
+namespace alloy::VK::priv{
 
-SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* swapchainSource) {
+SurfaceContainer CreateSurface(VkInstance instance, alloy::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
 	switch (swapchainSource->tag) {
-		case Veldrid::SwapChainSource::Tag::Opaque:{
-			auto opaqueSource = (Veldrid::OpaqueSwapChainSource*)swapchainSource;
+		case alloy::SwapChainSource::Tag::Opaque:{
+			auto opaqueSource = (alloy::OpaqueSwapChainSource*)swapchainSource;
 			return {(VkSurfaceKHR)opaqueSource->handle, false};
 		}
-		case Veldrid::SwapChainSource::Tag::Win32: {
-			auto win32Source = (Veldrid::Win32SwapChainSource*)swapchainSource;
+		case alloy::SwapChainSource::Tag::Win32: {
+			auto win32Source = (alloy::Win32SwapChainSource*)swapchainSource;
 			VkWin32SurfaceCreateInfoKHR surfaceCI{};
 			surfaceCI.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
 			surfaceCI.pNext = nullptr;
@@ -35,13 +35,13 @@ SurfaceContainer CreateSurface(VkInstance instance, Veldrid::SwapChainSource* sw
 
 }
 
-std::string GetSurfaceExtension(Veldrid::SwapChainSource* swapchainSource) {
+std::string GetSurfaceExtension(alloy::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
 	switch (swapchainSource->tag) {
-		case Veldrid::SwapChainSource::Tag::Opaque: 
+		case alloy::SwapChainSource::Tag::Opaque: 
 			return "VK_KHR_surface";
-		case Veldrid::SwapChainSource::Tag::Win32:
+		case alloy::SwapChainSource::Tag::Win32:
 			return "VK_KHR_win32_surface";
 		default: {
 			return {};
