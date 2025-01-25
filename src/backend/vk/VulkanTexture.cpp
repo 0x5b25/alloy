@@ -245,7 +245,7 @@ namespace alloy::vk {
         void* mappedData;
         VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
-        auto subResLayout = GetSubresourceLayout(mipLevel, description.mipLevels, SubresourceAspect::Color);
+        auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
         auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
 
         auto pDst = (char*)mappedData + subResLayout.offset;
@@ -294,7 +294,7 @@ namespace alloy::vk {
         void* mappedData;
         VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
-        auto subResLayout = GetSubresourceLayout(mipLevel, description.mipLevels, SubresourceAspect::Color);
+        auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
         auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
 
         auto pSrc = (char*)mappedData + subResLayout.offset;

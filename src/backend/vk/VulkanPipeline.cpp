@@ -112,6 +112,7 @@ public:
                 }
             }
 
+            assert(false, __FUNCTION__": Failed to find vulkan bindings");
             return false;
         }
 

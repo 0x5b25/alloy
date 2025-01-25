@@ -19,13 +19,6 @@ if(APPLE)
         IMPORTED_LOCATION ${DXC_COMPILER_DLL}
     )
 
-    add_library(dxc::dxil SHARED IMPORTED)
-    set_target_properties(dxc::dxil PROPERTIES
-        IMPORTED_LOCATION "${DXC_BIN_DIR}/lib/libdxil.dylib"
-        IMPORT_PREFIX "lib"
-        IMPORT_SUFFIX ".dylib"
-    )
-
     add_library(dxc INTERFACE)
     target_link_libraries(dxc INTERFACE dxc::compiler)
     target_include_directories(dxc INTERFACE "${DXC_BIN_DIR}/include")
@@ -48,25 +41,49 @@ else()
 endif()
 
 
+add_library(imgui STATIC)
+target_sources(imgui
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_demo.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_tables.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_widgets.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends/imgui_impl_glfw.cpp"
+)
+target_include_directories(imgui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/imgui")
+target_link_libraries(imgui PRIVATE glfw)
+set_target_properties(imgui PROPERTIES FOLDER "demo/3rd-party")
+
+
 set_target_properties(glfw glm PROPERTIES FOLDER "demo/3rd-party")
 
-set(APP_SRC_SET
-    "app/App.cpp"
-    "app/App.hpp"
-    "app/HLSLCompiler.cpp"
-    "app/HLSLCompiler.hpp"
+add_library(demoAppBase STATIC
+        "app/App.cpp"
+        "app/App.hpp"
+        "app/HLSLCompiler.cpp"
+        "app/HLSLCompiler.hpp"
+        "app/ImGuiBackend.cpp"
 )
 
+target_link_libraries(demoAppBase
+    PUBLIC
+        glm::glm
+        glfw
+        imgui
+        dxc
+        Veldrid
+)
+target_compile_features(demoAppBase PUBLIC cxx_std_20)
+
+set_target_properties(demoAppBase PROPERTIES FOLDER "demo")
+
 function(CreateDemoApp DemoName)    
-    add_executable(${DemoName}
-        ${APP_SRC_SET}
-        "${DemoName}.cpp"
+    add_executable(${DemoName} "${DemoName}.cpp"
     )
 
     target_link_libraries(${DemoName} 
-        PUBLIC
-            glm::glm
-            glfw
+        PUBLIC demoAppBase
     )
     link_with_veldrid(${DemoName})
     target_link_libraries(${DemoName} PRIVATE dxc)
@@ -80,4 +97,4 @@ endfunction(CreateDemoApp)
 #CreateDemoApp(demo)
 CreateDemoApp(uniformBufferTest)
 CreateDemoApp(textureTest)
-
+CreateDemoApp(imguiTest)

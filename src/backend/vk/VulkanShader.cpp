@@ -75,6 +75,7 @@ namespace alloy::vk
             if(iter == shaderStageIoMap.end())
             {
                 //ERR("Undefined semantic %s (%u).\n", d3d_input->semantic, d3d_input->semantic_index);
+                assert(false);
                 return false;
             }
 
@@ -98,6 +99,8 @@ namespace alloy::vk
             //if (!(e = io_map->Append(d3d_input.semantic, d3d_input.semantic_index)))
             {
                 //ERR("Duplicate semantic %s (%u).\n", d3d_input.semantic, d3d_input.semantic_index);
+
+                assert(false);
                 return false;
             }
 
@@ -229,6 +232,7 @@ namespace alloy::vk
             if (dxil_spv_parse_dxil_blob(dxil.data(), dxil.size(), &blob.blob) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_SHADER;
+                assert(false);
                 break;
             }
 
@@ -237,12 +241,14 @@ namespace alloy::vk
             if (!dxil_match_shader_stage(stage, compiler_args.shaderStage))
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
             if (dxil_spv_create_converter(blob.blob, &converter.converter) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
@@ -263,6 +269,7 @@ namespace alloy::vk
             {
                 //ERR("dxil-spirv does not support COMPUTE_SHADER_DERIVATIVES.\n");
                 ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+                assert(false);
                 break;
             }
 
@@ -298,6 +305,7 @@ namespace alloy::vk
             if (dxil_spv_converter_run(converter.converter) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
@@ -306,6 +314,7 @@ namespace alloy::vk
             if (dxil_spv_converter_get_compiled_spirv(converter.converter, &compiled) != DXIL_SPV_SUCCESS)
             {
                 ret = VKD3D_ERROR_INVALID_ARGUMENT;
+                assert(false);
                 break;
             }
 
