@@ -7,19 +7,28 @@ namespace alloy
 #ifndef VLD_BACKEND_DXC
     common::sp<IGraphicsDevice> CreateDX12GraphicsDevice(
         const IGraphicsDevice::Options& options
-    ){return nullptr;}
+    ){
+        assert(false);
+        return nullptr;
+    }
 #endif
 
 #ifndef VLD_BACKEND_VK
     common::sp<IGraphicsDevice> CreateVulkanGraphicsDevice(
         const IGraphicsDevice::Options& options
-    ){return nullptr;}
+    ){
+        assert(false);
+        return nullptr;
+    }
 #endif
 
 #ifndef VLD_BACKEND_MTL
     common::sp<IGraphicsDevice> CreateMetalGraphicsDevice(
         const IGraphicsDevice::Options& options
-    ){return nullptr;}
+    ){
+        assert(false);
+        return nullptr;
+    }
 #endif
 
     common::sp<IGraphicsDevice> CreateDefaultGraphicsDevice(

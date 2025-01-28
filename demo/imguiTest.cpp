@@ -12,6 +12,11 @@
 #include <alloy/backend/Backends.hpp>
 #include <alloy/SwapChain.hpp>
 
+#include <thread>
+#include <chrono>
+#include <iostream>
+#include <format>
+
 using namespace alloy;
 
 class ImguiApp : public AppBase {
@@ -63,9 +68,9 @@ private:
         alloy::IGraphicsDevice::Options opt{};
         opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
-        //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
+        dev = alloy::CreateMetalGraphicsDevice(opt);
         //dev = alloy::CreateVulkanGraphicsDevice(opt);
-        dev = alloy::CreateDX12GraphicsDevice(opt);
+        //dev = alloy::CreateDX12GraphicsDevice(opt);
 
         alloy::ISwapChain::Description swapChainDesc{};
         swapChainDesc.source = swapChainSrc;
@@ -214,8 +219,6 @@ protected:
         //renderFinishFenceValue++;
         //Update uniformbuffer
         //memcpy(ubMapped, &ubo, sizeof(ubo));
-        
-        
 
         //StopCapture();
 
@@ -296,6 +299,14 @@ protected:
 };
 
 int main() {
+    
+    
+#if defined(VLD_PLATFORM_MACOS)
+    //Workaround xcode bug of multiple instances opened when debug
+    //: Sleep for 3 seconds on startup
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+#endif
+    
 	ImguiApp app;
 	app.Run();
 }

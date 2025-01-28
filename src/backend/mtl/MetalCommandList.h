@@ -86,11 +86,11 @@ class MetalRenderCmdEnc : public IRenderCommandEncoder, public CmdEncoderImplBas
         common::sp<MetalGfxPipeline> boundPipeline;
         std::unordered_map<std::uint32_t, common::sp<BufferRange> > boundVertexBuffers;
         common::sp<BufferRange> boundIndexBuffer; IndexFormat boundIndexBufferFormat;
-        common::sp<IResourceSet> boundArgBuffers[31];
+        //common::sp<IResourceSet> boundArgBuffers[31];
     };
 
     ///#TODO: Confirm can we have multiple draw calls in single render pass
-    std::vector<RenderPassRegistry> _drawResources;
+    RenderPassRegistry _drawResources;
     
 public:
 

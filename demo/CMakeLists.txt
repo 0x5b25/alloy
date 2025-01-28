@@ -53,6 +53,7 @@ target_sources(imgui
 )
 target_include_directories(imgui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/imgui")
 target_link_libraries(imgui PRIVATE glfw)
+target_compile_features(imgui PRIVATE cxx_std_20)
 set_target_properties(imgui PROPERTIES FOLDER "demo/3rd-party")
 
 

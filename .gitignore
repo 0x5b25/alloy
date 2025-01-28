@@ -53,6 +53,8 @@ bld/
 .vs/
 # Visual Studio code cache/options directory
 .vscode/
+#clangd index cache
+.cache/
 
 #macos specific
 

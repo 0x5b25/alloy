@@ -62,6 +62,8 @@ namespace alloy
         std::uint32_t GetSizeInBytes(const ShaderDataType& format);
 
         std::uint32_t GetSizeInBytes(ShaderConstantType type);
+    
+        std::uint32_t GetSizeInBytes(IndexFormat format);
 
         std::int32_t GetElementCount(ShaderDataType format);
 

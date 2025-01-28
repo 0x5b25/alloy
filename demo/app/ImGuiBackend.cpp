@@ -107,6 +107,16 @@ void ImGuiAlloyBackend::_SetupRenderState(
     ImDrawData* draw_data,
     alloy::IRenderCommandEncoder* command_list
 )  {
+    
+    // Setup viewport
+    alloy::Viewport vp[] = {{
+        .x = 0,
+        .y = 0,
+        .width = draw_data->DisplaySize.x * draw_data->FramebufferScale.x,
+        .height = draw_data->DisplaySize.y * draw_data->FramebufferScale.y,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    }};
 
     // Setup orthographic projection matrix into our constant buffer
     // Our visible imgui space lies from draw_data->DisplayPos (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right).
@@ -117,29 +127,22 @@ void ImGuiAlloyBackend::_SetupRenderState(
         float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
         float T = draw_data->DisplayPos.y;
         float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
-        float mvp[4][4] =
+        float N = (float)vp[0].minDepth;
+        float F = (float)vp[0].maxDepth;
+        const float mvp[4][4] =
         {
-            { 2.0f/(R-L),   0.0f,           0.0f,       0.0f },
-            { 0.0f,         2.0f/(T-B),     0.0f,       0.0f },
-            { 0.0f,         0.0f,           0.5f,       0.0f },
-            { (R+L)/(L-R),  (T+B)/(B-T),    0.5f,       1.0f },
+            { 2.0f/(R-L),   0.0f,           0.0f,   0.0f },
+            { 0.0f,         2.0f/(T-B),     0.0f,   0.0f },
+            { 0.0f,         0.0f,        1/(F-N),   0.0f },
+            { (R+L)/(L-R),  (T+B)/(B-T), N/(F-N),   1.0f },
         };
-
         auto pMvpBuf = mvpBuffer->MapToCPU();
 
         memcpy(pMvpBuf, mvp, sizeof(mvp));
         mvpBuffer->UnMap();
     }
 
-    // Setup viewport
-    alloy::Viewport vp[] = {{
-        .x = 0,
-        .y = 0,
-        .width = draw_data->DisplaySize.x,
-        .height = draw_data->DisplaySize.y,
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f,
-    }};
+    
     command_list->SetViewports(vp);
 
     // Bind shader and vertex buffers
@@ -160,7 +163,9 @@ void ImGuiAlloyBackend::RenderDrawData(
     alloy::ICommandList* command_list
 ) {
     // Avoid rendering when minimized
-    if (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f)
+    int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+    int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
+    if (fb_width <= 0 || fb_height <= 0 || draw_data->CmdListsCount == 0)
         return;
 
     // FIXME: We are assuming that this only gets called once per frame!
@@ -241,7 +246,11 @@ void ImGuiAlloyBackend::RenderDrawData(
     // (Because we merged all buffers into a single one, we maintain our own offset into them)
     int global_vtx_offset = 0;
     int global_idx_offset = 0;
-    ImVec2 clip_off = draw_data->DisplayPos;
+    
+    
+    ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
+    ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
+    
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList* draw_list = draw_data->CmdLists[n];
@@ -260,13 +269,25 @@ void ImGuiAlloyBackend::RenderDrawData(
             else
             {
                 // Project scissor/clipping rectangles into framebuffer space
-                ImVec2 clip_min(pcmd->ClipRect.x - clip_off.x, pcmd->ClipRect.y - clip_off.y);
-                ImVec2 clip_max(pcmd->ClipRect.z - clip_off.x, pcmd->ClipRect.w - clip_off.y);
+                ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
+                ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+
+                // Clamp to viewport as setScissorRect() won't accept values that are off bounds
+                if (clip_min.x < 0.0f) { clip_min.x = 0.0f; }
+                if (clip_min.y < 0.0f) { clip_min.y = 0.0f; }
+                if (clip_max.x > fb_width) { clip_max.x = (float)fb_width; }
+                if (clip_max.y > fb_height) { clip_max.y = (float)fb_height; }
                 if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
+                    continue;
+                if (pcmd->ElemCount == 0) // drawIndexedPrimitives() validation doesn't accept this
                     continue;
 
                 // Apply scissor/clipping rectangle
-                alloy::Rect r[] = {{ clip_min.x, clip_min.y, clip_max.x - clip_min.x, clip_max.y - clip_min.y}};
+                alloy::Rect r[] = {{
+                    clip_min.x,
+                    clip_min.y,
+                    (clip_max.x - clip_min.x),
+                    (clip_max.y - clip_min.y)}};
                 enc.SetScissorRects(r);
 
                 // Bind texture, Draw
@@ -562,7 +583,7 @@ void ImGuiAlloyBackend::_CreateFontsTexture() {
         desc.addressModeV = ISampler::Description::AddressMode::Clamp;
         desc.addressModeW = ISampler::Description::AddressMode::Clamp;
         desc.lodBias = 0.f;
-        desc.maximumAnisotropy = 0;
+        desc.maximumAnisotropy = 1;
         //desc.comparisonKind = ComparisonKind::Always;
         desc.borderColor = ISampler::Description::BorderColor::TransparentBlack;
         desc.minimumLod = 0.f;

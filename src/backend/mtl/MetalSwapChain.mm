@@ -25,6 +25,7 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
         swapChain.device = dev->GetHandle();
         //swapChain.opaque = true;
         //swapChain.pixelFormat = VdToMtlPixelFormat(desc.colorFormat);
+        swapChain.pixelFormat = MTLPixelFormatRGBA8Unorm;
         //Metal specs say that drawable count can only be 2 or 3
         swapChain.maximumDrawableCount = desc.backBufferCnt;
         swapChain.drawableSize = {(float)desc.initialWidth, (float)desc.initialHeight};

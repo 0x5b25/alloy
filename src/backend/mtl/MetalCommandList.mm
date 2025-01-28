@@ -50,7 +50,7 @@ MetalRenderCmdEnc::MetalRenderCmdEnc(
    //, registry(registry)
 {
     //renderPass->ref();
-    _drawResources.emplace_back();
+    //_drawResources.emplace_back();
 }
 
 
@@ -78,7 +78,7 @@ MetalRenderCmdEnc::MetalRenderCmdEnc(
 void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
     resources.insert(pipeline);
     auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
-    _drawResources.back().boundPipeline = common::ref_sp(mtlPipeline);
+    _drawResources.boundPipeline = common::ref_sp(mtlPipeline);
     mtlPipeline->BindToCmdBuf(_mtlEnc);
 }
 
@@ -88,7 +88,7 @@ void MetalRenderCmdEnc::SetVertexBuffer(std::uint32_t index, const common::sp<Bu
     //@autoreleasepool {
         
         resources.insert(buffer);
-        _drawResources.back().boundVertexBuffers[index] = buffer;
+        _drawResources.boundVertexBuffers[index] = buffer;
         //auto mtlBuffer = static_cast<MetalBuffer*>(buffer->GetBufferObject());
         //[_mtlEnc setVertexBuffer:mtlBuffer->GetHandle()
         //                  offset:buffer->GetShape().GetOffsetInBytes()
@@ -100,8 +100,8 @@ void MetalRenderCmdEnc::SetVertexBuffer(std::uint32_t index, const common::sp<Bu
 void MetalRenderCmdEnc::SetIndexBuffer(const common::sp<BufferRange>& buffer, IndexFormat format) {
     
     resources.insert(buffer);
-    _drawResources.back().boundIndexBuffer = buffer;
-    _drawResources.back().boundIndexBufferFormat = format;
+    _drawResources.boundIndexBuffer = buffer;
+    _drawResources.boundIndexBufferFormat = format;
 
     //Will be use in:
     //[_mtlEnc drawIndexedPrimitives:(MTLPrimitiveType) indexCount:<#(NSUInteger)#> indexType:<#(MTLIndexType)#> indexBuffer:<#(nonnull id<MTLBuffer>)#> indexBufferOffset:<#(NSUInteger)#>]
@@ -211,12 +211,12 @@ void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
                                      std::uint32_t instanceCount,
                                      std::uint32_t vertexStart, 
                                      std::uint32_t instanceStart) {
-    assert(_drawResources.back().boundPipeline != nullptr);
+    assert(_drawResources.boundPipeline != nullptr);
     //assert(registry.boundIndexBuffer != nullptr);
     
     @autoreleasepool {
 
-        auto mtlPipeline = static_cast<MetalGfxPipeline*>(_drawResources.back().boundPipeline.get());
+        auto mtlPipeline = static_cast<MetalGfxPipeline*>(_drawResources.boundPipeline.get());
 
         //auto& bufferRange = registry.boundIndexBuffer;
         //auto mtlBuffer = static_cast<AllocationImpl*>(bufferRange->GetBufferObject());
@@ -227,8 +227,6 @@ void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
                   instanceCount:instanceCount
                    baseInstance:instanceStart];
     }
-
-    _drawResources.emplace_back();
 }
 
 void MetalRenderCmdEnc::DrawIndexed(
@@ -236,7 +234,7 @@ void MetalRenderCmdEnc::DrawIndexed(
     std::uint32_t indexStart, std::uint32_t vertexOffset,
                                            std::uint32_t instanceStart) {
 
-    auto& registry = _drawResources.back();
+    auto& registry = _drawResources;
     assert(registry.boundPipeline != nullptr);
     assert(registry.boundIndexBuffer != nullptr);
     
@@ -278,12 +276,14 @@ void MetalRenderCmdEnc::DrawIndexed(
                          length:vertArgBuf.size() * sizeof(IRRuntimeVertexBuffer)
                         atIndex:kIRVertexBufferBindPoint];
         
+        auto indexElemSize = FormatHelpers::GetSizeInBytes(registry.boundIndexBufferFormat);
+        
         IRRuntimeDrawIndexedPrimitives(_mtlEnc,
                                        mtlPipeline->GetPrimitiveTopology(),
                                        indexCount,
                                        AlToMtlIndexFormat(registry.boundIndexBufferFormat),
                                        mtlBuffer->GetHandle(),
-                                       bufferRange->GetShape().GetOffsetInBytes(),
+                                       bufferRange->GetShape().GetOffsetInBytes() + indexStart * indexElemSize,
                                        instanceCount,
                                        vertexOffset,
                                        instanceStart);
@@ -297,8 +297,6 @@ void MetalRenderCmdEnc::DrawIndexed(
         //         baseVertex:vertexOffset
         //         baseInstance:instanceStart];
     }
-
-    _drawResources.emplace_back();
 }
 
 
