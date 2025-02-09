@@ -141,13 +141,18 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
          
         alPipelineObj->_shaders = desc.shaderSet.shaders;
         */
-        auto mtlResLayout = common::PtrCast<MetalResourceLayout>(desc.resourceLayout.get());
+        ///#TODO: cross validate pipeline resource layout and shader resources in DXIL
+        MetalResourceLayout* mtlResLayout = nullptr;
+        if(desc.resourceLayout){
+            mtlResLayout = common::PtrCast<MetalResourceLayout>(desc.resourceLayout.get());
+        }
+        
         {
             auto shader = desc.shaderSet.fragmentShader;
             auto& shaderDesc = shader->GetDesc();
             auto fragLib = TranspileDXILShader(mtlDev,
                                                IShader::Stage::Fragment,
-                                               mtlResLayout->GetHandle(),
+                                               mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
                                                shaderDesc.entryPoint, shader->GetByteCode());
             [fragLib autorelease];
             pipelineDesc.fragmentFunction = [fragLib newFunctionWithName:fragLib.functionNames.firstObject];
@@ -158,7 +163,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             auto& shaderDesc = shader->GetDesc();
             auto vertLib = TranspileVertexShader(mtlDev,
                                                  desc.shaderSet.vertexLayouts,
-                                                 mtlResLayout->GetHandle(),
+                                                 mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
                                                  shaderDesc.entryPoint, shader->GetByteCode());
             
             [vertLib.vertexLib autorelease];

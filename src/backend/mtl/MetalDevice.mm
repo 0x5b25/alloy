@@ -4,6 +4,7 @@
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/QuartzCore.h>
+#include <IOKit/IOKitLib.h>
 
 #import <Metal/Metal.h>
 
@@ -18,18 +19,14 @@
 #include <chrono>
 
 namespace alloy {
-    common::sp<IGraphicsDevice> CreateMetalGraphicsDevice(
-        const IGraphicsDevice::Options& options
-    ) {
-        return alloy::mtl::MetalDevice::Make(options);
+    common::sp<IContext> CreateMetalContext() {
+        return alloy::mtl::MetalContext::Make();
     }
 }
 
 namespace alloy::mtl
 {
     
-	
-
     class _MTLFeatures{
         
         MTLGPUFamily _arch;
@@ -199,6 +196,7 @@ namespace alloy::mtl
             }
 
         }
+        MTLGPUFamily GetGPUArch() const {return _arch;}
 
 
         static constexpr bool IsMacOS(){
@@ -224,31 +222,259 @@ namespace alloy::mtl
             ;
         }
 
+        bool IsMeshShaderSupported() const {
+            return _arch != MTLGPUFamilyApple1
+                && _arch != MTLGPUFamilyApple2
+                && _arch != MTLGPUFamilyApple3
+                && _arch != MTLGPUFamilyApple4
+                && _arch != MTLGPUFamilyApple5
+                && _arch != MTLGPUFamilyApple6
+            ;
+        }
+
+        bool IsRayTracingSupported() const {
+            return _arch != MTLGPUFamilyApple1
+                && _arch != MTLGPUFamilyApple2
+                && _arch != MTLGPUFamilyApple3
+                && _arch != MTLGPUFamilyApple4
+                && _arch != MTLGPUFamilyApple5
+            ;
+        }
+
+        bool IsUMA() const {
+            return _arch != MTLGPUFamilyMac2;
+        }
+
         operator GraphicsApiVersion() const {
             int major = (int)_arch / 1000;
             int minor = (int)_arch % 1000;
-            return GraphicsApiVersion{major, minor, 0, 0};
+            return GraphicsApiVersion{Backend::Metal, major, minor, 0, 0};
         }
 
     };
 
+
+    MetalAdapter::MetalAdapter(id<MTLDevice> adp)
+        : _adp(adp)
+    { 
+        PopulateAdpInfo();
+    }
+    MetalAdapter::~MetalAdapter() {
+        [_adp release];
+    }
+
+    void MetalAdapter::PopulateAdpInfo() {
+
+        _MTLFeatures feat (_adp);
+
+        //Device info
+        @autoreleasepool {
+            info.apiVersion = feat;
+            info.deviceName = [[_adp name] cStringUsingEncoding:NSUTF8StringEncoding];
+            
+            auto regID = [_adp registryID];
+
+            auto matching = IORegistryEntryIDMatching(regID);
+            io_iterator_t entryIt;
+
+            if(IOServiceGetMatchingServices(kIOMainPortDefault, 
+                                            matching,
+                                            &entryIt) == kIOReturnSuccess) {
+                io_registry_entry_t entry;
+                while ((entry = IOIteratorNext(entryIt))) {
+                    auto _GetEntryProp = [&entry](CFStringRef propName){
+                        auto dataRef = IORegistryEntrySearchCFProperty(
+                            entry, 
+                            kIOServicePlane, 
+                            propName,
+                            kCFAllocatorDefault,
+                            kIORegistryIterateRecursively | kIORegistryIterateParents
+                        );
+
+                        if(!dataRef) return 0u;
+
+                        auto value = 0u;
+
+                        auto pVal = CFDataGetBytePtr(static_cast<CFDataRef>(dataRef));
+                        if(pVal) {
+                            value = *((uint32_t*)pVal);
+                        }
+                        CFRelease(dataRef);
+
+                        return value;
+                    };
+
+                    if(info.deviceID == 0) {
+                        info.deviceID = _GetEntryProp(CFSTR("device-id"));
+                    }
+                    
+                    if(info.vendorID == 0) {
+                        info.vendorID = _GetEntryProp(CFSTR("vendor-id"));
+                    }
+
+                    IOObjectRelease(entry);
+
+                    if(info.vendorID && info.deviceID) {
+                        break;
+                    }
+                }
+                IOObjectRelease(entryIt);
+            }
+        }
+
+        //Caps
+        info.capabilities.supportMeshShader = feat.IsMeshShaderSupported();
+        info.capabilities.isUMA = feat.IsUMA();
+
+        auto arch = feat.GetGPUArch();
+
+        //Limits
+        auto _SupportsAny = [this](
+            const std::vector<MTLGPUFamily>& archList
+        )->bool{
+            @autoreleasepool {
+                for(auto a : archList){
+                    if([_adp supportsFamily: a]){
+                        return true;
+                    }
+                }
+                return false;
+            }
+        };
+        info.limits.maxImageDimension1D =
+            info.limits.maxImageDimension2D = 
+                _SupportsAny({MTLGPUFamilyApple3, MTLGPUFamilyMac2}) 
+                    ? 16384 : 8192;
+        info.limits.maxImageDimension3D = 2048;
+        info.limits.maxImageArrayLayers = 2048;
+        info.limits.maxFragmentInputComponents = 
+            _SupportsAny({MTLGPUFamilyApple4}) 
+                    ? 124 : 60;
+        info.limits.maxFragmentOutputAttachments = 8;
+        //max_bind_groups: 8,
+        //max_bindings_per_bind_group: 65535,
+        //max_dynamic_uniform_buffers_per_pipeline_layout: base
+        //    .max_dynamic_uniform_buffers_per_pipeline_layout,
+        //max_dynamic_storage_buffers_per_pipeline_layout: base
+        //    .max_dynamic_storage_buffers_per_pipeline_layout;
+
+        auto maxTexPerStage 
+            = _SupportsAny({MTLGPUFamilyApple6}) ? 128u 
+            : _SupportsAny({MTLGPUFamilyApple4}) ? 96u
+            : 31u; 
+
+        info.limits.maxPerStageDescriptorSampledImages = maxTexPerStage;
+        info.limits.maxPerStageDescriptorSamplers = 16;
+        info.limits.maxPerStageDescriptorStorageBuffers = 31;
+        info.limits.maxPerStageDescriptorStorageImages = maxTexPerStage;
+        info.limits.maxPerStageDescriptorUniformBuffers = 31;
+
+        auto maxBufferSize = 1u << 28; // 256MB on iOS 8.0+
+        if(@available(iOS 12, macOS 10.14, *)) {
+            // maxBufferLength available on macOS 10.14+ and iOS 12.0+
+            maxBufferSize = [_adp maxBufferLength];
+        } else if(@available(macOS 10.11, *)) {
+            maxBufferSize = 1u << 30; // 1GB on macOS 10.11 and up
+        }
+
+        info.limits.maxUniformBufferRange = maxBufferSize;
+        info.limits.maxStorageBufferRange = maxBufferSize;
+        info.limits.maxVertexInputBindings = 31;
+        info.limits.maxVertexInputAttributes = 31;
+        info.limits.maxVertexInputBindingStride = 2048;
+        //min_subgroup_size: 4,
+        //max_subgroup_size: 64;
+        info.limits.maxFragmentInputComponents 
+            = _SupportsAny({MTLGPUFamilyApple4, MTLGPUFamilyMac2}) 
+                ? 124 : 60;
+        info.limits.maxFragmentOutputAttachments
+            = _SupportsAny({MTLGPUFamilyApple2, MTLGPUFamilyMac2}) 
+                ? 8 : 4;
+        
+        info.limits.maxPushConstantsSize = 0x1000;
+        info.limits.minUniformBufferOffsetAlignment = 4;
+        info.limits.minStorageBufferOffsetAlignment = 256;
+        //max_color_attachment_bytes_per_sample: self.max_color_attachment_bytes_per_sample
+        //    as u32,
+        
+        info.limits.maxComputeSharedMemorySize
+            = _SupportsAny({MTLGPUFamilyApple4, MTLGPUFamilyMac2}) 
+                ? 32 << 10 : 16 << 10;
+
+        auto maxThreadInGrp = _SupportsAny({MTLGPUFamilyApple4}) 
+            ? 1024 : 512;
+        
+        info.limits.maxComputeWorkGroupInvocations = maxThreadInGrp;
+        info.limits.maxComputeWorkGroupSize[0] = maxThreadInGrp;
+        info.limits.maxComputeWorkGroupSize[1] = maxThreadInGrp;
+        info.limits.maxComputeWorkGroupSize[2] = maxThreadInGrp;
+        //max_compute_workgroups_per_dimension: 0xFFFF,
+        //max_non_sampler_bindings: u32::MAX;
+
+        info.limits.pointSizeRange[0] = 0.f;
+        info.limits.pointSizeRange[1] = 511.f;
+    }
+
+
+    common::sp<IGraphicsDevice> MetalAdapter::RequestDevice(
+        const IGraphicsDevice::Options& options
+    ) {
+        return MetalDevice::Make(common::ref_sp(this), options);
+    }
+
     MetalDevice::~MetalDevice(){
         delete _gfxQ;
         delete _copyQ;
-        [_device release];
+    }
+
+
+    common::sp<MetalContext> MetalContext::Make() {
+        return common::sp(new MetalContext());
+    }
+
+    common::sp<IGraphicsDevice> MetalContext::CreateDefaultDevice(const IGraphicsDevice::Options& options) {
+        @autoreleasepool {
+            auto device = MTLCreateSystemDefaultDevice();
+            auto mtlAdp = new MetalAdapter(device);
+            return MetalDevice::Make(common::sp(mtlAdp), options);
+        }
+    }
+    
+    std::vector<common::sp<IPhysicalAdapter>> MetalContext::EnumerateAdapters() {
+        std::vector<common::sp<IPhysicalAdapter>> adps;
+        @autoreleasepool {
+            NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+
+            for(int i = 0; i < [devices count]; i++) {
+                auto dev = devices[i];
+                //Argument buffer tier2 support is mandatory for
+                //metal shader converter.
+                if(dev.argumentBuffersSupport < MTLArgumentBuffersTier2) {
+                    [dev release];
+                    continue;
+                }
+                auto mtlAdp = new MetalAdapter(dev);
+                adps.emplace_back(mtlAdp);
+            }
+
+            [devices release];
+        }
+
+        return adps;
     }
 
 
     common::sp<MetalDevice> MetalDevice::Make(
+        const common::sp<MetalAdapter>& adp,
         const IGraphicsDevice::Options& options
     ){
         @autoreleasepool {
-            auto _device = MTLCreateSystemDefaultDevice();
+            //auto _device = MTLCreateSystemDefaultDevice();
             //_deviceName = _device->name();
             //enumerate featureset support
-            _MTLFeatures MetalFeatures(_device);
+            _MTLFeatures MetalFeatures(adp->GetHandle());
             
-            GraphicsApiVersion _apiVersion = MetalFeatures;// new GraphicsApiVersion(major, minor, 0, 0);
+            //GraphicsApiVersion _apiVersion = MetalFeatures;// new GraphicsApiVersion(major, minor, 0, 0);
             
             IGraphicsDevice::Features _features;
             
@@ -330,12 +556,12 @@ namespace alloy::mtl
             //}
             
             auto mtlDev = new MetalDevice();
-            mtlDev->_device = _device;
-            mtlDev->_cmdQueue = [_device newCommandQueue];
+            mtlDev->_adp = adp;
+            //mtlDev->_cmdQueue = [adp->GetHandle() newCommandQueue];
             //_device->newCommandQueue();
-            mtlDev->_info.apiVersion = _apiVersion;
-            mtlDev->_info.deviceName = [[_device name] cStringUsingEncoding:kCFStringEncodingUTF8];
-            mtlDev->_info.deviceID = [_device registryID];
+            mtlDev->_info.apiVersion = MetalFeatures;
+            mtlDev->_info.deviceName = [[adp->GetHandle() name] cStringUsingEncoding:NSUTF8StringEncoding];
+            mtlDev->_info.deviceID = [adp->GetHandle() registryID];
             mtlDev->_features = _features;
             
             mtlDev->_gfxQ = new MetalCmdQ(*mtlDev);

@@ -81,7 +81,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
         : ISwapChain(desc)
         , _layer(layer)
         , _dev(dev)
-        , _capturingFb(nullptr)
+        , _currentCt(nil)
         , _currentDs(0)
     {
         //auto mtlDev = static_cast<DeviceImpl*>(dev.get());
@@ -104,7 +104,10 @@ std::uint32_t MetalSwapChain::GetHeight() const {
     }
 
     void MetalSwapChain::ReleaseFramebuffers() {
-        assert(_capturingFb == nullptr);
+        if(_currentCt != nil) {
+            [_currentCt release];
+            _currentCt = nil;
+        }
         _currentDs = 0;
         _dsTex.clear();
     }
@@ -136,43 +139,41 @@ std::uint32_t MetalSwapChain::GetHeight() const {
 
     common::sp<IFrameBuffer> MetalSwapChain::GetBackBuffer() {
         ///#TODO: Not thread safe.
-        if(_capturingFb) {
-            _capturingFb->ref();
-        }
-        else {
+        //Switch to next drawable
+        if(_currentCt == nil) {
             @autoreleasepool{
 
-                auto drawable = [_layer nextDrawable];
-
-                common::sp<MetalTexture> dsTex;
+                _currentCt = [_layer nextDrawable];
+                [_currentCt retain];
 
                 if(!_dsTex.empty()) {
-                    dsTex = _dsTex[_currentDs];
                     _currentDs++;
                     if(_currentDs >= _dsTex.size()) {
                         _currentDs = 0;
                     }
                 }
 
-                _capturingFb = new MetalSCFB(common::ref_sp(this), drawable, dsTex);
             }
         }
 
-        return common::sp(_capturingFb);
+        auto dsTex = _dsTex[_currentDs];
+
+        auto fb = new MetalSCFB(common::ref_sp(this), _currentCt, dsTex);
+            
+
+        return common::sp(fb);
     }
 
 
     void MetalSwapChain::PresentBackBuffer() {
-        assert(_capturingFb != nullptr);
+        assert(_currentCt != nil);
         //assert(_capturingFb->unique());
 
-        auto drawable = _capturingFb->GetDrawable();
-
-        [drawable present];
+        [_currentCt present];
+        [_currentCt release];
 
         //_capturingFb->unref();
-        _capturingFb = nullptr;
-
+        _currentCt = nil;
     }
 
 

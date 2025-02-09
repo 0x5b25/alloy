@@ -5,6 +5,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include <imgui.h>
 
+#include <alloy/Context.hpp>
 #include <alloy/GraphicsDevice.hpp>
 #include <alloy/ResourceFactory.hpp>
 #include <alloy/CommandList.hpp>
@@ -65,12 +66,28 @@ private:
 
     void SetupAlloyEnv(alloy::SwapChainSource* swapChainSrc) {
         
+        auto ctx = alloy::IContext::Create(alloy::Backend::Metal);
+        auto adp = ctx->EnumerateAdapters().front();
+        
         alloy::IGraphicsDevice::Options opt{};
         opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
-        dev = alloy::CreateMetalGraphicsDevice(opt);
+
+        dev = adp->RequestDevice(opt);
         //dev = alloy::CreateVulkanGraphicsDevice(opt);
         //dev = alloy::CreateDX12GraphicsDevice(opt);
+
+        auto& adpInfo = adp->GetAdapterInfo();
+
+        std::cout << "Picked device:\n";
+        std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";
+        std::cout << "    Device ID   : " << std::hex << adpInfo.deviceID << "\n";
+        std::cout << "    Name        : " <<             adpInfo.deviceName << "\n";
+        std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
+                                    std::cout << "." << adpInfo.apiVersion.minor;
+                                    std::cout << "." << adpInfo.apiVersion.subminor;
+                                    std::cout << "." << adpInfo.apiVersion.patch << std::endl;
+
 
         alloy::ISwapChain::Description swapChainDesc{};
         swapChainDesc.source = swapChainSrc;

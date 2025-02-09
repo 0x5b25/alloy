@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "alloy/Context.hpp"
 #include "alloy/GraphicsDevice.hpp"
 #include "alloy/CommandList.hpp"
 #include "alloy/CommandQueue.hpp"
@@ -15,6 +16,32 @@ namespace alloy::mtl
 {
 
     class MetalDevice;
+
+    class MetalAdapter : public alloy::IPhysicalAdapter {
+
+        id<MTLDevice> _adp;
+
+        void PopulateAdpInfo();
+
+    public:
+        MetalAdapter(id<MTLDevice> adp);
+        virtual ~MetalAdapter() override;
+
+        id<MTLDevice> GetHandle() const {return _adp;}
+
+
+        virtual common::sp<IGraphicsDevice> RequestDevice(const IGraphicsDevice::Options& options) override;
+
+    };
+
+    class MetalContext : public alloy::IContext {
+
+    public:
+        static common::sp<MetalContext> Make();
+
+        virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) override;
+        virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() override;
+    };
 
     class MetalCmdQ : public alloy::ICommandQueue{
 
@@ -53,10 +80,8 @@ namespace alloy::mtl
 
     class MetalDevice : public IGraphicsDevice, public MetalResourceFactory {
 
-        id<MTLDevice> _device;
-        id<MTLCommandQueue> _cmdQueue;
-        
-
+        //id<MTLDevice> _device;
+        common::sp<MetalAdapter> _adp;
         //GraphicsApiVersion _apiVersion;
         IGraphicsDevice::Features _features;
         
@@ -71,15 +96,15 @@ namespace alloy::mtl
         virtual ~MetalDevice();
 
         static common::sp<MetalDevice> Make(
+            const common::sp<MetalAdapter>& adp,
             const IGraphicsDevice::Options& options
         );
 
-
-        id<MTLDevice> GetHandle() { return _device; }
-
-        virtual const AdapterInfo& GetAdapterInfo() const override {return _info;}
+        id<MTLDevice> GetHandle() const { return _adp->GetHandle(); }
         
         virtual const Features& GetFeatures() const override { return _features; }
+        virtual IPhysicalAdapter& GetAdapter() const override {return *_adp.get();}
+
 
         virtual ResourceFactory& GetResourceFactory() override {return *this;}
 
@@ -91,7 +116,7 @@ namespace alloy::mtl
                
 
         
-        virtual void* GetNativeHandle() const override { return _device; }
+        virtual void* GetNativeHandle() const override { return GetHandle(); }
         virtual void WaitForIdle() override;
     };
 

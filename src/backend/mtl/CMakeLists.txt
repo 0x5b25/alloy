@@ -30,6 +30,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
 set(VLD_BACKEND_MTL_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/MetalDevice.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MetalDevice.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalFrameBuffer.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalFrameBuffer.h"
     "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MetalSwapChain.h"
     "${CMAKE_CURRENT_LIST_DIR}/MetalTexture.mm"
@@ -56,7 +58,7 @@ set(VLD_BACKEND_MTL_SRCS
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${VLD_BACKEND_MTL_SRCS})
 
 add_library(metal_shader_converter_impl STATIC "${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m")
-target_compile_options(metal_shader_converter_impl PRIVATE  -fobjc-arc)
+target_compile_options(metal_shader_converter_impl PRIVATE -fobjc-arc)
 target_link_libraries(metal_shader_converter_impl 
     PRIVATE
         "-framework Metal"

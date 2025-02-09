@@ -23,8 +23,9 @@ class MetalSwapChain : public ISwapChain{
 
     std::vector<common::sp<MetalTexture>> _dsTex;
     uint32_t _currentDs;
+    id<CAMetalDrawable> _currentCt;
     
-    MetalSCFB* _capturingFb;
+    //MetalSCFB* _capturingFb;
     
 public:
 
@@ -50,8 +51,8 @@ public:
     void BackBufferReleased(MetalSCFB* which) {
         //assert(_capturingFb != nullptr);
         //assert(which == _capturingFb);
-        if(which == _capturingFb)
-            _capturingFb = nullptr;
+        //if(which == _capturingFb)
+        //    _capturingFb = nullptr;
     }
 
     virtual bool IsSyncToVerticalBlank() const override { return false; }

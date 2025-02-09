@@ -4,6 +4,7 @@
 
 #include "alloy/Texture.hpp"
 #include "alloy/Sampler.hpp"
+#include "alloy/FrameBuffer.hpp"
 
 #import <Metal/Metal.h>
 
@@ -92,23 +93,30 @@ class MetalDevice;
             const common::sp<MetalDevice>& dev,
             const ISampler::Description& desc,
             id<MTLSamplerState> sampler
-         )
-            : ISampler(desc)
-            , _dev(dev)
-            , _sampler(sampler)
-        { }
+        );
         
-        virtual ~MetalSampler() override {
-            @autoreleasepool {
-                [_sampler release];
-            }
-        }
+        virtual ~MetalSampler() override;
         
         id<MTLSamplerState> GetHandle() const {return _sampler;}
         
         static common::sp<MetalSampler> Make(const common::sp<MetalDevice> &dev,
                                              const ISampler::Description &desc);
         
+    };
+
+    class MetalRenderTarget : public IRenderTarget {
+
+        common::sp<MetalTextureView> _texView;
+    public:
+        MetalRenderTarget(const common::sp<MetalTextureView>& texView);
+        virtual ~MetalRenderTarget();
+
+        virtual ITextureView& GetTexture() const override;
+
+        static common::sp<MetalRenderTarget> Make(
+            const common::sp<MetalTextureView>& texView
+        );
+    
     };
 
 }

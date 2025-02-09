@@ -94,6 +94,31 @@ float4 PSMain(PSInput input) : SV_TARGET
 }
 )AGAN";
 
+
+const char HLSLRectDrawer[] = R"AGAN(
+
+
+struct VSQuadOut{
+    float4 position : SV_POSITION;
+    float2 texcoord : TEXCOORD;
+};
+
+// ouputs a full screen quad with tex coords
+VSQuadOut VSMain(uint VertexID: SV_VertexID){
+    VSQuadOut result;
+    result.texcoord = float2( (VertexID << 1) & 2, VertexID & 2 );
+    result.position = float4( result.texcoord * float2( 2.0f, -2.0f ) + float2( -1.0f, 1.0f), 0.0f, 1.0f );
+    return result;
+}
+
+float4 PSMain(VSQuadOut input) : SV_TARGET
+{
+    return float4(input.texcoord.xy, 1, 1);
+}
+
+)AGAN";
+
+
 using namespace alloy;
 
 class UniformApp : public AppBase {
@@ -105,12 +130,16 @@ class UniformApp : public AppBase {
     alloy::common::sp<alloy::IBuffer> vertexBuffer, indexBuffer;
     alloy::common::sp<alloy::IBuffer> uniformBuffer, structBuffer;
 
+    alloy::common::sp<alloy::IShader> rectDrawFragShader, rectDrawVertShader;
+
     alloy::common::sp<alloy::ITextureView> tex1;
     alloy::common::sp<alloy::ISampler> samp1;
+    alloy::common::sp<alloy::IRenderTarget> rt1;
 
     alloy::common::sp<alloy::IResourceSet> shaderResources;
 
     alloy::common::sp<alloy::IGfxPipeline> pipeline;
+    alloy::common::sp<alloy::IGfxPipeline> rectDrawPipeline;
 
     alloy::common::sp<alloy::IEvent> renderFinishFence;
 
@@ -234,6 +263,30 @@ class UniformApp : public AppBase {
         fragmentShader = factory.CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size()});
         vertexShader = factory.CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size()});
 
+        std::cout << "Compiling rect drawer vertex shader..." << std::endl;
+
+        try {
+            vertexSpv = pComplier->Compile(HLSLRectDrawer, L"VSMain", ShaderType::VS);
+        } catch (const ShaderCompileError& e){
+            std::cout << "Vertex shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+
+        
+        std::cout << "Compiling rect drawer fragment shader..." << std::endl;
+
+        try {
+            fragSpv = pComplier->Compile(HLSLRectDrawer, L"PSMain", ShaderType::PS);
+        } catch (const ShaderCompileError& e){
+            std::cout << "Fragment shader compilation failed\n";
+            std::cout << "    ERROR: " << e.what() << std::endl;
+            throw e;
+        }
+
+        rectDrawFragShader = factory.CreateShader(fragmentShaderDesc, {(uint8_t*)fragSpv.data(), fragSpv.size()});
+        rectDrawVertShader = factory.CreateShader(vertexShaderDesc, {(uint8_t*)vertexSpv.data(), vertexSpv.size()});
+
         delete pComplier;
     }
 
@@ -306,12 +359,14 @@ class UniformApp : public AppBase {
         tex1ImgDesc.arrayLayers = 1;
         tex1ImgDesc.format = alloy::PixelFormat::R8_G8_B8_A8_UNorm;
         tex1ImgDesc.usage.sampled = 1;
+        tex1ImgDesc.usage.renderTarget = 1;
         tex1ImgDesc.type = alloy::ITexture::Description::Type::Texture2D;
         tex1ImgDesc.sampleCount = alloy::SampleCount::x1;
         tex1ImgDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
         auto tex1Img = factory.CreateTexture(tex1ImgDesc);
 
         tex1 = factory.CreateTextureView(tex1Img);
+        rt1 = factory.CreateRenderTarget(tex1);
 
         auto fence = dev->GetResourceFactory().CreateSyncEvent();
         uint64_t signalValue = 1;
@@ -328,60 +383,11 @@ class UniformApp : public AppBase {
                     .stagesBefore = alloy::PipelineStages{},
                     .stagesAfter = alloy::PipelineStage::All,
                     .accessBefore = alloy::ResourceAccesses{},
-                    .accessAfter = alloy::ResourceAccess::COMMON,
-                },
-
-                .resourceInfo = alloy::TextureBarrierResource {
-                    .fromLayout = alloy::TextureLayout::UNDEFINED,
-                    .toLayout = alloy::TextureLayout::COMMON,
-                    .resource = tex1Img
-                }
-                //.barriers = { texBarrier, dsBarrier }
-            };
-            cmd->Barrier({barrier});
-        }
-
-        cmd->End();
-
-        //submit and wait
-        dev->GetGfxCommandQueue()->SubmitCommand(cmd.get());
-        dev->GetGfxCommandQueue()->EncodeSignalEvent(fence.get(), signalValue);
-        fence->WaitFromCPU(signalValue);
-        signalValue++;
-
-        //Begin CPU write
-        auto layout = tex1Img->GetSubresourceLayout(0,0);
-
-        auto pCPUBuffer = new uint32_t[256*256];
-
-        uint32_t* pPixel = pCPUBuffer;
-        for(int y = 0; y < 256; y++) {
-            bool flipY = (y / 64) & 1 != 0;
-            for(int x = 0; x < 256; x++) {
-                bool flipX = (x / 64) & 1 != 0;
-                bool flip = flipY ^ flipX;
-                pPixel[x] = flip ? 0xff223399 : 0x0;
-            }
-            pPixel += 256;
-        }
-
-        tex1Img->WriteSubresource(0,0,{ 0,0,0 },{ 256,256,1 },pCPUBuffer,256*4, 256*256*4);
-
-        delete[] pCPUBuffer;
-
-        cmd = dev->GetGfxCommandQueue()->CreateCommandList();
-        cmd->Begin();
-        {
-            alloy::BarrierDescription barrier{
-                .memBarrier = {
-                    .stagesBefore = alloy::PipelineStage::All,
-                    .stagesAfter = alloy::PipelineStage::All,
-                    .accessBefore = alloy::ResourceAccess::COMMON,
                     .accessAfter = alloy::ResourceAccess::SHADER_RESOURCE,
                 },
 
                 .resourceInfo = alloy::TextureBarrierResource {
-                    .fromLayout = alloy::TextureLayout::COMMON,
+                    .fromLayout = alloy::TextureLayout::UNDEFINED,
                     .toLayout = alloy::TextureLayout::SHADER_RESOURCE,
                     .resource = tex1Img
                 }
@@ -389,109 +395,141 @@ class UniformApp : public AppBase {
             };
             cmd->Barrier({barrier});
         }
+
         cmd->End();
+
         //submit and wait
         dev->GetGfxCommandQueue()->SubmitCommand(cmd.get());
         dev->GetGfxCommandQueue()->EncodeSignalEvent(fence.get(), signalValue);
         fence->WaitFromCPU(signalValue);
-
-        //Advance counters
-
     }
 
     void CreatePipeline() {
 
         auto& factory = dev->GetResourceFactory();
 
-        alloy::IResourceLayout::Description resLayoutDesc{};
-        using ElemKind = alloy::IBindableResource::ResourceKind;
-        using alloy::common::operator|;
-        //resLayoutDesc.elements.resize(3, {});
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "ObjectUniform";
-            elem.bindingSlot = 0;
-            elem.kind = ElemKind::UniformBuffer;
-            elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            alloy::IResourceLayout::Description resLayoutDesc{};
+            using ElemKind = alloy::IBindableResource::ResourceKind;
+            using alloy::common::operator|;
+            //resLayoutDesc.elements.resize(3, {});
+            {
+                auto& elem = resLayoutDesc.elements.emplace_back();
+                elem.name = "ObjectUniform";
+                elem.bindingSlot = 0;
+                elem.kind = ElemKind::UniformBuffer;
+                elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            }
+
+            {
+                auto& elem = resLayoutDesc.elements.emplace_back();
+                elem.name = "Struct";
+                elem.bindingSlot = 0;
+                elem.kind = ElemKind::StorageBuffer;
+                elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            }
+
+            {
+                auto& elem = resLayoutDesc.elements.emplace_back();
+                elem.name = "tex1";
+                elem.bindingSlot = 1;
+                elem.kind = ElemKind::Texture;
+                elem.stages = alloy::IShader::Stage::Fragment;
+            }
+
+            {
+                auto& elem = resLayoutDesc.elements.emplace_back();
+                elem.name = "samp1";
+                elem.bindingSlot = 0;
+                elem.kind = ElemKind::Sampler;
+                elem.stages = alloy::IShader::Stage::Fragment;
+            }
+
+            auto _layout = factory.CreateResourceLayout(resLayoutDesc);
+
+            alloy::IResourceSet::Description resSetDesc{};
+            resSetDesc.layout = _layout;
+            resSetDesc.boundResources = {
+                alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
+                alloy::BufferRange::MakeByteBuffer(structBuffer),
+                tex1,
+                samp1
+            };
+            shaderResources = factory.CreateResourceSet(resSetDesc);
+
+            auto outputDesc = swapChain->GetBackBuffer()->GetDesc();
+
+            alloy::GraphicsPipelineDescription pipelineDescription{};
+            pipelineDescription.resourceLayout = _layout;
+            pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
+            pipelineDescription.attachmentState.colorAttachments.front().format = outputDesc.colorAttachments.front()->GetTexture().GetTextureObject()->GetDesc().format;
+            if(outputDesc.depthAttachment) {
+                alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
+                dsAttachment.depthStencilFormat =
+                    outputDesc.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format;
+
+                pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
+            }
+            //pipelineDescription.blendState.attachments[0].blendEnabled = true;
+
+            pipelineDescription.depthStencilState.depthTestEnabled = false;
+            pipelineDescription.depthStencilState.depthWriteEnabled = false;
+            pipelineDescription.depthStencilState.depthComparison = alloy::ComparisonKind::LessEqual;
+
+
+            pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::Back;
+            pipelineDescription.rasterizerState.fillMode = alloy::RasterizerStateDescription::PolygonFillMode::Solid;
+            pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::Clockwise;
+            pipelineDescription.rasterizerState.depthClipEnabled = true;
+            pipelineDescription.rasterizerState.scissorTestEnabled = false;
+
+            pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
+
+            using VL = alloy::VertexLayout;
+            pipelineDescription.shaderSet.vertexLayouts = { {} };
+            pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
+                {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0}, alloy::ShaderDataType::Float2},
+                {"TEXCOORD", {alloy::VertexInputSemantic::Name::TextureCoordinate, 0}, alloy::ShaderDataType::Float2},
+                {"COLOR", {alloy::VertexInputSemantic::Name::Color, 0}, alloy::ShaderDataType::Float4}
+                });
+            pipelineDescription.shaderSet.vertexShader = vertexShader;
+            pipelineDescription.shaderSet.fragmentShader = fragmentShader;
+
+            pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+            //pipelineDescription.outputs = fb->GetOutputDescription();
+            pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
         }
 
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "Struct";
-            elem.bindingSlot = 0;
-            elem.kind = ElemKind::StorageBuffer;
-            elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
-        }
-
-        {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "tex1";
-            elem.bindingSlot = 1;
-            elem.kind = ElemKind::Texture;
-            elem.stages = alloy::IShader::Stage::Fragment;
-        }
-
-        {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "samp1";
-            elem.bindingSlot = 0;
-            elem.kind = ElemKind::Sampler;
-            elem.stages = alloy::IShader::Stage::Fragment;
-        }
-
-        auto _layout = factory.CreateResourceLayout(resLayoutDesc);
-
-        alloy::IResourceSet::Description resSetDesc{};
-        resSetDesc.layout = _layout;
-        resSetDesc.boundResources = {
-            alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
-            alloy::BufferRange::MakeByteBuffer(structBuffer),
-            tex1,
-            samp1
-        };
-        shaderResources = factory.CreateResourceSet(resSetDesc);
-        
-        auto outputDesc = swapChain->GetBackBuffer()->GetDesc();
-        
-        alloy::GraphicsPipelineDescription pipelineDescription{};
-        pipelineDescription.resourceLayout = _layout;
-        pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
-        pipelineDescription.attachmentState.colorAttachments.front().format = outputDesc.colorAttachments.front()->GetTexture().GetTextureObject()->GetDesc().format;
-        if(outputDesc.depthAttachment) {
-            alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
-            dsAttachment.depthStencilFormat =
-                outputDesc.depthAttachment->GetTexture().GetTextureObject()->GetDesc().format;
             
-            pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
+            alloy::GraphicsPipelineDescription pipelineDescription{};
+            pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
+            pipelineDescription.attachmentState.colorAttachments.front().format = tex1->GetTextureObject()->GetDesc().format;
+            
+            //pipelineDescription.blendState.attachments[0].blendEnabled = true;
+
+            pipelineDescription.depthStencilState.depthTestEnabled = false;
+            pipelineDescription.depthStencilState.depthWriteEnabled = true;
+            pipelineDescription.depthStencilState.depthComparison = alloy::ComparisonKind::LessEqual;
+
+
+            pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::Back;
+            pipelineDescription.rasterizerState.fillMode = alloy::RasterizerStateDescription::PolygonFillMode::Solid;
+            pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::Clockwise;
+            pipelineDescription.rasterizerState.depthClipEnabled = true;
+            pipelineDescription.rasterizerState.scissorTestEnabled = false;
+
+            pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
+            pipelineDescription.shaderSet.vertexShader = rectDrawVertShader;
+            pipelineDescription.shaderSet.fragmentShader = rectDrawFragShader;
+
+            OutputDescription outputs {};
+            outputs.colorAttachments.push_back(rt1);
+
+            pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+            //pipelineDescription.outputs = fb->GetOutputDescription();
+            rectDrawPipeline = factory.CreateGraphicsPipeline(pipelineDescription);
         }
-        //pipelineDescription.blendState.attachments[0].blendEnabled = true;
-
-        pipelineDescription.depthStencilState.depthTestEnabled = false;
-        pipelineDescription.depthStencilState.depthWriteEnabled = true;
-        pipelineDescription.depthStencilState.depthComparison = alloy::ComparisonKind::LessEqual;
-
-
-        pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::Back;
-        pipelineDescription.rasterizerState.fillMode = alloy::RasterizerStateDescription::PolygonFillMode::Solid;
-        pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::Clockwise;
-        pipelineDescription.rasterizerState.depthClipEnabled = true;
-        pipelineDescription.rasterizerState.scissorTestEnabled = false;
-
-        pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
-
-        using VL = alloy::VertexLayout;
-        pipelineDescription.shaderSet.vertexLayouts = { {} };
-        pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
-            {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0}, alloy::ShaderDataType::Float2},
-            {"TEXCOORD", {alloy::VertexInputSemantic::Name::TextureCoordinate, 0}, alloy::ShaderDataType::Float2},
-            {"COLOR", {alloy::VertexInputSemantic::Name::Color, 0}, alloy::ShaderDataType::Float4}
-            });
-        pipelineDescription.shaderSet.vertexShader = vertexShader;
-        pipelineDescription.shaderSet.fragmentShader = fragmentShader;
-
-        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
-        //pipelineDescription.outputs = fb->GetOutputDescription();
-        pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
     }
 
     void CreateSyncObjects() {
@@ -599,6 +637,70 @@ class UniformApp : public AppBase {
         auto _commandList = gfxQ->CreateCommandList();
         //Record command buffer
         _commandList->Begin();
+        //Render target pass
+        {
+            //Transition to render target state
+            {
+                alloy::BarrierDescription texBarrier{
+                    .memBarrier = {
+                        .stagesBefore = alloy::PipelineStage::All,
+                        .stagesAfter = alloy::PipelineStage::RENDER_TARGET,
+                        .accessBefore =  alloy::ResourceAccess::SHADER_RESOURCE,
+                        .accessAfter = alloy::ResourceAccess::RENDER_TARGET,
+                    },
+
+                    .resourceInfo = alloy::TextureBarrierResource {
+                        .fromLayout = alloy::TextureLayout::SHADER_RESOURCE,
+                        .toLayout = alloy::TextureLayout::RENDER_TARGET,
+                        .resource = tex1->GetTextureObject()
+                    }
+                    //.barriers = { texBarrier, dsBarrier }
+                };
+
+                _commandList->Barrier({ texBarrier });
+            }
+            alloy::RenderPassAction passAction{};
+            auto& ctAct = passAction.colorTargetActions.emplace_back();
+            ctAct.loadAction = alloy::LoadAction::DontCare;
+            ctAct.storeAction = alloy::StoreAction::Store;
+            //ctAct.clearColor = {0.5, 0.5, 0.5, 1};
+            ctAct.target = rt1;
+
+            auto& pass = _commandList->BeginRenderPass(passAction);
+            pass.SetPipeline(rectDrawPipeline);
+            pass.SetFullViewports();
+            pass.SetFullScissorRects();
+
+            pass.Draw(
+                /*vertexCount:   */3,
+                /*instanceCount: */1,
+                /*vertexStart:   */0,
+                /*instanceStart: */0);
+
+            _commandList->EndPass();
+
+            {
+                alloy::BarrierDescription texBarrier{
+                    .memBarrier = {
+                        .stagesBefore = alloy::PipelineStage::RENDER_TARGET,
+                        .stagesAfter = alloy::PipelineStage::All,
+                        .accessBefore =  alloy::ResourceAccess::RENDER_TARGET,
+                        .accessAfter = alloy::ResourceAccess::SHADER_RESOURCE,
+                    },
+
+                    .resourceInfo = alloy::TextureBarrierResource {
+                        .fromLayout = alloy::TextureLayout::RENDER_TARGET,
+                        .toLayout = alloy::TextureLayout::SHADER_RESOURCE,
+                        .resource = tex1->GetTextureObject()
+                    }
+                    //.barriers = { texBarrier, dsBarrier }
+                };
+
+                _commandList->Barrier({ texBarrier });                
+            }
+        }
+
+        //Render pass
         {
             auto initialLayout = alloy::TextureLayout::UNDEFINED;
             
