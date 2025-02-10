@@ -42,7 +42,7 @@ namespace alloy {
         } flags;
 
         uint64_t sizeInBytes;
-        uint64_t budgetInBytes;
+        //uint64_t budgetInBytes;
     };
 
     struct GraphicsApiVersion {
@@ -50,14 +50,14 @@ namespace alloy {
 
         Backend backend;
 
-        int major;
-        int minor;
-        int subminor;
-        int patch;
+        uint32_t major;
+        uint32_t minor;
+        uint32_t subminor;
+        uint32_t patch;
 
         bool IsKnown() {return major != 0 && minor != 0 && subminor != 0 && patch != 0; }        
 
-        operator std::string()
+        operator std::string() const
         {
             std::stringstream ss;
             switch(backend) {
@@ -104,9 +104,9 @@ namespace alloy {
             uint32_t              maxFragmentDualSrcAttachments;
             uint32_t              maxFragmentCombinedOutputResources;
             uint32_t              maxComputeSharedMemorySize;
-            //uint32_t              maxComputeWorkGroupCount[3];
+            uint32_t              maxComputeWorkGroupCount[3];  //How many workgroups can be dispatched
             uint32_t              maxComputeWorkGroupInvocations;
-            uint32_t              maxComputeWorkGroupSize[3];
+            uint32_t              maxComputeWorkGroupSize[3];  //How big is each workgroup
             uint32_t              maxDrawIndexedIndexValue;
             uint32_t              maxDrawIndirectCount;
             float                 maxSamplerLodBias;

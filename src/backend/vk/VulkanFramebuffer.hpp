@@ -13,7 +13,7 @@ namespace alloy::vk
     class VulkanDevice;
     class VulkanTexture;
     class VulkanTextureView;
-    class VulkanRenderTarget;
+    class VulkanFBRT;
 
     class VulkanFrameBufferBase : public IFrameBuffer{
     public:
@@ -117,12 +117,12 @@ namespace alloy::vk
     };
     
 
-    class VulkanRenderTarget : public IRenderTarget {
+    class VulkanFBRT : public IRenderTarget {
         VulkanTextureView& _rt;
         common::sp<VulkanFrameBuffer> _fb;
 
     public:
-        VulkanRenderTarget (
+        VulkanFBRT (
             const common::sp<VulkanFrameBuffer> fb,
             VulkanTextureView& rt
         )
@@ -131,6 +131,20 @@ namespace alloy::vk
         { }
 
         
+        virtual ITextureView& GetTexture() const override;
+
+    };
+
+    class VulkanRenderTarget : public IRenderTarget {
+        common::sp<VulkanTextureView> _view;
+
+    public:
+        VulkanRenderTarget (
+            const common::sp<VulkanTextureView> view
+        )
+            : _view(view)
+        { }
+
         virtual ITextureView& GetTexture() const override;
 
     };

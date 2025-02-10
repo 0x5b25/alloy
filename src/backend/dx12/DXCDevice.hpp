@@ -31,48 +31,8 @@ namespace alloy::dxc{
 
     class DXCFence;
     class DXCCommandQueue;
-    class DXCQueue : public common::RefCntBase{
-    private:
-        Microsoft::WRL::ComPtr<ID3D12CommandQueue> _queue;
-        D3D12_COMMAND_LIST_TYPE _queueType;
-    
-        std::mutex mFenceMutex;
-        std::mutex mEventMutex;
-    
-        Microsoft::WRL::ComPtr<ID3D12Fence> _fence;
-        std::uint64_t mNextFenceValue;
-        std::uint64_t _lastCompletedFenceValue;
-        HANDLE _fenceEventHandle;
+    class DXCAdapter;
 
-        DXCQueue() {}
-
-    public:
-
-        static common::sp<DXCQueue> Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType);
-
-
-        ~DXCQueue();
-    
-        bool IsFenceComplete(std::uint64_t fenceValue);
-        void InsertWait(std::uint64_t fenceValue);
-        void InsertWaitForQueueFence(DXCQueue* otherQueue, std::uint64_t fenceValue);
-        void InsertWaitForQueue(DXCQueue* otherQueue);
-    
-        void WaitForFenceCPUBlocking(std::uint64_t fenceValue);
-        void WaitForIdle() { WaitForFenceCPUBlocking(mNextFenceValue - 1); }
-    
-        ID3D12CommandQueue* GetCommandQueue() { return _queue.Get(); }
-    
-        std::uint64_t PollCurrentFenceValue();
-        std::uint64_t GetLastCompletedFence() { return _lastCompletedFenceValue; }
-        std::uint64_t GetNextFenceValue() { return mNextFenceValue; }
-        ID3D12Fence* GetFence() { return _fence.Get(); }
-    
-        std::uint64_t ExecuteCommandList(ID3D12CommandList* List);    
-    
-    };
-
-    
     class DXCCommandQueue : public ICommandQueue{
 
         ID3D12CommandQueue* _q;
@@ -140,6 +100,7 @@ namespace alloy::dxc{
 
     };
 
+    
     struct D3D12DevCaps{
         D3D_FEATURE_LEVEL feature_level;
         D3D_SHADER_MODEL shader_model;
@@ -170,13 +131,24 @@ namespace alloy::dxc{
         bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
         bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
     
+        uint32_t ResourceBindingTier() const {
+            switch(options.ResourceBindingTier) {
+                case D3D12_RESOURCE_BINDING_TIER_3: return 3;
+                case D3D12_RESOURCE_BINDING_TIER_2: return 2;
+                case D3D12_RESOURCE_BINDING_TIER_1:
+                default: return 1;
+            }
+        }
     };
 
     class DXCDevice : public  IGraphicsDevice, public DXCResourceFactory {
 
     private:
-        Microsoft::WRL::ComPtr<IDXGIAdapter1> _adp;
-        Microsoft::WRL::ComPtr<ID3D12Device> _dev;
+        //Microsoft::WRL::ComPtr<IDXGIAdapter1> _adp;
+        
+        common::sp<DXCAdapter> _adp;
+        
+        ID3D12Device* _dev;
 
         //Microsoft::WRL::ComPtr<ID3D12CommandQueue> _q;
 
@@ -194,30 +166,37 @@ namespace alloy::dxc{
         //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
-        AdapterInfo _adpInfo;
+        
 
         IGraphicsDevice::Features _commonFeat;
         D3D12DevCaps _dxcFeat;
 
-        DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev);
+        DXCDevice(ID3D12Device* dev);
 
     public:
 
         ~DXCDevice();
 
-        ID3D12Device* GetDevice() const {return _dev.Get();}
-        IDXGIAdapter1* GetDxgiAdp() const {return _adp.Get();}
+        ID3D12Device* GetDevice() const {return _dev;}
+        IPhysicalAdapter& GetAdapter() const override;
 
         virtual void* GetNativeHandle() const override { return GetDevice(); }
 
+        _Descriptor AllocateRTV() { return _rtvHeap.Allocate(); }
+        void FreeRTV(const _Descriptor& desc) { _rtvHeap.Free(desc); }
+
+        _Descriptor AllocateDSV() { return _dsvHeap.Allocate(); }
+        void FreeDSV(const _Descriptor& desc) { _dsvHeap.Free(desc); }
+
         static common::sp<IGraphicsDevice> Make(
+            const common::sp<DXCAdapter>& adp,
             const IGraphicsDevice::Options& options
         );
 
         //virtual const std::string& DeviceName() const override { return _devName; }
         //virtual const std::string& VendorName() const override { return ""; }
         //virtual const GraphicsApiVersion ApiVersion() const override { return _apiVer; }
-        virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
+        //virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
         const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }

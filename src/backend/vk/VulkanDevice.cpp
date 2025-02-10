@@ -17,18 +17,10 @@
 
 #include "VkSurfaceUtil.hpp"
 #include "VkCommon.hpp"
+#include "VulkanContext.hpp"
 #include "VulkanCommandList.hpp"
 #include "VulkanSwapChain.hpp"
 
-
-namespace alloy {
-    
-	common::sp<IGraphicsDevice> CreateVulkanGraphicsDevice(
-        const IGraphicsDevice::Options& options
-    ) {
-		return alloy::vk::VulkanDevice::Make(options);
-	}
-}
 
 namespace alloy::vk {
 
@@ -43,386 +35,11 @@ bool Contains(T&& container, U&& element) {
     return container.find(element) != container.end();
 }
 
-class _VkCtx : public alloy::common::NVRefCnt< _VkCtx>{
-
-public:
-    union Features
-    {
-        struct {
-            bool hasSurfaceExt : 1;
-            bool hasWin32SurfaceCreateExt : 1;
-            bool hasAndroidSurfaceCreateExt : 1;
-            bool hasXLibSurfaceCreateExt : 1;
-            bool hasWaylandSurfaceCreateExt : 1;
-
-            bool hasDrvProp2Ext : 1;
-
-            bool hasDebugReportExt : 1;
-            bool hasStandardValidationLayers : 1;
-            bool hasKhronosValidationLayers : 1;
-
-        };
-        std::uint32_t value;
-    };
-
-private:
-
-    bool _isVkLoaded;
-    VkInstance _instance;
-    Features _features;
-
-    VkDebugReportCallbackEXT _debugCallbackHandle;
-
-    alloy::GraphicsApiVersion _ver;
-    
-    //Mechanism for thread-safe singleton
-    static std::atomic<_VkCtx*> _pinstance;
-    static std::mutex _m;
-
-    _VkCtx():
-        _isVkLoaded(false),
-        _instance(VK_NULL_HANDLE),
-        _features({ 0 }),
-        _debugCallbackHandle(VK_NULL_HANDLE),
-        _ver({0})
-    {
-        if (volkInitialize() != VK_SUCCESS) {
-            return;
-        }
-
-        _isVkLoaded = true;
-
-        std::unordered_set<std::string> availableInstanceLayers{ ToSet<std::string>(EnumerateInstanceLayers()) };
-        std::unordered_set<std::string> availableInstanceExtensions{ ToSet<std::string>(EnumerateInstanceExtensions()) };
-
-        uint32_t vkAPIVer = 0;
-        vkEnumerateInstanceVersion(&vkAPIVer);
-
-        VkApplicationInfo appInfo{};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Hello Triangle";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "No Engine";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
-
-        VkInstanceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo = &appInfo;
-
-        std::vector<const char*> instanceExtensions{};
-        std::vector<const char*> instanceLayers{};
-
-        auto _AddExtIfPresent = [&](const char* extName){
-            if (Contains(availableInstanceExtensions, extName))
-            {
-                instanceExtensions.push_back(extName);
-                return true;
-            }
-            return false;
-        };
-
-        auto _AddLayerIfPresent = [&](const char* layerName) {
-            if (Contains(availableInstanceLayers, layerName))
-            {
-                instanceLayers.push_back(layerName);
-                return true;
-            }
-            return false;
-        };
-
-        _features.hasSurfaceExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_SURFACE);
-        //Surface extensions
-    #ifdef VLD_PLATFORM_WIN32
-        _features.hasWin32SurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_WIN32_SURFACE);
-    #elif defined VLD_PLATFORM_ANDROID
-        _features.hasAndroidSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_ANDROID_SURFACE);
-    #elif defined VLD_PLATFORM_LINUX
-        _features.hasXLibSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_XLIB_SURFACE);
-        _features.hasWaylandSurfaceCreateExt = _AddExtIfPresent(VkInstExtNames::VK_KHR_WAYLAND_SURFACE);
-    #endif
-
-        _features.hasDrvProp2Ext = _AddExtIfPresent(VkInstExtNames::VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES2);
-
-        //Debugging
-    #ifdef VLD_DEBUG
-        _features.hasDebugReportExt 
-            = _AddExtIfPresent(VkInstExtNames::VK_EXT_DEBUG_REPORT);
-        _features.hasStandardValidationLayers 
-            = _AddLayerIfPresent(VkCommonStrings::StandardValidationLayerName);
-        _features.hasStandardValidationLayers 
-            = _AddLayerIfPresent(VkCommonStrings::KhronosValidationLayerName);
-    #endif  
-        
-        createInfo.enabledExtensionCount = instanceExtensions.size();
-        createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-
-        createInfo.enabledLayerCount = instanceLayers.size();
-        createInfo.ppEnabledLayerNames = instanceLayers.data();
-
-        assert(vkCreateInstance(&createInfo, nullptr, &_instance) == VK_SUCCESS);
-        volkLoadInstance(_instance);
-
-        auto version = volkGetInstanceVersion();
-        _ver.major = VK_VERSION_MAJOR(version);
-        _ver.minor = VK_VERSION_MINOR(version);
-        _ver.patch = VK_VERSION_PATCH(version);
-
-
-        if (_features.hasDebugReportExt) {
-            _EnableDebugCallback();
-        }
-    }
-
-
-    static VkBool32 _DbgCb(
-        VkDebugReportFlagsEXT                       msgFlags,
-        VkDebugReportObjectTypeEXT                  objectType,
-        uint64_t                                    object,
-        size_t                                      location,
-        int32_t                                     msgCode,
-        const char* pLayerPrefix,
-        const char* pMsg,
-        void* pUserData)
-    {
-//#define LOG(...) printf(__VA_ARGS__)
-
-        if (msgFlags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
-            std::cout << std::format("ERR " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
-        else if (msgFlags & VK_DEBUG_REPORT_WARNING_BIT_EXT)
-            std::cout << std::format("WARN" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
-        else if (msgFlags & VK_DEBUG_REPORT_DEBUG_BIT_EXT)
-            std::cout << std::format("DBG " "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
-        else if (msgFlags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-            std::cout << std::format("PERF" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
-        else if (msgFlags & VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-            std::cout << std::format("INFO" "[{}] [Vk#{}]: {}", std::string(pLayerPrefix), msgCode, std::string(pMsg)) << std::endl;
-        return 0;
-//#undef LOG
-    }
-
-
-    void _EnableDebugCallback(
-        VkDebugReportFlagsEXT flags =
-        VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_ERROR_BIT_EXT
-    ) {
-        //Debug.WriteLine("Enabling Vulkan Debug callbacks.");
-        VkDebugReportCallbackCreateInfoEXT debugCallbackCI{};
-        debugCallbackCI.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-        debugCallbackCI.pNext = nullptr;
-        debugCallbackCI.flags = flags;
-        debugCallbackCI.pfnCallback = &_DbgCb;
-        
-        VK_CHECK(vkCreateDebugReportCallbackEXT(
-            _instance, &debugCallbackCI, nullptr, &_debugCallbackHandle));            
-    }
-
-public:
-
-    ~_VkCtx() {
-        //Presumably non-multithreaded
-        _pinstance = nullptr;
-        if (!_isVkLoaded) return;
-
-        if (_debugCallbackHandle != VK_NULL_HANDLE) {
-            vkDestroyDebugReportCallbackEXT(_instance, _debugCallbackHandle, nullptr);
-        }
-
-        vkDestroyInstance(_instance, nullptr);
-    }
-
-    static common::sp<_VkCtx> Get() {
-        if (_pinstance == nullptr) {
-            std::lock_guard<std::mutex> lock{ _m };
-            if (_pinstance == nullptr) {
-                _pinstance = new _VkCtx();
-            }
-        } else {
-            _pinstance.load()->ref();
-        }
-        return common::sp{ _pinstance.load()};
-    }
-
-    const VkInstance& GetHandle() const { return _instance; }
-
-    bool IsVulkanSupported() {
-        return _instance != VK_NULL_HANDLE;
-    }
-
-    const Features& GetFeatures() const { return _features; }
-    const alloy::GraphicsApiVersion& GetApiVer() const { return _ver; }
-};
-
-std::atomic<_VkCtx*> _VkCtx::_pinstance{ nullptr };
-std::mutex _VkCtx::_m{};
-
-std::optional<PhyDevInfo> _PickPhysicalDevice(
-    VkInstance inst,
-    VkSurfaceKHR surface,
-    const std::vector<std::string>& extensions
-) {
-    std::uint32_t devCnt;
-    VK_CHECK(vkEnumeratePhysicalDevices(inst, &devCnt, nullptr));
-    std::vector<VkPhysicalDevice> gpus(devCnt);
-    VK_CHECK(vkEnumeratePhysicalDevices(inst, &devCnt, gpus.data()));
-
-    //std::vector<VkPhysicalDevice> gpus =  context.instance.enumeratePhysicalDevices();
-    std::vector<std::tuple<std::uint32_t, PhyDevInfo>> devList;
-
-    auto _RatePhyDev = [&](VkPhysicalDevice phyDev, std::uint32_t& score, PhyDevInfo& info) {
-        //Can device do geomerty shaders?
-        VkPhysicalDeviceFeatures devFeat{};
-        vkGetPhysicalDeviceFeatures(phyDev, &devFeat);
-        if (!devFeat.geometryShader) return false;
-
-        //Does device supports required extensions
-        uint32_t extensionCount;
-        vkEnumerateDeviceExtensionProperties(phyDev, nullptr, &extensionCount, nullptr);
-        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-        vkEnumerateDeviceExtensionProperties(phyDev, nullptr, &extensionCount, availableExtensions.data());
-
-        std::unordered_set<std::string> requiredExtensions(extensions.begin(), extensions.end());
-
-        for (const auto& extension : availableExtensions) {
-            requiredExtensions.erase(extension.extensionName);
-        }
-
-        if (!requiredExtensions.empty()) return false;
-
-        //Find graphics queue
-        std::uint32_t queueFamCnt;
-        vkGetPhysicalDeviceQueueFamilyProperties(phyDev, &queueFamCnt, nullptr);
-        std::vector<VkQueueFamilyProperties> queue_family_properties(queueFamCnt);
-        vkGetPhysicalDeviceQueueFamilyProperties(phyDev, &queueFamCnt, queue_family_properties.data());
-
-        if (queue_family_properties.empty())
-        {
-            return false;
-        }
-
-        auto _FindUniqueFamilyWithFlags = [&](uint32_t flags, const std::vector<uint32_t>& excludes) {
-            for (uint32_t j = 0; j < queue_family_properties.size(); j++)
-            {
-                bool shouldExclude = false;
-                for (auto& f : excludes) if (f == j) { shouldExclude = true; break; }
-
-                if (shouldExclude) continue;
-
-                if (queue_family_properties[j].queueFlags & flags)return std::optional<uint32_t>(j);
-            }
-            return std::optional<uint32_t>();
-        };
-
-        std::vector<uint32_t> excludes;
-
-        //Lets find a graphics queue first
-        {
-            while (true)
-            {
-                //uint32_t gQueue;
-                auto res = _FindUniqueFamilyWithFlags(
-                    VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT,
-                    excludes);
-                if (!res.has_value()) {
-                    //No Graphics queue means no suitable device
-                    return false;
-                }
-                //Add to exclude list
-                excludes.push_back(res.value());
-
-                //Check for presentation support
-                if (surface != VK_NULL_HANDLE) {
-                    VkBool32 supports_present;
-                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
-                        phyDev, res.value(), surface, &supports_present)
-                    );
-                    if (!supports_present) {
-                        break;
-                    }
-                }
-                // Find a queue family which supports graphics and presentation.
-                //if (supports_present)
-                {
-                    info.graphicsQueueFamily = res.value();
-                    break;
-                }
-            }
-        }
-
-
-        VkPhysicalDeviceProperties devProp{};
-        vkGetPhysicalDeviceProperties(phyDev, &devProp);
-        info.name = devProp.deviceName;
-        info.handle = phyDev;
-
-        //Score the device
-        score = 0;
-        {
-            auto& gQueueProp = queue_family_properties[info.graphicsQueueFamily];
-            if (gQueueProp.queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT) {
-                info.graphicsQueueSupportsCompute = true;
-                score += 100;
-            }
-        }
-        if (devProp.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 1000;
-
-        {
-            //Try find dedicated compute queue
-            auto res = _FindUniqueFamilyWithFlags(VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT, excludes);
-            if (res.has_value()) {
-                excludes.push_back(res.value());
-                info.computeQueueFamily = res.value();
-                score += 200;
-            }
-        }
-
-        {
-            //Try find dedicated transfer queue
-            auto res = _FindUniqueFamilyWithFlags(VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT, excludes);
-            if (res.has_value()) {
-                excludes.push_back(res.value());
-                info.transferQueueFamily = res.value();
-                score += 100;
-            }
-        }
-        //Evaluate vram size
-        VkPhysicalDeviceMemoryProperties vramProp{};
-        vkGetPhysicalDeviceMemoryProperties(phyDev, &vramProp);
-
-        for (uint32_t i = 0; i < vramProp.memoryHeapCount; i++) {
-            //Locate the first device local heap
-            if (vramProp.memoryHeaps[i].flags & VkMemoryHeapFlagBits::VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-                score += vramProp.memoryHeaps[i].size / (8ULL * 1024 * 1024);
-                break;
-            }
-        }
-
-        return true;
-    };
-
-    for (auto& gpu : gpus) {
-        std::uint32_t score; PhyDevInfo info{};
-        if (!_RatePhyDev(gpu, score, info)) {
-            continue;
-        }
-        devList.push_back({ score, info });
-    }
-
-    if (devList.empty()) return {};
-    auto max = 0, maxScore = 0;
-    for (auto i = 0; i < devList.size(); i++) {
-        auto score = std::get<uint32_t>(devList[i]);
-        if (score >= maxScore) max = i, maxScore = score;
-    }
-    return std::get<PhyDevInfo>(devList[max]);
-}
-
-
     VulkanDevice::VulkanDevice() {};
 
     VulkanDevice::~VulkanDevice()
     {
-        vkDeviceWaitIdle(_dev);
+        _fnTable.vkDeviceWaitIdle(_dev);
 
         
         delete _gfxQ;
@@ -438,10 +55,9 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         _descPoolMgr.DeInit();
         //_cmdPoolMgr.DeInit();
 
-        vkDestroyDevice(_dev, nullptr);
+        _fnTable.vkDestroyDevice(_dev, nullptr);
 
-        DEBUGCODE(_ctx = nullptr);
-        DEBUGCODE(_phyDev = {});
+        DEBUGCODE(_adp = nullptr);
         DEBUGCODE(_dev = VK_NULL_HANDLE);
         DEBUGCODE(_allocator = VK_NULL_HANDLE);
 
@@ -453,12 +69,10 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
     }
 
     common::sp<IGraphicsDevice> VulkanDevice::Make(
+		const common::sp<VulkanAdapter>& adp,
 		const IGraphicsDevice::Options& options
 	){
-        auto ctx = _VkCtx::Get();
-        if (!ctx->IsVulkanSupported()) {
-            return {};
-        }
+        auto ctx = adp->GetCtx();
 
         //Make the surface if possible
         //VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
@@ -467,20 +81,20 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         //    _surf = VK::priv::CreateSurface(ctx->GetHandle(), swapChainSource);
         //}
 
-        auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), nullptr/*_surf.surface*/, {});
-        if (!phyDev.has_value()) {
-            return {};
-        }
+        //auto phyDev = _PickPhysicalDevice(ctx->GetHandle(), nullptr/*_surf.surface*/, {});
+        //if (!phyDev.has_value()) {
+        //    return {};
+        //}
 
-        auto& devInfo = phyDev.value();
+        auto& qInfo = adp->GetQueueFamilyInfo();
 
         auto dev = common::sp<VulkanDevice>(new VulkanDevice());
-        dev->_ctx = ctx;
+        dev->_adp = adp;
         //ev->_surface = _surf.surface;
         //dev->_isOwnSurface = _surf.isOwnSurface;
-        dev->_phyDev = devInfo;
+        //dev->_phyDev = devInfo;
         dev->_features = {};
-        dev->_features.hasComputeCap = devInfo.graphicsQueueSupportsCompute;
+        dev->_features.hasComputeCap = qInfo.graphicsQueueSupportsCompute;
 
         //Create logical device
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
@@ -489,17 +103,17 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
             queueCreateInfos.emplace_back();
             VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
             queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = devInfo.graphicsQueueFamily;
+            queueCreateInfo.queueFamilyIndex = qInfo.graphicsQueueFamily;
             queueCreateInfo.queueCount = 1;
 
             queuePriorities.push_back(1.0f);
         }
 
-        if (devInfo.transferQueueFamily.has_value()) {
+        if (qInfo.transferQueueFamily.has_value()) {
             queueCreateInfos.emplace_back();
             VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
             queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = devInfo.transferQueueFamily.value();
+            queueCreateInfo.queueFamilyIndex = qInfo.transferQueueFamily.value();
             queueCreateInfo.queueCount = 1;
 
             queuePriorities.push_back(0.8f);
@@ -507,11 +121,11 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
             dev->_features.hasUniqueCpyQueue = true;
         }
 
-        if (devInfo.computeQueueFamily.has_value()) {
+        if (qInfo.computeQueueFamily.has_value()) {
             queueCreateInfos.emplace_back();
             VkDeviceQueueCreateInfo& queueCreateInfo = queueCreateInfos.back();
             queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = devInfo.computeQueueFamily.value();
+            queueCreateInfo.queueFamilyIndex = qInfo.computeQueueFamily.value();
             queueCreateInfo.queueCount = 1;
 
             queuePriorities.push_back(0.6f);
@@ -527,7 +141,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        vkGetPhysicalDeviceFeatures(dev->_phyDev.handle, &deviceFeatures);
+        vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
 
         VkPhysicalDeviceVulkan12Features features12 { };
         features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -555,12 +169,12 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         {
 
             std::uint32_t propCount = 0;
-            VK_CHECK(vkEnumerateDeviceExtensionProperties(dev->_phyDev.handle, nullptr, &propCount, nullptr));
+            VK_CHECK(vkEnumerateDeviceExtensionProperties(adp->GetHandle(), nullptr, &propCount, nullptr));
 
             if (propCount != 0) {
                 std::vector<VkExtensionProperties> props(propCount);
                 VK_CHECK(vkEnumerateDeviceExtensionProperties(
-                    dev->_phyDev.handle, nullptr, &propCount, props.data()));
+                    adp->GetHandle(), nullptr, &propCount, props.data()));
 
                 
                 for (int i = 0; i < propCount; i++)
@@ -604,7 +218,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         dev->_features.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
         dev->_features.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
 
-        if (dev->_ctx->GetFeatures().hasDrvProp2Ext) {
+        if (ctx->GetFeatures().hasDrvProp2Ext) {
             dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
         }
 
@@ -614,7 +228,9 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         createInfo.ppEnabledExtensionNames = devExtensions.data();
 
         createInfo.pEnabledFeatures = &deviceFeatures;
-        VK_CHECK(vkCreateDevice(dev->_phyDev.handle, &createInfo, nullptr, &dev->_dev));
+        VK_CHECK(vkCreateDevice(adp->GetHandle(), &createInfo, nullptr, &dev->_dev));
+
+        volkLoadDeviceTable(&dev->_fnTable, dev->_dev);
 
         //Create command pool
         //VkCommandPoolCreateInfo poolInfo{};
@@ -623,61 +239,61 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         //poolInfo.flags = 0; // Optional
         //VK_CHECK(vkCreateCommandPool(dev->_dev, &poolInfo, nullptr, &dev->_cmdPool));
         //dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
-        dev->_descPoolMgr.Init(dev->_dev, 1000);
+        dev->_descPoolMgr.Init(dev.get(), 1000);
 
         //Get queues
         {
             VkQueue rawGfxQ;
-            vkGetDeviceQueue(dev->_dev, devInfo.graphicsQueueFamily, 0, &rawGfxQ);
-            dev->_gfxQ = new VulkanCommandQueue(dev.get(), devInfo.graphicsQueueFamily, rawGfxQ);
+            dev->_fnTable.vkGetDeviceQueue(dev->_dev, qInfo.graphicsQueueFamily, 0, &rawGfxQ);
+            dev->_gfxQ = new VulkanCommandQueue(dev.get(), qInfo.graphicsQueueFamily, rawGfxQ);
         }
-        if (devInfo.transferQueueFamily.has_value()) {
+        if (qInfo.transferQueueFamily.has_value()) {
             VkQueue rawCopyQ;
-            vkGetDeviceQueue(dev->_dev, devInfo.transferQueueFamily.value(), 0, &rawCopyQ);
+            dev->_fnTable.vkGetDeviceQueue(dev->_dev, qInfo.transferQueueFamily.value(), 0, &rawCopyQ);
             dev->_copyQ = new VulkanCommandQueue(dev.get(),
-                                                 devInfo.transferQueueFamily.value(),
+                                                 qInfo.transferQueueFamily.value(),
                                                  rawCopyQ);
         }
-        if (devInfo.computeQueueFamily.has_value()) {
+        if (qInfo.computeQueueFamily.has_value()) {
             VkQueue rawComputeQ;
-            vkGetDeviceQueue(dev->_dev, devInfo.computeQueueFamily.value(), 0, &rawComputeQ);
+            dev->_fnTable.vkGetDeviceQueue(dev->_dev, qInfo.computeQueueFamily.value(), 0, &rawComputeQ);
             dev->_computeQ = new VulkanCommandQueue(dev.get(),
-                                                    devInfo.computeQueueFamily.value(),
+                                                    qInfo.computeQueueFamily.value(),
                                                     rawComputeQ);
         }
 
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
-        allocatorInfo.physicalDevice = dev->_phyDev.handle;
+        allocatorInfo.physicalDevice = adp->GetHandle();
         allocatorInfo.device = dev->_dev;
-        allocatorInfo.instance = dev->_ctx->GetHandle();
+        allocatorInfo.instance = adp->GetCtx()->GetHandle();
 
         VmaVulkanFunctions fn{};
         fn.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
         fn.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
-        fn.vkAllocateMemory = (PFN_vkAllocateMemory)vkAllocateMemory;
-        fn.vkBindBufferMemory = (PFN_vkBindBufferMemory)vkBindBufferMemory;
-        fn.vkBindImageMemory = (PFN_vkBindImageMemory)vkBindImageMemory;
-        fn.vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)vkCmdCopyBuffer;
-        fn.vkCreateBuffer = (PFN_vkCreateBuffer)vkCreateBuffer;
-        fn.vkCreateImage = (PFN_vkCreateImage)vkCreateImage;
-        fn.vkDestroyBuffer = (PFN_vkDestroyBuffer)vkDestroyBuffer;
-        fn.vkDestroyImage = (PFN_vkDestroyImage)vkDestroyImage;
-        fn.vkFlushMappedMemoryRanges = (PFN_vkFlushMappedMemoryRanges)vkFlushMappedMemoryRanges;
-        fn.vkFreeMemory = (PFN_vkFreeMemory)vkFreeMemory;
-        fn.vkGetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)vkGetBufferMemoryRequirements;
-        fn.vkGetImageMemoryRequirements = (PFN_vkGetImageMemoryRequirements)vkGetImageMemoryRequirements;
-        fn.vkGetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)vkGetPhysicalDeviceMemoryProperties;
-        fn.vkGetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)vkGetPhysicalDeviceProperties;
-        fn.vkInvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)vkInvalidateMappedMemoryRanges;
-        fn.vkMapMemory = (PFN_vkMapMemory)vkMapMemory;
-        fn.vkUnmapMemory = (PFN_vkUnmapMemory)vkUnmapMemory;
+        fn.vkAllocateMemory = dev->_fnTable.vkAllocateMemory;
+        fn.vkBindBufferMemory = dev->_fnTable.vkBindBufferMemory;
+        fn.vkBindImageMemory = dev->_fnTable.vkBindImageMemory;
+        fn.vkCmdCopyBuffer = dev->_fnTable.vkCmdCopyBuffer;
+        fn.vkCreateBuffer = dev->_fnTable.vkCreateBuffer;
+        fn.vkCreateImage = dev->_fnTable.vkCreateImage;
+        fn.vkDestroyBuffer = dev->_fnTable.vkDestroyBuffer;
+        fn.vkDestroyImage = dev->_fnTable.vkDestroyImage;
+        fn.vkFlushMappedMemoryRanges = dev->_fnTable.vkFlushMappedMemoryRanges;
+        fn.vkFreeMemory = dev->_fnTable.vkFreeMemory;
+        fn.vkGetBufferMemoryRequirements = dev->_fnTable.vkGetBufferMemoryRequirements;
+        fn.vkGetImageMemoryRequirements = dev->_fnTable.vkGetImageMemoryRequirements;
+        fn.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
+        fn.vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties;
+        fn.vkInvalidateMappedMemoryRanges = dev->_fnTable.vkInvalidateMappedMemoryRanges;
+        fn.vkMapMemory = dev->_fnTable.vkMapMemory;
+        fn.vkUnmapMemory = dev->_fnTable.vkUnmapMemory;
         if (dev->_features.supportsGetMemReq2 && dev->_features.supportsDedicatedAlloc) {
             fn.vkGetBufferMemoryRequirements2KHR 
-                = (PFN_vkGetBufferMemoryRequirements2KHR)vkGetBufferMemoryRequirements2KHR;
+                = dev->_fnTable.vkGetBufferMemoryRequirements2KHR;
             fn.vkGetImageMemoryRequirements2KHR 
-                = (PFN_vkGetImageMemoryRequirements2KHR)vkGetImageMemoryRequirements2KHR;
+                = dev->_fnTable.vkGetImageMemoryRequirements2KHR;
         }
         allocatorInfo.pVulkanFunctions = &fn;
 
@@ -709,19 +325,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
 
 
         VkPhysicalDeviceProperties deviceProps{};
-        vkGetPhysicalDeviceProperties(dev->_phyDev.handle, &deviceProps);
-
-        dev->_adpInfo.apiVersion.major = VK_API_VERSION_MAJOR(deviceProps.apiVersion);
-        dev->_adpInfo.apiVersion.minor = VK_API_VERSION_MINOR(deviceProps.apiVersion);
-        dev->_adpInfo.apiVersion.subminor = 0;
-        dev->_adpInfo.apiVersion.patch = VK_API_VERSION_PATCH(deviceProps.apiVersion);
-
-        dev->_adpInfo.driverVersion = deviceProps.driverVersion;
-        dev->_adpInfo.vendorID = deviceProps.vendorID;
-        dev->_adpInfo.deviceID = deviceProps.deviceID;
-
-        dev->_adpInfo.deviceName = phyDev->name;
-
+        vkGetPhysicalDeviceProperties(adp->GetHandle(), &deviceProps);
 
         dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
         dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
@@ -751,9 +355,11 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
     ICommandQueue* VulkanDevice::GetCopyCommandQueue() {
         return _copyQ;
     }
+
     
-    
-    const VkInstance& VulkanDevice::GetInstance() const {return _ctx->GetHandle();}
+    IPhysicalAdapter& VulkanDevice::GetAdapter() const {
+        return *_adp;
+    }
 
     //void VulkanDevice::SubmitCommand(const CommandList* cmd ){
 //
@@ -789,7 +395,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         //object presentLock = vkSC.PresentQueueIndex == _graphicsQueueIndex ? _graphicsQueueLock : vkSC;
         //lock(presentLock)
         {
-            auto res = vkQueuePresentKHR(_gfxQ->GetHandle(), &presentInfo);
+            auto res = _fnTable.vkQueuePresentKHR(_gfxQ->GetHandle(), &presentInfo);
             //if (vkSC.AcquireNextImage(_device, VkSemaphore.Null, vkSC.ImageAvailableFence))
             //{
             //    Vulkan.VkFence fence = vkSC.ImageAvailableFence;
@@ -943,12 +549,12 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
 
     VulkanFence::~VulkanFence()
     {
-        vkDestroySemaphore(_dev->LogicalDev(), _timelineSem, nullptr);
+        _dev->GetFnTable().vkDestroySemaphore(_dev->LogicalDev(), _timelineSem, nullptr);
     }
     
     uint64_t VulkanFence::GetSignaledValue() {
         uint64_t value;
-        vkGetSemaphoreCounterValue(_dev->LogicalDev(), _timelineSem, &value);
+        _dev->GetFnTable().vkGetSemaphoreCounterValue(_dev->LogicalDev(), _timelineSem, &value);
 
         return value;
     }
@@ -958,8 +564,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         signalInfo.pNext = nullptr;
         signalInfo.semaphore = _timelineSem;
         signalInfo.value = signalValue;
-
-        vkSignalSemaphoreKHR(_dev->LogicalDev(), &signalInfo);
+        VK_DEV_CALL(_dev, vkSignalSemaphoreKHR(_dev->LogicalDev(), &signalInfo));
     }
     bool VulkanFence::WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) {
         VkSemaphoreWaitInfo waitInfo {};
@@ -970,7 +575,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         waitInfo.pSemaphores = &_timelineSem;
         waitInfo.pValues = &expectedValue;
 
-        auto res = vkWaitSemaphoresKHR(_dev->LogicalDev(), &waitInfo, timeoutMs * 1000000);
+        auto res = VK_DEV_CALL(_dev, vkWaitSemaphoresKHR(_dev->LogicalDev(), &waitInfo, timeoutMs * 1000000));
 
         switch (res) {
         //On success, this command returns
@@ -1003,7 +608,8 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         createInfo.flags = 0;
 
         VkSemaphore timelineSemaphore;
-        VK_CHECK(vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &timelineSemaphore));
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &timelineSemaphore)));
 
         auto fen = new VulkanFence(dev);
         fen->_timelineSem = timelineSemaphore;
@@ -1020,18 +626,20 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         cbufInfo.commandBufferCount = 1;
         cbufInfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         VkCommandBuffer cbuf;
-        VK_CHECK(vkAllocateCommandBuffers(mgr->_dev, &cbufInfo, &cbuf));
+        VK_CHECK(VK_DEV_CALL(mgr->_dev, 
+            vkAllocateCommandBuffers(mgr->_dev->LogicalDev(), &cbufInfo, &cbuf)));
         return cbuf;
 
     }
 
     void _CmdPoolContainer::FreeBuffer(VkCommandBuffer buf) {
-        vkFreeCommandBuffers(mgr->_dev, pool, 1, &buf);
+        VK_DEV_CALL(mgr->_dev,
+            vkFreeCommandBuffers(mgr->_dev->LogicalDev(), pool, 1, &buf));
     }
     
     void _CmdPoolMgr::_ReleaseCmdPoolHolder(_CmdPoolContainer* holder) {
         std::scoped_lock _lock{ _m_cmdPool };
-        vkResetCommandPool(_dev, holder->pool, 0);
+        VK_DEV_CALL(_dev, vkResetCommandPool(_dev->LogicalDev(), holder->pool, 0));
         _threadBoundCmdPools.erase(holder->boundID);
         _freeCmdPools.push_back(holder->pool);
     }
@@ -1057,7 +665,8 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
                                 | VkCommandPoolCreateFlagBits::VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 cmdPoolCI.queueFamilyIndex = _queueFamily;
 
-                VK_CHECK(vkCreateCommandPool(_dev, &cmdPoolCI, nullptr, &raw_pool));
+                VK_CHECK(VK_DEV_CALL(_dev,
+                    vkCreateCommandPool(_dev->LogicalDev(), &cmdPoolCI, nullptr, &raw_pool)));
             }
 
             holder = new _CmdPoolContainer{};
@@ -1072,13 +681,23 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         return common::sp(holder);
     }
 
+    _CmdPoolMgr::~_CmdPoolMgr() {
+        //Threoretically there should be no bound command pools,
+        // i.e. all command buffers holded by threads should be released
+        // then the VulkanDevice can be destroyed.
+        assert(_threadBoundCmdPools.empty());
+        for (auto p : _freeCmdPools) {
+            VK_DEV_CALL(_dev, vkDestroyCommandPool(_dev->LogicalDev(), p, nullptr));
+        }
+    }
+
     VulkanCommandQueue::VulkanCommandQueue(
         VulkanDevice* dev,
         std::uint32_t queueFamily,
         VkQueue q
     )
         : _dev(dev)
-        , _cmdPoolMgr(dev->LogicalDev(), queueFamily)
+        , _cmdPoolMgr(dev, queueFamily)
         , _q(q)
     { }
 
@@ -1098,7 +717,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         submitInfo.signalSemaphoreCount  = 1;
         submitInfo.pSignalSemaphores = &rawFence;
 
-        vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE);
+        VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
 
     }
 
@@ -1118,7 +737,7 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = &rawFence;
 
-        vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE);
+        VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
     }
 
     void VulkanCommandQueue::SubmitCommand(ICommandList* cmd) {
@@ -1131,9 +750,9 @@ std::optional<PhyDevInfo> _PickPhysicalDevice(
         info.commandBufferCount = 1;
         info.pCommandBuffers = &rawCmdBuf;
        
-        VK_CHECK(vkQueueSubmit(
+        VK_CHECK(VK_DEV_CALL(_dev, vkQueueSubmit(
             _q, 1, &info, nullptr
-        ));
+        )));
     }
 
     common::sp<ICommandList> VulkanCommandQueue::CreateCommandList(){

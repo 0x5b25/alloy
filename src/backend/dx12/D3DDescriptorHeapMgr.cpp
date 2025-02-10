@@ -2,11 +2,91 @@
 
 #include "alloy/common/Common.hpp"
 
-#include "DXCDevice.hpp"
+//#include "DXCDevice.hpp"
+
+#include <bit>
 
 namespace alloy::dxc {
 
-    
+    Bitmap::Bitmap(uint32_t bitCnt)
+        : bitCnt(bitCnt)
+        , depth(0)
+    {
+        uint32_t wordCnt = 1;
+        while ((1ull << ((depth + 1) * 6)) < bitCnt) {
+            depth++;
+            wordCnt += wordCnt * 64;
+        }
+
+        payload = new uint64_t[wordCnt];
+        for (uint32_t i = 0; i < wordCnt; i++) {
+            payload[i] = 0;
+        }
+    }
+
+    void Bitmap::ModifyBit(uint32_t whichBit, bool value) {
+
+        auto _RecrBody = [this, whichBit, value](
+            uint64_t* layerBase,
+            uint32_t currDepth,
+            auto& _RecrBodyRef
+        ) {
+            auto layerSizeInWord = 1u << (currDepth * 6);
+            auto layerBitCoveragePerWordLog2 = (depth - currDepth + 1) * 6;
+            auto idx = whichBit >> layerBitCoveragePerWordLog2;
+            auto whichBitInWord = (whichBit >> (layerBitCoveragePerWordLog2 - 6)) & 0x3f;
+            auto& whichWord = layerBase[idx];
+            auto mask = 1ull << whichBitInWord;
+
+            if (currDepth == depth) {
+                if (value) {
+                    whichWord |= mask;
+                    return whichWord == 0xffffffff'ffffffff;
+                }
+                else {
+                    whichWord &= ~mask;
+                    return false;
+                }
+            }
+            else {
+                auto nextLayerBase = layerBase + layerSizeInWord;
+                bool isChildAllSet
+                    = _RecrBodyRef(nextLayerBase, currDepth + 1, _RecrBodyRef);
+                if (value) {
+                    if (isChildAllSet) {
+                        whichWord |= mask;
+                    }
+                    return whichWord == 0xffffffff'ffffffff;
+                }
+                else {
+                    whichWord &= ~mask;
+                    return false;
+                }
+            }
+        };
+
+        _RecrBody(payload, 0, _RecrBody);
+    }
+
+    bool Bitmap::Find(uint32_t& whichBit) const {
+        uint32_t currDepth = 0;
+        uint32_t currChunkIdx = 0;
+        uint64_t* pLayer = payload;
+        while (currDepth <= depth) {
+            auto index = pLayer[currChunkIdx];
+            //Find the first "0" in index
+            auto freeChildChunk = std::countr_zero(~index);
+            if (freeChildChunk >= 64)
+                return false;
+            currChunkIdx = (currChunkIdx << 6) + freeChildChunk;
+
+            auto layerSizeInWord = 1u << (currDepth * 6);
+            pLayer += layerSizeInWord;
+            currDepth++;
+        }
+        whichBit = currChunkIdx;
+        return whichBit < bitCnt;
+    }
 
     _DescriptorHeapMgr::_DescriptorHeapMgr(
         ID3D12Device* dev,
@@ -19,53 +99,13 @@ namespace alloy::dxc {
     {
         assert(dev != nullptr);
         _incrSize = _dev->GetDescriptorHandleIncrementSize(type);
-
-        auto firstPool = _CreatePool(_maxDescCnt);
-        auto firstPoolContainer = new Container(firstPool, this);
-        _currentPool.reset(firstPoolContainer);
     }
 
     _DescriptorHeapMgr::~_DescriptorHeapMgr(){
-       
-        //All dirty pools should be recycled by now.
-        assert(_dirtyPools.empty());
-        //Retire current pool
-        _currentPool = nullptr;
-
-        while (!_freePools.empty()) {
-            auto pool = _freePools.front();
-            _freePools.pop();
-            pool->Release();
+        for (auto& pool : _pools) {
+            pool.heap->Release();
         }
     }
-
-
-    void _DescriptorHeapMgr::_ReleaseContainer(Container* container){
-        //std::scoped_lock l{_m_pool};
-
-        //Mainly for debug purposes
-        //assert(_dirtyPools.find(container) != _dirtyPools.end());
-        //may not be in dirty pool list during manager destruction
-        _dirtyPools.erase(container);
-
-        //VK_CHECK(vkResetDescriptorPool(_dev, container->pool, 0));
-        _freePools.push(container->pool);
-    }
-    ID3D12DescriptorHeap* _DescriptorHeapMgr::_GetOnePool(){
-        //Should only be called from allocate
-        //std::scoped_lock l{_m_pool};
-
-        ID3D12DescriptorHeap* rawPool;
-        if(!_freePools.empty()){
-            rawPool = _freePools.front();
-            _freePools.pop();
-        } else {
-            rawPool = _CreatePool(_maxDescCnt);
-        }
-
-        return rawPool;
-    }
-
 
     ID3D12DescriptorHeap* _DescriptorHeapMgr::_CreatePool(uint32_t maxDescCnt)
     {
@@ -83,146 +123,60 @@ namespace alloy::dxc {
         return pHeap;
     }
 
-    _DescriptorSet _DescriptorHeapMgr::Allocate(const std::vector<common::sp<ITextureView>>& res) {
-
-        common::sp<Container> targetPool {nullptr};
-        _DescriptorSet allocated {};
-
+    _Descriptor _DescriptorHeapMgr::Allocate() {
+        
+        _Descriptor result {};
         {
             //Critical section guard
             std::scoped_lock l{_m_pool};
 
-            //Create a dedicated pool for extra large allocations
-            if(res.size() > _maxDescCnt) {
-                //Create and wrap the raw pool
-                auto newPool = _CreatePool(res.size());
-                auto container = new _DescriptorHeapMgr::Container(newPool, this);
-                targetPool.reset(container);
-            } else {
-                auto freeSlots = _maxDescCnt - _currentPool->nextFreeSlot;
-                //Make new pool if not enough free slots.
-                if(freeSlots < res.size()) {
-                    //Add to dirty pools
-                    _dirtyPools.insert(_currentPool.get());
-                    //Create and wrap the raw pool
-                    auto newPool = _GetOnePool();
-                    auto container = new _DescriptorHeapMgr::Container(newPool, this);
-                    //change current pool to new pool
-                    _currentPool.reset(container);
-                }
-                targetPool = _currentPool;
-            }
 
-            //Try to allocate from current pool.
-            auto hFreeSlot = targetPool->pool->GetCPUDescriptorHandleForHeapStart();
-            hFreeSlot.ptr += _incrSize * targetPool->nextFreeSlot;
+            uint32_t i = 0;
+            for(; i < _pools.size(); i++) {
+                auto& pool = _pools[i];
 
-            
-            auto hCurrSlot = hFreeSlot;
-            for(auto& texView : res) {
-
-                auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
-                auto& texDesc = dxcTex->GetDesc();
-                auto& viewDesc = texView->GetDesc();
-
-                switch (_type)
-                {
-                case D3D12_DESCRIPTOR_HEAP_TYPE_RTV: {
-                    
-                    D3D12_RENDER_TARGET_VIEW_DESC desc {};
-
-                    switch(texDesc.type) {
-                        case ITexture::Description::Type::Texture1D : {
-                            if(texDesc.arrayLayers > 1) {
-                                desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
-                                desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                desc.Texture1DArray.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE1DARRAY;
-                            } else {
-                                desc.Texture1D.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE1D;
-                            }
-                        }break;
-
-                        case ITexture::Description::Type::Texture2D : {
-                            if(texDesc.arrayLayers > 1) {
-                                desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                                desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                desc.Texture2DArray.PlaneSlice = 0;
-                                desc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
-                            } else {
-                                desc.Texture2D.PlaneSlice = 0;
-                                desc.Texture2D.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-                            }
-                        }break;
-
-                        case ITexture::Description::Type::Texture3D : {
-                            if(texDesc.arrayLayers > 1) {
-                                ///#TODO: handle tex array & texture type mismatch
-                            } else {
-                                desc.Texture3D.FirstWSlice = 0;
-                                desc.Texture3D.WSize = -1;
-                                desc.Texture3D.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE3D;
-                            }
-                        }break;
-                    }
-
-                    _dev->CreateRenderTargetView(dxcTex->GetHandle(), &desc, hCurrSlot);
-                }break;
-
-            
-                case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:{
-                    D3D12_DEPTH_STENCIL_VIEW_DESC desc {};
-
-                    switch(texDesc.type) {
-                        case ITexture::Description::Type::Texture1D : {
-                            if(texDesc.arrayLayers > 1) {
-                                desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
-                                desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                desc.Texture1DArray.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE1DARRAY;
-                            } else {
-                                desc.Texture1D.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE1D;
-                            }
-                        }break;
-
-                        case ITexture::Description::Type::Texture2D : {
-                            if(texDesc.arrayLayers > 1) {
-                                desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                                desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                desc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
-                            } else {
-                                desc.Texture2D.MipSlice = viewDesc.baseMipLevel;
-                                desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-                            }
-                        }break;
-
-                        default : {
-                            //#TODO: put in error state
-                        }break;
-                    }
-
-                    _dev->CreateDepthStencilView(dxcTex->GetHandle(), &desc, hCurrSlot);
-                } break;
-
-                default:
-                    break;
+                uint32_t slotIdx = 0;
+                if(!pool.bitmap.Find(slotIdx)) {
+                    continue;
                 }
 
-                hCurrSlot.ptr += _incrSize;
+                //Try to allocate from current pool.
+                result.handle = pool.heap->GetCPUDescriptorHandleForHeapStart();
+                result.handle.ptr += _incrSize * slotIdx;
+                result.poolIndex = i;
+            }
+            
+            if(!result) {
+                auto newHeap = _CreatePool(_maxDescCnt);
+                auto& newPool = _pools.emplace_back(newHeap, _maxDescCnt);
+                newPool.bitmap.Set(0);
+
+                result.handle = newPool.heap->GetCPUDescriptorHandleForHeapStart();
+                result.poolIndex = i;
             }
 
-            allocated = _DescriptorSet(
-                _currentPool, hFreeSlot, res.size()
-            );
         }
-        //Release the mutex to allow old container to do its clean-ups
-        
-        return allocated;
+    
+        return result;
+    }
+
+    
+    void _DescriptorHeapMgr::Free(const _Descriptor& desc) {
+        assert(desc);
+        assert(desc.poolIndex < _pools.size());
+        {
+            //Critical section guard
+            std::scoped_lock l{_m_pool};
+
+            auto& pool = _pools[desc.poolIndex];
+
+            auto hHeapStart = pool.heap->GetCPUDescriptorHandleForHeapStart();
+            auto delta = (size_t)desc.handle.ptr - (size_t)hHeapStart.ptr;
+            auto slotIdx = delta / _incrSize;
+            assert(delta % _incrSize == 0);
+            assert(slotIdx < _maxDescCnt);
+
+            pool.bitmap.Clear(slotIdx);
+        }
     }
 }

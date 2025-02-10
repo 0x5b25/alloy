@@ -4,6 +4,7 @@
 #include "DXCDevice.hpp"
 #include "DXCTexture.hpp"
 #include "D3DTypeCvt.hpp"
+#include "DXCContext.hpp"
 
 namespace alloy::dxc {
 
@@ -70,7 +71,8 @@ namespace alloy::dxc {
         //IDXGIDevice3 * pDXGIDevice = nullptr;
         //auto hr = dev->GetDevice()->QueryInterface(__uuidof(IDXGIDevice3), (void **)&pDXGIDevice);
 
-        IDXGIAdapter1* pDXGIAdapter = dev->GetDxgiAdp();
+        auto& dxcAdp = static_cast<DXCAdapter&>(dev->GetAdapter());
+        IDXGIAdapter1* pDXGIAdapter = dxcAdp.GetHandle();
 
         IDXGIFactory4* pIDXGIFactory = nullptr;
         pDXGIAdapter->GetParent(__uuidof(IDXGIFactory4), (void **)&pIDXGIFactory);

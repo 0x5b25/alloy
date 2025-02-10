@@ -4,6 +4,8 @@
 
 
 //backend specific headers
+#include "DXCTexture.hpp"
+#include "D3DDescriptorHeapMgr.hpp"
 
 //platform specific headers
 #include <d3d12.h>
@@ -59,6 +61,28 @@ namespace alloy::dxc
     };
 
     class DXCRenderTarget : public DXCRenderTargetBase {
+        
+        common::sp<DXCTextureView> _view;        
+        _Descriptor _handle;
+
+    public:        
+        static common::sp<DXCRenderTarget> Make(
+            const common::sp<DXCTextureView>& view
+        );
+
+        DXCRenderTarget(
+            const common::sp<DXCTextureView>& view,
+            _Descriptor handle);
+
+        virtual ~DXCRenderTarget() override;
+
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const override {
+            return _handle.handle;
+        }
+        
+        virtual ITextureView& GetTexture() const override {
+            return *_view.get();
+        }
 
     };
 

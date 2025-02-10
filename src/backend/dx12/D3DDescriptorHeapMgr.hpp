@@ -3,54 +3,133 @@
 //3rd-party headers
 
 //alloy public headers
-#include "alloy/common/RefCnt.hpp"
-
-#include "alloy/BindableResource.hpp"
-#include "alloy/Pipeline.hpp"
-#include "alloy/GraphicsDevice.hpp"
-#include "alloy/SyncObjects.hpp"
-#include "alloy/Buffer.hpp"
-#include "alloy/SwapChain.hpp"
+//#include "alloy/common/RefCnt.hpp"
+//
+//#include "alloy/BindableResource.hpp"
+//#include "alloy/Pipeline.hpp"
+//#include "alloy/GraphicsDevice.hpp"
+//#include "alloy/SyncObjects.hpp"
+//#include "alloy/Buffer.hpp"
+//#include "alloy/SwapChain.hpp"
 
 //standard library headers
 #include <vector>
-#include <queue>
-#include <unordered_set>
 #include <mutex>
+#include <cassert>
 
 //backend specific headers
-#include "DXCTexture.hpp"
+//#include "DXCTexture.hpp"
 
 //platform specific headers
 #include <d3d12.h>
-#include <dxgi1_4.h> //Guaranteed by DX12
-#include <wrl/client.h> // for ComPtr
+//#include <dxgi1_4.h> //Guaranteed by DX12
 
 //Local headers
 
 namespace alloy::dxc {
 
-    class _DescriptorSet;
+    /*
+    A 3-level tree structure:
+
+    +-----------+------------------------------------------------
+    |           | +----------------------    ------------+ +------------------------+
+    |  flag2-0  | | flag1-0 | flag1-1 |  ...  | flag1-63 | | flag0-0 ... flag0-4095 |
+    |           | +----------------------    ------------+ +------------------------+
+    +-----------+------------------------------------------------
+    
+    */
+    class Bitmap {
+        uint32_t bitCnt;
+        uint32_t depth;
+        uint64_t* payload;
+
+        void ModifyBit(uint32_t whichBit, bool value);
+
+    public:
+
+        Bitmap(uint32_t bitCnt);
+
+        ~Bitmap() {
+            delete[] payload;
+        }
+
+        bool Test(uint32_t whichBit) const {
+            assert(whichBit < bitCnt);
+            uint32_t currDepth = 0;
+            uint64_t* pLayer = payload;
+            while(currDepth < depth) {
+                auto layerSizeInWord = 1u << ( currDepth * 6 );
+                pLayer += layerSizeInWord;
+            }
+            auto& whichWord = pLayer[whichBit >> 6];
+            auto mask = 1 << (whichBit & 0x3f);
+            return whichWord & mask;
+        }
+
+        void Set(uint32_t whichBit) { 
+            assert(whichBit < bitCnt);
+            ModifyBit(whichBit, 1);
+        }
+        void Clear(uint32_t whichBit) {
+            assert(whichBit < bitCnt);
+            ModifyBit(whichBit, 0);
+        }
+
+        void ClearAll() {
+            uint32_t currDepth = 0;
+            uint64_t* pLayer = payload;
+            while (currDepth <= depth) {
+                auto layerSizeInWord = 1u << (currDepth * 6);
+                for (uint32_t i = 0; i < layerSizeInWord; i++) {
+                    pLayer[i] = 0;
+                }
+                pLayer += layerSizeInWord;
+                currDepth++;
+            }
+        }
+
+        void SetAll() {
+            uint32_t currDepth = 0;
+            uint64_t* pLayer = payload;
+            while (currDepth <= depth) {
+                auto layerSizeInWord = 1u << (currDepth * 6);
+                for (uint32_t i = 0; i < layerSizeInWord; i++) {
+                    pLayer[i] = 0xffffffff'ffffffff;
+                }
+                pLayer += layerSizeInWord;
+                currDepth++;
+            }
+        }
+
+        bool IsFull() const {
+            return *payload == 0xffffffff'ffffffff;
+        }
+
+        bool Find(uint32_t& whichBit) const;
+    };
+
+    struct _Descriptor{
+        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+        uint32_t poolIndex;
+
+        operator bool() const {
+            return handle.ptr;
+        }
+    };
 
     class _DescriptorHeapMgr{
 
     public:
-        struct Container : public common::RefCntBase{
-            ID3D12DescriptorHeap* pool;
-            _DescriptorHeapMgr* mgr;
-            uint32_t nextFreeSlot;
+        struct Container {
+            ID3D12DescriptorHeap* heap;
+            Bitmap bitmap;
 
             Container (
-                ID3D12DescriptorHeap* pool,
-                _DescriptorHeapMgr* mgr
-            ) : pool(pool)
-              , mgr(mgr)
-              , nextFreeSlot(0)
+                ID3D12DescriptorHeap* heap,
+                uint32_t descCount
+            ) : heap(heap)
+              , bitmap(descCount)
             {}
-
-            ~Container(){
-                mgr->_ReleaseContainer(this);
-            }
         };
     
     private:
@@ -61,19 +140,10 @@ namespace alloy::dxc {
         uint32_t _incrSize;
         //PoolSizes _poolSizes;
     
-        //'Clean' pools.
-        std::queue<ID3D12DescriptorHeap*> _freePools;
-        //previously full pools, some sets might be freed, but at least one set is in use.
-        std::unordered_set<Container*> _dirtyPools;
-        //Currently active pool, that is not full.
-        common::sp<Container> _currentPool;
+        std::vector<Container> _pools;
     
         std::mutex _m_pool;
     
-        //Thread-safe release
-        void _ReleaseContainer(Container* container);
-    
-        ID3D12DescriptorHeap* _GetOnePool();
         ID3D12DescriptorHeap* _CreatePool(uint32_t maxDescCnt);
     //
     public:
@@ -83,58 +153,7 @@ namespace alloy::dxc {
     //	void Init(VkDevice dev, unsigned maxSets);
     //	void DeInit();
     //
-        _DescriptorSet Allocate(const std::vector<common::sp<ITextureView>>& res);
+        _Descriptor Allocate();
+        void Free(const _Descriptor&);
     };
-
-
-
-    class _DescriptorSet{
-        DISABLE_COPY_AND_ASSIGN(_DescriptorSet);
-    
-        common::sp<_DescriptorHeapMgr::Container> _pool;
-        D3D12_CPU_DESCRIPTOR_HANDLE  _descSetStart;
-        uint32_t _descCount;
-    
-    public:
-        _DescriptorSet()
-            : _pool{nullptr}
-            , _descSetStart{}
-            , _descCount(0)
-        {}
-    
-        _DescriptorSet(
-            const common::sp<_DescriptorHeapMgr::Container>& pool,
-            const D3D12_CPU_DESCRIPTOR_HANDLE& descSetStart,
-            uint32_t descCount
-        )
-            : _pool(pool)
-            , _descSetStart(descSetStart)
-            , _descCount(descCount)
-        {}
-    
-        ~_DescriptorSet(){
-        //No need to vkDestroy the desc set
-        //since the whole will be reseted once
-        //there is no reference to the pool.
-        }
-    
-        //move semantics support
-        _DescriptorSet(_DescriptorSet&& that)
-            : _pool(std::move(that._pool))
-            , _descSetStart(that._descSetStart)
-            , _descCount(that._descCount)
-        {}
-    
-        _DescriptorSet& operator=(_DescriptorSet&& that){
-            _pool = std::move(that._pool);
-            _descSetStart = that._descSetStart;
-            _descCount = that._descCount;
-            return *this;
-        }
-    
-        const D3D12_CPU_DESCRIPTOR_HANDLE& GetHandle() const {return _descSetStart;}
-        uint32_t GetCount() const {return _descCount;}
-    
-    };
-
 }

@@ -35,7 +35,7 @@ namespace alloy::dxc{
         DXCResourceFactory() = default;
         ~DXCResourceFactory() = default;
 
-        virtual void* GetHandle() const override;
+        //virtual void* GetHandle() const override;
 
         VLD_RF_FOR_EACH_RES(DXC_DECL_RF_CREATE_WITH_DESC)
 
@@ -60,6 +60,8 @@ namespace alloy::dxc{
 
        
         //virtual sp<CommandList> CreateCommandList() override;
+        virtual common::sp<IRenderTarget> CreateRenderTarget(
+            const common::sp<ITextureView>& texView) override;
 
         virtual common::sp<IEvent> CreateSyncEvent() override;
     };

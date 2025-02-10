@@ -28,6 +28,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
 #    spdlog)
 
 set(VLD_BACKEND_VK_SRCS
+    "${CMAKE_CURRENT_LIST_DIR}/VulkanContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/VulkanContext.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanDevice.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanDevice.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanResourceFactory.cpp"

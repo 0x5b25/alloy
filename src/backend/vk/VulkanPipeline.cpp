@@ -26,13 +26,13 @@ struct std::hash<alloy::VertexInputSemantic>
 
 namespace alloy::vk{
 class VkShaderRAII {
-    VkDevice _dev;
+    VulkanDevice* _dev;
     VkShaderModule _mod;
 public:
-    VkShaderRAII(VkDevice dev) : _dev(dev), _mod(VK_NULL_HANDLE) {}
+    VkShaderRAII(VulkanDevice* dev) : _dev(dev), _mod(VK_NULL_HANDLE) {}
     ~VkShaderRAII() { 
         if(_mod != VK_NULL_HANDLE)
-        vkDestroyShaderModule(_dev, _mod, nullptr);
+            VK_DEV_CALL(_dev, vkDestroyShaderModule(_dev->LogicalDev(), _mod, nullptr));
     }
     VkShaderModule* operator&() {return &_mod;}
     VkShaderModule operator*() {return _mod;}
@@ -42,13 +42,13 @@ public:
 };
 
 class VkPipelineLayoutRAII {
-    VkDevice _dev;
+    VulkanDevice* _dev;
     VkPipelineLayout _obj;
 public:
-    VkPipelineLayoutRAII(VkDevice dev) : _dev(dev), _obj(VK_NULL_HANDLE) {}
+    VkPipelineLayoutRAII(VulkanDevice* dev) : _dev(dev), _obj(VK_NULL_HANDLE) {}
     ~VkPipelineLayoutRAII() { 
         if(_obj != VK_NULL_HANDLE)
-        vkDestroyPipelineLayout(_dev, _obj, nullptr);
+            VK_DEV_CALL(_dev, vkDestroyPipelineLayout(_dev->LogicalDev(), _obj, nullptr));
     }
     VkPipelineLayout* operator&() {return &_obj;}
     VkPipelineLayout operator*() {return _obj;}
@@ -117,19 +117,13 @@ public:
         }
 
     public:
-        PipelineRemapper (
-            const BindingRemapInfo& bindingRemappings
-        )
-            : _bindingRemappings(&bindingRemappings)
-            , _iaMappings(nullptr)
-        { }
 
         PipelineRemapper (
-            const BindingRemapInfo& bindingRemappings,
-            const IAMappingInfo& iaMappings
+            const BindingRemapInfo* bindingRemappings,
+            const IAMappingInfo* iaMappings
         )
-            : _bindingRemappings(&bindingRemappings)
-            , _iaMappings(&iaMappings)
+            : _bindingRemappings(bindingRemappings)
+            , _iaMappings(iaMappings)
         { }
 
         bool RemapSRV( const dxil_spv_d3d_binding& binding,
@@ -323,8 +317,8 @@ public:
 
 #endif
     VulkanPipelineBase::~VulkanPipelineBase() {
-        vkDestroyPipelineLayout(dev->LogicalDev(), _pipelineLayout, nullptr);
-        vkDestroyPipeline(dev->LogicalDev(), _devicePipeline, nullptr);
+        VK_DEV_CALL(dev, vkDestroyPipelineLayout(dev->LogicalDev(), _pipelineLayout, nullptr));
+        VK_DEV_CALL(dev, vkDestroyPipeline(dev->LogicalDev(), _devicePipeline, nullptr));
     }
 
     VulkanComputePipeline::~VulkanComputePipeline(){
@@ -334,7 +328,7 @@ public:
     VulkanGraphicsPipeline::~VulkanGraphicsPipeline(){
 
     }
-
+#if 0
     void _CreateStandardPipeline(
         VkDevice dev,
         VkShaderModule vertShaderModule,
@@ -473,6 +467,7 @@ public:
 
         return;
     }
+#endif
 
     common::sp<IGfxPipeline> VulkanGraphicsPipeline::Make(
         const common::sp<VulkanDevice>& dev,
@@ -616,23 +611,28 @@ public:
         pipelineCI.pInputAssemblyState = &inputAssemblyCI;
 
         // Pipeline Layout
-        auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
-        //refCnts.push_back(desc.resourceLayout);
-        auto& bindInfo = resourceLayout->GetBindings();
         std::vector<VkDescriptorSetLayout> dsls{};
-        for(auto& b : bindInfo) {
-            for(auto& s : b.sets) {
-                dsls.push_back(s.layout);
+        const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
+        if(desc.resourceLayout) {
+            auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+            //refCnts.push_back(desc.resourceLayout);
+            pBindInfo = &resourceLayout->GetBindings();
+            for(auto& b : *pBindInfo) {
+                for(auto& s : b.sets) {
+                    dsls.push_back(s.layout);
+                }
             }
         }
 
         VkPipelineLayoutCreateInfo pipelineLayoutCI {};
         pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCI.setLayoutCount = dsls.size();
-        pipelineLayoutCI.pSetLayouts = dsls.data();
+        pipelineLayoutCI.pSetLayouts = dsls.empty() ? nullptr : dsls.data();
         
-        VkPipelineLayoutRAII pipelineLayout{dev->LogicalDev()};
-        VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
+        VkPipelineLayoutRAII pipelineLayout{dev.get()};
+        VK_CHECK(VK_DEV_CALL(dev, 
+            vkCreatePipelineLayout(
+                dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout)));
         pipelineCI.layout = *pipelineLayout;
 
         // Vertex Input State
@@ -724,8 +724,8 @@ public:
         }
 
         PipelineRemapper remapper {
-            bindInfo,
-            iaMappings
+            pBindInfo,
+            &iaMappings
         };
         //alloy::vk::SPVRemapper remapper{
         //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
@@ -746,7 +746,7 @@ public:
         //    }
         //};
 
-        VkShaderRAII vs{dev->LogicalDev()}, fs{dev->LogicalDev()};
+        VkShaderRAII vs{dev.get()}, fs{dev.get()};
         
         VkPipelineShaderStageCreateInfo stageCIs[2] = {};
 
@@ -769,7 +769,8 @@ public:
             shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             shaderModuleCI.codeSize = spvBlob.code.size();
             shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
-            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &vs));
+            VK_CHECK(VK_DEV_CALL(dev,
+                vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &vs)));
 
             stageCIs[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stageCIs[0].module = *vs;
@@ -797,7 +798,8 @@ public:
             shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             shaderModuleCI.codeSize = spvBlob.code.size();//Although pCode is uint32_t*, this is byte size
             shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
-            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &fs));
+            VK_CHECK(VK_DEV_CALL(dev,
+                vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &fs)));
 
             stageCIs[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stageCIs[1].module = *fs;
@@ -858,7 +860,14 @@ public:
         pipelineCI.renderPass          = nullptr; // previously required non-null
         
         VkPipeline devicePipeline;
-        VK_CHECK(vkCreateGraphicsPipelines(dev->LogicalDev(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &devicePipeline));
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreateGraphicsPipelines(
+                dev->LogicalDev(), 
+                VK_NULL_HANDLE, 
+                1, 
+                &pipelineCI, 
+                nullptr, 
+                &devicePipeline)));
 
         //auto vkVertShader = reinterpret_cast<VulkanShader*>(shaders[0].get());
         //auto vkFragShader = reinterpret_cast<VulkanShader*>(shaders[1].get());
@@ -913,8 +922,10 @@ public:
         pipelineLayoutCI.setLayoutCount = dsls.size();
         pipelineLayoutCI.pSetLayouts = dsls.data();
 
-        VkPipelineLayoutRAII pipelineLayout{dev->LogicalDev()};
-        VK_CHECK(vkCreatePipelineLayout(dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout));
+        VkPipelineLayoutRAII pipelineLayout{dev.get()};
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreatePipelineLayout(
+                dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout)));
         pipelineCI.layout = *pipelineLayout;
 
         // Shader Stage
@@ -950,10 +961,11 @@ public:
         }
 
         PipelineRemapper remapper {
-            bindInfo
+            &bindInfo,
+            nullptr
         };
 
-        VkShaderRAII cs{dev->LogicalDev()};
+        VkShaderRAII cs{dev.get()};
         
         VkPipelineShaderStageCreateInfo stageCI;
 
@@ -976,7 +988,8 @@ public:
             shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             shaderModuleCI.codeSize = spvBlob.code.size() / 4;
             shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
-            VK_CHECK(vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &cs));
+            VK_CHECK(VK_DEV_CALL(dev,
+                vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &cs)));
 
             stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stageCI.module = *cs;
@@ -988,9 +1001,9 @@ public:
         pipelineCI.stage = stageCI;
 
         VkPipeline devicePipeline;
-        VK_CHECK(vkCreateComputePipelines(
+        VK_CHECK(VK_DEV_CALL(dev, vkCreateComputePipelines(
             dev->LogicalDev(),VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &devicePipeline
-        ));
+        )));
 
         
         std::uint32_t resourceSetCount = dsls.size();

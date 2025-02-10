@@ -28,6 +28,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
 #    spdlog)
 
 set(VLD_BACKEND_DXC_SRCS
+    "${CMAKE_CURRENT_LIST_DIR}/DXCContext.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCContext.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCDevice.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCDevice.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.cpp"

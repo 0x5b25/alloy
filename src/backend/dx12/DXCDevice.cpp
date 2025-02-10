@@ -11,6 +11,7 @@
 
 //backend specific headers
 #include "D3DCommon.hpp"
+#include "DXCContext.hpp"
 #include "DXCCommandList.hpp"
 #include "DXCSwapChain.hpp"
 
@@ -102,17 +103,9 @@ HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAda
     return S_OK;
 }
 
-namespace alloy {
-    
-    common::sp<IGraphicsDevice> CreateDX12GraphicsDevice(
-        const IGraphicsDevice::Options& options
-    ) {
-        return alloy::dxc::DXCDevice::Make(options);
-    }
-}
+
 namespace alloy::dxc {
 
-    
     void D3D12DevCaps::ReadFromDevice(ID3D12Device* pdev)
     {
         D3D_FEATURE_LEVEL checklist[] = {
@@ -186,96 +179,6 @@ namespace alloy::dxc {
         cmdqueue->GetTimestampFrequency(&ts_freq);
         timestamp_period = 1000000000.0f / ts_freq;
         cmdqueue->Release();
-    }
-
-
-    common::sp<DXCQueue> DXCQueue::Make(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE commandType){
-
-        ComPtr<ID3D12CommandQueue> cmdQueue;
-        D3D12_COMMAND_QUEUE_DESC queueDesc {};
-        queueDesc.Type = commandType;
-        queueDesc.NodeMask = 0;
-        if(FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&cmdQueue)))){
-            return nullptr;
-        }
-
-
-    
-        ComPtr<ID3D12Fence> fence;
-        if(FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))){
-            return nullptr;
-        }
-
-        HANDLE fenceEventHandle = CreateEvent(nullptr, false, false, nullptr);
-        if(fenceEventHandle == INVALID_HANDLE_VALUE){
-            return nullptr;
-        }
-
-        auto dxcQueue = common::sp<DXCQueue>(new DXCQueue());
-        dxcQueue->_queue = std::move(cmdQueue);
-        dxcQueue->_queueType = commandType;
-        dxcQueue->_fence = std::move(fence);
-        dxcQueue->_fenceEventHandle = fenceEventHandle;
-        dxcQueue->_lastCompletedFenceValue = ((uint64_t)commandType << 56);
-    
-        fence->Signal(dxcQueue->_lastCompletedFenceValue);
-
-        return dxcQueue;    
-    }
-
-    DXCQueue::~DXCQueue() {
-        CloseHandle(_fenceEventHandle);
-    }
-
-    std::uint64_t DXCQueue::PollCurrentFenceValue() {
-        _lastCompletedFenceValue = std::max(_lastCompletedFenceValue, _fence->GetCompletedValue());
-        return _lastCompletedFenceValue;
-    }
-    
-    bool DXCQueue::IsFenceComplete(std::uint64_t fenceValue) {
-
-        if (fenceValue > _lastCompletedFenceValue) {
-            PollCurrentFenceValue();
-        }
-    
-        return fenceValue <= _lastCompletedFenceValue;
-    }
-
-    void DXCQueue::InsertWait(std::uint64_t fenceValue){
-        _queue->Wait(_fence.Get(), fenceValue);
-    }
- 
-    void DXCQueue::InsertWaitForQueueFence(DXCQueue* otherQueue, std::uint64_t fenceValue) {
-        _queue->Wait(otherQueue->GetFence(), fenceValue);
-    }
- 
-    void DXCQueue::InsertWaitForQueue(DXCQueue* otherQueue) {
-        _queue->Wait(otherQueue->GetFence(), otherQueue->GetNextFenceValue() - 1);
-    }
-
-    void DXCQueue::WaitForFenceCPUBlocking(std::uint64_t fenceValue) {
-        if (IsFenceComplete(fenceValue)) return;
- 
-        {
-            std::lock_guard<std::mutex> lockGuard(mEventMutex);
-    
-            _fence->SetEventOnCompletion(fenceValue, _fenceEventHandle);
-            WaitForSingleObjectEx(_fenceEventHandle, INFINITE, false);
-            _lastCompletedFenceValue = fenceValue;
-        }
-    }
-
-    std::uint64_t DXCQueue::ExecuteCommandList(ID3D12CommandList* commandList) {
-        if( FAILED(((ID3D12GraphicsCommandList*)commandList)->Close()) ){
-            return 0;
-        }
-        _queue->ExecuteCommandLists(1, &commandList);
-    
-        std::lock_guard<std::mutex> lockGuard(mFenceMutex);
-    
-        _queue->Signal(GetFence(), mNextFenceValue);
-
-        return mNextFenceValue++;
     }
 
     DXCAutoFence::DXCAutoFence()
@@ -385,10 +288,10 @@ namespace alloy::dxc {
         return _expectedVal.load(std::memory_order_acquire) <= GetCurrentValue();
     }
 
-    DXCDevice::DXCDevice(const Microsoft::WRL::ComPtr<ID3D12Device>& dev) 
+    DXCDevice::DXCDevice(ID3D12Device* dev) 
         : _dev(dev)
-        , _rtvHeap(dev.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64)
-        , _dsvHeap(dev.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64)
+        , _rtvHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64)
+        , _dsvHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64)
     {}
 
     DXCDevice::~DXCDevice() {
@@ -399,64 +302,19 @@ namespace alloy::dxc {
             _umaPool->Release();
         }
         _alloc->Release();
+        _dev->Release();
     }
 
-    common::sp<IGraphicsDevice> DXCDevice::Make(const IGraphicsDevice::Options &options)
-    {
-
-        UINT dxgiFactoryFlags = 0;
-        // Enable the debug layer (requires the Graphics Tools "optional feature").
-        // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-        if(options.debug){
-            // Enable the debug layer.
-            ComPtr<ID3D12Debug> debugController;
-            if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
-            {
-                debugController->EnableDebugLayer();
-
-                // Enable additional debug layers.
-                dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-            }
-            else {
-                return nullptr;
-            }
-        }
-        //Create DXGIFactory
-        ComPtr<IDXGIFactory4> dxgiFactory;
-        auto status = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
-        if(FAILED(status)) {
-            return nullptr;
-        } 
-
-        //Find physical dx12 adapter
-        ComPtr<IDXGIAdapter1> adp;
-        if(FAILED(GetAdapter(dxgiFactory.Get(), options.debug, adp))){
-            return nullptr;
-        }
+    common::sp<IGraphicsDevice> DXCDevice::Make(
+        const common::sp<DXCAdapter>& adp,
+        const IGraphicsDevice::Options &options
+    ) {
 
         //Enumeration done. create the selected device
         ComPtr<ID3D12Device> device;
         {
-            auto hr = D3D12CreateDevice(adp.Get(), D3D_FEATURE_LEVEL_11_1, IID_PPV_ARGS(&device));
+            auto hr = D3D12CreateDevice(adp->GetHandle(), D3D_FEATURE_LEVEL_11_1, IID_PPV_ARGS(&device));
             if (FAILED(hr)) {
-                Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;
-                Microsoft::WRL::ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
-                if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
-                {
-                    ThrowIfFailed(dxgiDebug->QueryInterface(IID_PPV_ARGS(&dxgiInfoQueue)));
-                
-                    for (UINT64 index = 0; index < dxgiInfoQueue->GetNumStoredMessages(DXGI_DEBUG_ALL); index++)
-                    {
-                        SIZE_T length = 0;
-                        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, nullptr, &length);
-                        auto msg = (DXGI_INFO_QUEUE_MESSAGE*)malloc(sizeof(length));
-                        dxgiInfoQueue->GetMessage(DXGI_DEBUG_ALL, index, msg, &length);
-
-                        std::cout << "Description: " << msg->pDescription << std::endl;
-                        
-                        free(msg);
-                    }
-                }
                 return nullptr;
             }
         }
@@ -489,7 +347,7 @@ namespace alloy::dxc {
         
         D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
         allocatorDesc.pDevice = device.Get();
-        allocatorDesc.pAdapter = adp.Get();
+        allocatorDesc.pAdapter = adp->GetHandle();
 
         
         if(FAILED(D3D12MA::CreateAllocator(&allocatorDesc, &allocator))){
@@ -497,7 +355,7 @@ namespace alloy::dxc {
         }
 
         
-        auto dev = common::sp<DXCDevice>(new DXCDevice(device));
+        auto dev = common::sp<DXCDevice>(new DXCDevice(device.Detach()));
         
 
         dev->_adp = std::move(adp);
@@ -509,9 +367,9 @@ namespace alloy::dxc {
         dev->_waitIdleFence.Init(std::move(waitIdleFence));
         dev->_alloc = allocator;
 
-        dev->_adpInfo = {};
+        //dev->_adpInfo = {};
         dev->_dxcFeat = {};
-        dev->_dxcFeat.ReadFromDevice(dev->_dev.Get());
+        dev->_dxcFeat.ReadFromDevice(dev->_dev);
 
         //Create CPU accessable VRAM heap for UMA type device
         D3D12MA::Pool* pool = nullptr;
@@ -532,57 +390,57 @@ namespace alloy::dxc {
         }
         dev->_umaPool = pool;
 
-        //Fill driver and api info
-        {//Get device ID & driver version
-            DXGI_ADAPTER_DESC1 desc;
-            if(SUCCEEDED(dev->_adp->GetDesc1(&desc))){
-                dev->_adpInfo.vendorID = desc.VendorId;
-                dev->_adpInfo.deviceID = desc.DeviceId;
-            }
-
-            LARGE_INTEGER drvVer{};
-            dev->_adp->CheckInterfaceSupport(__uuidof(IDXGIDevice), &drvVer);
-            dev->_adpInfo.driverVersion = drvVer.QuadPart;
-        }
-
-        {//Get api version
-            
-            auto& apiVer = dev->_adpInfo.apiVersion;
-            switch (dev->_dxcFeat.feature_level)
-            {
-            case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
-            case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
-            case D3D_FEATURE_LEVEL_12_0:apiVer.major = 12; apiVer.minor = 0;break;
-            case D3D_FEATURE_LEVEL_11_1:apiVer.major = 11; apiVer.minor = 1;break;
-            case D3D_FEATURE_LEVEL_11_0:
-            default: apiVer.major = 11; apiVer.minor = 0;
-                break;
-            }
-
-            dev->_commonFeat.commandListDebugMarkers = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
-            dev->_commonFeat.bufferRangeBinding = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
-            
-        }
-
-
-        {//get device name
-            DXGI_ADAPTER_DESC1 desc{};
-            if (SUCCEEDED(dev->_adp->GetDesc1(&desc))){
-                do{
-                    auto& devNameStr = dev->_adpInfo.deviceName;
-                    auto required_size = WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, NULL, 0, NULL, NULL);
-                    devNameStr.resize(required_size);
-                    if (required_size == 0) break;
-
-                    WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, devNameStr.data(), required_size, NULL, NULL);
-                }while(0);
-    
-
-                //std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
-                //const std::wstring wdesc{desc.Description};
-                //dev->_devName = utf8_conv.to_bytes(wdesc);
-            }            
-        }
+        ////Fill driver and api info
+        //{//Get device ID & driver version
+        //    DXGI_ADAPTER_DESC1 desc;
+        //    if(SUCCEEDED(dev->_adp->GetDesc1(&desc))){
+        //        dev->_adpInfo.vendorID = desc.VendorId;
+        //        dev->_adpInfo.deviceID = desc.DeviceId;
+        //    }
+//
+        //    LARGE_INTEGER drvVer{};
+        //    dev->_adp->CheckInterfaceSupport(__uuidof(IDXGIDevice), &drvVer);
+        //    dev->_adpInfo.driverVersion = drvVer.QuadPart;
+        //}
+//
+        //{//Get api version
+        //    
+        //    auto& apiVer = dev->_adpInfo.apiVersion;
+        //    switch (dev->_dxcFeat.feature_level)
+        //    {
+        //    case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
+        //    case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
+        //    case D3D_FEATURE_LEVEL_12_0:apiVer.major = 12; apiVer.minor = 0;break;
+        //    case D3D_FEATURE_LEVEL_11_1:apiVer.major = 11; apiVer.minor = 1;break;
+        //    case D3D_FEATURE_LEVEL_11_0:
+        //    default: apiVer.major = 11; apiVer.minor = 0;
+        //        break;
+        //    }
+//
+        //    dev->_commonFeat.commandListDebugMarkers = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
+        //    dev->_commonFeat.bufferRangeBinding = dev->_dxcFeat.feature_level >= D3D_FEATURE_LEVEL_11_1;
+        //    
+        //}
+//
+//
+        //{//get device name
+        //    DXGI_ADAPTER_DESC1 desc{};
+        //    if (SUCCEEDED(dev->_adp->GetDesc1(&desc))){
+        //        do{
+        //            auto& devNameStr = dev->_adpInfo.deviceName;
+        //            auto required_size = WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, NULL, 0, NULL, NULL);
+        //            devNameStr.resize(required_size);
+        //            if (required_size == 0) break;
+//
+        //            WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, devNameStr.data(), required_size, NULL, NULL);
+        //        }while(0);
+    //
+//
+        //        //std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
+        //        //const std::wstring wdesc{desc.Description};
+        //        //dev->_devName = utf8_conv.to_bytes(wdesc);
+        //    }            
+        //}
 
         dev->_commonFeat.computeShader = true;
         dev->_commonFeat.geometryShader = true;
@@ -611,6 +469,9 @@ namespace alloy::dxc {
 //
     //    GetImplicitQueue()->ExecuteCommandLists(1, &pRawCmdList);
     //}
+
+    
+    IPhysicalAdapter& DXCDevice::GetAdapter() const {return *_adp.get();}
 
     ISwapChain::State DXCDevice::PresentToSwapChain(ISwapChain *sc)
     {

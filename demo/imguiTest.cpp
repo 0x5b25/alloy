@@ -66,7 +66,7 @@ private:
 
     void SetupAlloyEnv(alloy::SwapChainSource* swapChainSrc) {
         
-        auto ctx = alloy::IContext::Create(alloy::Backend::Metal);
+        auto ctx = alloy::IContext::Create(alloy::Backend::DX12);
         auto adp = ctx->EnumerateAdapters().front();
         
         alloy::IGraphicsDevice::Options opt{};
@@ -83,11 +83,11 @@ private:
         std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";
         std::cout << "    Device ID   : " << std::hex << adpInfo.deviceID << "\n";
         std::cout << "    Name        : " <<             adpInfo.deviceName << "\n";
-        std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
-                                    std::cout << "." << adpInfo.apiVersion.minor;
-                                    std::cout << "." << adpInfo.apiVersion.subminor;
-                                    std::cout << "." << adpInfo.apiVersion.patch << std::endl;
-
+        std::cout << "    API version : " << std::dec << (std::string)(adpInfo.apiVersion) << std::endl;
+        //std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
+        //                            std::cout << "." << adpInfo.apiVersion.minor;
+        //                            std::cout << "." << adpInfo.apiVersion.subminor;
+        //                            std::cout << "." << adpInfo.apiVersion.patch << std::endl;
 
         alloy::ISwapChain::Description swapChainDesc{};
         swapChainDesc.source = swapChainSrc;

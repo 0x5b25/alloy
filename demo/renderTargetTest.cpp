@@ -565,12 +565,8 @@ class UniformApp : public AppBase {
         std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";
         std::cout << "    Device ID   : " << std::hex << adpInfo.deviceID << "\n";
         std::cout << "    Name        : " <<             adpInfo.deviceName << "\n";
-        std::cout << "    API version : " << std::dec << adpInfo.apiVersion.major;
-                                    std::cout << "." << adpInfo.apiVersion.minor;
-                                    std::cout << "." << adpInfo.apiVersion.subminor;
-                                    std::cout << "." << adpInfo.apiVersion.patch << std::endl;
+        std::cout << "    API version : " << std::dec << (std::string)(adpInfo.apiVersion) << std::endl;
 
-        
         //CreateResources
         std::cout << "Creating swapchain...\n";
         CreateSwapChain(swapChainSrc, surfaceWidth, surfaceHeight);
