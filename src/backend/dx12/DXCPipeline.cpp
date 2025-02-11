@@ -112,8 +112,14 @@ namespace alloy::dxc
         //psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         //psoDesc.SampleDesc.Count = 1;
 
-        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());
-
+        common::sp<DXCResourceLayout> dxcResLayout;
+        if(desc.resourceLayout) {
+            dxcResLayout = SPCast<DXCResourceLayout>(desc.resourceLayout);
+        } else {
+            IResourceLayout::Description emptyDesc {};
+            auto resLayout = dev->GetResourceFactory().CreateResourceLayout(emptyDesc);
+            dxcResLayout = SPCast<DXCResourceLayout>(resLayout);
+        }
         psoDesc.pRootSignature = dxcResLayout->GetHandle();
 
         auto _FillShaderDesc = [&](common::sp<IShader> shader, D3D12_SHADER_BYTECODE& desc){
@@ -675,8 +681,7 @@ namespace alloy::dxc
         
         rawPipe->_refCnts = std::move(refCnts);
 
-        dxcResLayout->ref();
-        rawPipe->_rootSig = common::sp(dxcResLayout);
+        rawPipe->_rootSig = dxcResLayout;
 
         return common::sp(rawPipe);
     }

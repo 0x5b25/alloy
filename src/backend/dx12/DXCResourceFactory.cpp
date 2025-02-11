@@ -8,7 +8,7 @@
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
 #include "DXCSwapChain.hpp"
-#include "DXCFramebuffer.hpp"
+#include "DXCFrameBuffer.hpp"
 #include "DXCDevice.hpp"
 
 namespace alloy::dxc
@@ -38,12 +38,6 @@ namespace alloy::dxc
         auto dev = GetBase();
         dev->ref();
         return common::sp<DXCDevice>(dev);
-    }
-
-    
-    void* DXCResourceFactory::GetHandle() const {
-        auto dev = GetBase();
-        return dev->GetDxgiAdp();
     }
 
     common::sp<IFrameBuffer> DXCResourceFactory::CreateFrameBuffer (
@@ -96,6 +90,13 @@ namespace alloy::dxc
         // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
     }
+
+    
+    common::sp<IRenderTarget> DXCResourceFactory::CreateRenderTarget(
+        const common::sp<ITextureView>& texView
+    ) {
+        return DXCRenderTarget::Make(common::SPCast<DXCTextureView>(texView));
+    } 
 
     common::sp<IEvent> DXCResourceFactory::CreateSyncEvent() {
        return common::sp(new DXCFence(GetBase()));

@@ -40,10 +40,10 @@ namespace alloy::mtl {
     }
 
     
-    void* MetalResourceFactory::GetHandle() const {
-        //auto dev = GetBase();
-        return GetBase()->GetNativeHandle();
-    }
+    //void* MetalResourceFactory::GetHandle() const {
+    //    //auto dev = GetBase();
+    //    return GetBase()->GetNativeHandle();
+    //}
 
     common::sp<IFrameBuffer> MetalResourceFactory::CreateFrameBuffer (
         const IFrameBuffer ::Description& description
@@ -94,6 +94,13 @@ namespace alloy::mtl {
         return common::sp(new MetalTextureView(RefRawPtr(texture.get()), description));
         // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
+    }
+
+
+    common::sp<IRenderTarget> MetalResourceFactory::CreateRenderTarget(
+        const common::sp<ITextureView>& texView
+    ) {
+        return MetalRenderTarget::Make(common::SPCast<MetalTextureView>(texView));
     }
 
     common::sp<IEvent> MetalResourceFactory::CreateSyncEvent() {

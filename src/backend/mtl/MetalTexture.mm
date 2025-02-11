@@ -264,4 +264,36 @@ namespace alloy::mtl  {
         }
     }
 
+    MetalSampler::MetalSampler(
+        const common::sp<MetalDevice>& dev,
+        const ISampler::Description& desc,
+        id<MTLSamplerState> sampler
+    )
+        : ISampler(desc)
+        , _dev(dev)
+        , _sampler(sampler)
+    { }
+
+    MetalSampler::~MetalSampler() {
+        @autoreleasepool {
+            [_sampler release];
+        }
+    }
+
+    MetalRenderTarget::MetalRenderTarget(const common::sp<MetalTextureView>& texView)
+        : _texView(texView)
+    { }
+
+    MetalRenderTarget::~MetalRenderTarget(){}
+
+    ITextureView& MetalRenderTarget::GetTexture() const {
+        return *_texView.get();
+    }
+
+    common::sp<MetalRenderTarget> MetalRenderTarget::Make(
+        const common::sp<MetalTextureView>& texView
+    ) {
+        return common::sp(new MetalRenderTarget(texView));
+    }
+
 }

@@ -19,22 +19,15 @@
 #include "VkDescriptorPoolMgr.hpp"
 #include "VulkanResourceFactory.hpp"
 
+#define VK_DEV_CALL(dev, expr) (dev->GetFnTable(). expr )
 
 namespace alloy::vk
 {
-    class _VkCtx;
+    //class _VkCtx;
+    class VulkanAdapter;
     class VulkanBuffer;
     class VulkanDevice;
     //class VulkanResourceFactory;
-    
-    struct PhyDevInfo {
-        std::string name;
-        VkPhysicalDevice handle;
-        uint32_t graphicsQueueFamily; bool graphicsQueueSupportsCompute;
-        std::optional<uint32_t> computeQueueFamily;
-        std::optional<uint32_t> transferQueueFamily;
-    };
-
     //Manage command pools, to achieve one command pool per thread
     
     struct _CmdPoolContainer;
@@ -43,7 +36,7 @@ namespace alloy::vk
         friend struct _CmdPoolContainer;
  
     private:
-        VkDevice _dev;
+        VulkanDevice* _dev;
         std::uint32_t _queueFamily;
 
         std::deque<VkCommandPool> _freeCmdPools;
@@ -55,19 +48,11 @@ namespace alloy::vk
         common::sp<_CmdPoolContainer> _AcquireCmdPoolHolder();
 
     public:
-        _CmdPoolMgr(VkDevice dev, std::uint32_t queueFamily)
+        _CmdPoolMgr(VulkanDevice* dev, std::uint32_t queueFamily)
             : _dev { dev }
             , _queueFamily { queueFamily }
         { }
-        ~_CmdPoolMgr() {
-            //Threoretically there should be no bound command pools,
-            // i.e. all command buffers holded by threads should be released
-            // then the VulkanDevice can be destroyed.
-            assert(_threadBoundCmdPools.empty());
-            for (auto p : _freeCmdPools) {
-                vkDestroyCommandPool(_dev, p, nullptr);
-            }
-        }
+        ~_CmdPoolMgr();
 
         common::sp<_CmdPoolContainer> GetOnePool() { return _AcquireCmdPoolHolder(); }
     };
@@ -146,9 +131,11 @@ namespace alloy::vk
 
     private:
 
-        common::sp<_VkCtx> _ctx;
+        common::sp<VulkanAdapter> _adp;
 
-        PhyDevInfo _phyDev;
+        VolkDeviceTable _fnTable;
+
+        //PhyDevInfo _phyDev;
         VkDevice _dev;
         VmaAllocator _allocator;
         //_CmdPoolMgr _cmdPoolMgr;
@@ -161,10 +148,7 @@ namespace alloy::vk
         //VkSurfaceKHR _surface;
         //bool _isOwnSurface;
 
-        AdapterInfo _adpInfo;
-
         Features _features;
-        GraphicsApiVersion _apiVer;
 
         //std::string _devName, _devVendor;
         //std::string _drvName, _drvInfo;
@@ -177,6 +161,7 @@ namespace alloy::vk
         ~VulkanDevice();
 
         static common::sp<IGraphicsDevice> Make(
+		    const common::sp<VulkanAdapter>& adp,
             const IGraphicsDevice::Options& options
         );
 
@@ -185,16 +170,18 @@ namespace alloy::vk
         
         virtual void* GetNativeHandle() const override { return _dev; }
 
-        virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
+        //virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
+        virtual IPhysicalAdapter& GetAdapter() const override;
 
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
-        const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
+        //const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
         const VkDevice& LogicalDev() const {return _dev;}
-        const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
+        //const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
 
-        const VkInstance& GetInstance() const;
+        //const VkInstance& GetInstance() const;
+        const VolkDeviceTable& GetFnTable() const {return _fnTable;}
 
         //const VkSurfaceKHR& Surface() const {return _surface;}
 
@@ -224,7 +211,7 @@ namespace alloy::vk
         virtual ICommandQueue* GetCopyCommandQueue() override;
 
         //virtual bool WaitForFence(const sp<Fence>& fence, std::uint32_t timeOutNs) override;
-        void WaitForIdle() override {vkDeviceWaitIdle(_dev);}
+        void WaitForIdle() override { _fnTable.vkDeviceWaitIdle(_dev);}
     };
 
     class VulkanBuffer : public IBuffer{

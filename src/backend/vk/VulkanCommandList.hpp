@@ -296,6 +296,7 @@ namespace alloy::vk
 
         //static sp<CommandList> Make(const sp<VulkanDevice>& dev);
         const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
+        VulkanDevice* GetDevice() const { return _dev.get(); }
         
         virtual void Begin() override;
         virtual void End() override;

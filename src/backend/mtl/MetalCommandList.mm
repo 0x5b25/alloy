@@ -220,12 +220,19 @@ void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
 
         //auto& bufferRange = registry.boundIndexBuffer;
         //auto mtlBuffer = static_cast<AllocationImpl*>(bufferRange->GetBufferObject());
+        
+        IRRuntimeDrawPrimitives(_mtlEnc,
+                                mtlPipeline->GetPrimitiveTopology(),
+                                vertexStart,
+                                vertexCount,
+                                instanceCount,
+                                instanceStart);
 
-        [_mtlEnc drawPrimitives:mtlPipeline->GetPrimitiveTopology() 
-                    vertexStart:vertexStart
-                    vertexCount:vertexCount
-                  instanceCount:instanceCount
-                   baseInstance:instanceStart];
+        //[_mtlEnc drawPrimitives:mtlPipeline->GetPrimitiveTopology() 
+        //            vertexStart:vertexStart
+        //            vertexCount:vertexCount
+        //          instanceCount:instanceCount
+        //           baseInstance:instanceStart];
     }
 }
 

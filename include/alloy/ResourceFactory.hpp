@@ -36,7 +36,7 @@ namespace alloy
     class ResourceFactory{
 
     public:
-        virtual void* GetHandle() const = 0;
+        //virtual void* GetHandle() const = 0;
 
         VLD_RF_FOR_EACH_RES(VLD_RF_CREATE_WITH_DESC)
 
@@ -71,7 +71,8 @@ namespace alloy
             const common::sp<ITexture>& texture,
             const ITextureView::Description& description) = 0;
 
-       
+        virtual common::sp<IRenderTarget> CreateRenderTarget(
+            const common::sp<ITextureView>& texView) = 0;
         //virtual sp<CommandList> CreateCommandList() = 0;
 
         virtual common::sp<IEvent> CreateSyncEvent() = 0;

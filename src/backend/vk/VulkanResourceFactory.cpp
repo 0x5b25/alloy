@@ -78,6 +78,13 @@ namespace alloy::vk
         return VulkanTextureView::Make(RefRawPtr(vkTex), description);
     }
 
+    
+    common::sp<IRenderTarget> VulkanResourceFactory::CreateRenderTarget(
+        const common::sp<ITextureView>& texView
+    ) {
+        return common::sp(new VulkanRenderTarget(common::SPCast<VulkanTextureView>(texView)));
+    }
+
     common::sp<IEvent> VulkanResourceFactory::CreateSyncEvent() {
        return VulkanFence::Make(_CreateNewDevHandle());
     }

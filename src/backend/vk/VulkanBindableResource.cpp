@@ -36,7 +36,8 @@ namespace alloy::vk
     VulkanResourceLayout::~VulkanResourceLayout(){
         for(auto& b : _bindings)
             for (const auto& info : b.sets) {
-                vkDestroyDescriptorSetLayout(_dev->LogicalDev(), info.layout, nullptr);
+                VK_DEV_CALL(_dev, 
+                    vkDestroyDescriptorSetLayout(_dev->LogicalDev(), info.layout, nullptr));
             }
     }
     
@@ -179,7 +180,8 @@ namespace alloy::vk
                 dslCI.pBindings = bindings.data();
 
                 VkDescriptorSetLayout rawDsl;
-                VK_CHECK(vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout));
+                VK_CHECK(VK_DEV_CALL(dev, 
+                    vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
             }
         }
 
@@ -279,7 +281,15 @@ namespace alloy::vk
                 }
                 descSetsAllocated.emplace_back(std::move(descriptorAllocationToken));
 
-                vkUpdateDescriptorSets(dev->LogicalDev(), descriptorWriteCount, descriptorWrites.data(), 0, nullptr);
+                VK_DEV_CALL(dev,
+                    vkUpdateDescriptorSets(
+                        dev->LogicalDev(), 
+                        descriptorWriteCount, 
+                        descriptorWrites.data(), 
+                        0,
+                        nullptr
+                    )
+                );
             }
         }
 

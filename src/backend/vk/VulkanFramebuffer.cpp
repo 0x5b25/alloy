@@ -432,7 +432,7 @@ namespace alloy::vk
             .pStencilAttachment = hasStencil ? &stencilAttachment : nullptr,   
         };
 
-        vkCmdBeginRenderingKHR(cb, &render_info);
+        VK_DEV_CALL(dev, vkCmdBeginRenderingKHR(cb, &render_info));
     }
 
     
@@ -441,7 +441,7 @@ namespace alloy::vk
         desc.sampleCount = SampleCount::x1;
 
         for(auto& ct : _colorTgts) {
-            desc.colorAttachments.push_back(common::sp(new VulkanRenderTarget(
+            desc.colorAttachments.push_back(common::sp(new VulkanFBRT(
                 common::sp(this),
                 *ct.get()
             )));
@@ -451,7 +451,7 @@ namespace alloy::vk
         }
 
         if(HasDepthTarget()) {
-            desc.depthAttachment.reset(new VulkanRenderTarget(
+            desc.depthAttachment.reset(new VulkanFBRT(
                 common::sp(this),
                 *_dsTgt.get()
             ));
@@ -463,6 +463,7 @@ namespace alloy::vk
     }
 
     
-    ITextureView& VulkanRenderTarget::GetTexture() const {return _rt;}
+    ITextureView& VulkanFBRT::GetTexture() const {return _rt;}
+    ITextureView& VulkanRenderTarget::GetTexture() const {return *_view.get();}
 
 } // namespace alloy

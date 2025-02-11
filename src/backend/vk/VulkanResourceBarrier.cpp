@@ -397,14 +397,16 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                 }
             }
 
-            vkCmdPipelineBarrier(
-                cmdBuf->GetHandle(),
-                c.stagesBefore,
-                c.stagesAfter,
-                0 /*VkDependencyFlags*/,
-                memBarriers.size(), memBarriers.data(),
-                bufBarriers.size(), bufBarriers.data(),
-                texBarrier.size(), texBarrier.data());
+            
+            VK_DEV_CALL(cmdBuf->GetDevice(),
+                vkCmdPipelineBarrier(
+                    cmdBuf->GetHandle(),
+                    c.stagesBefore,
+                    c.stagesAfter,
+                    0 /*VkDependencyFlags*/,
+                    memBarriers.size(), memBarriers.data(),
+                    bufBarriers.size(), bufBarriers.data(),
+                    texBarrier.size(), texBarrier.data()));
 
         }
     }

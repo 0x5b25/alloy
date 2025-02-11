@@ -14,56 +14,17 @@
 
 namespace alloy
 {
+    class IPhysicalAdapter;
     class ResourceFactory;
     class ICommandQueue;
     //class SwapChain;
 
-    struct GraphicsApiVersion
-    {
-        static const GraphicsApiVersion Unknown;
-
-        int major;
-        int minor;
-        int subminor;
-        int patch;
-
-        bool IsKnown() {return major != 0 && minor != 0 && subminor != 0 && patch != 0; }        
-
-        operator std::string()
-        {
-            std::stringstream ss;
-            ss << major << "." << minor << "." << subminor << "." << patch;
-            return ss.str();
-        }
-
-        
-    };
+    
 
     class IGraphicsDevice : public common::RefCntBase{
         DISABLE_COPY_AND_ASSIGN(IGraphicsDevice);
 
     public:
-        struct AdapterInfo{
-            /*
-            // Provided by VK_VERSION_1_0
-typedef struct VkPhysicalDeviceProperties {
-    uint32_t                            apiVersion;
-    uint32_t                            driverVersion;
-    uint32_t                            vendorID;
-    uint32_t                            deviceID;
-    VkPhysicalDeviceType                deviceType;
-    char                                deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
-    uint8_t                             pipelineCacheUUID[VK_UUID_SIZE];
-    VkPhysicalDeviceLimits              limits;
-    VkPhysicalDeviceSparseProperties    sparseProperties;
-} VkPhysicalDeviceProperties;
-*/
-            GraphicsApiVersion apiVersion;
-            std::uint64_t driverVersion;
-            std::uint32_t vendorID;
-            std::uint32_t deviceID;
-            std::string deviceName;
-        };
 
         struct Features{
             union{
@@ -117,12 +78,13 @@ typedef struct VkPhysicalDeviceProperties {
         IGraphicsDevice() = default;
 
     public:
-        virtual const AdapterInfo& GetAdapterInfo() const = 0;
+        //virtual const AdapterInfo& GetAdapterInfo() const = 0;
 
         //virtual const std::string& DeviceName() const = 0;
         //virtual const std::string& VendorName() const = 0;
         //virtual const GraphicsApiVersion ApiVersion() const = 0;
         virtual const Features& GetFeatures() const = 0;
+        virtual IPhysicalAdapter& GetAdapter() const = 0;
 
         virtual void* GetNativeHandle() const = 0;
 

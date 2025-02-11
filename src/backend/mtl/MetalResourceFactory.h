@@ -35,7 +35,7 @@ namespace alloy::mtl{
         MetalResourceFactory() = default;
         ~MetalResourceFactory() = default;
 
-        virtual void* GetHandle() const override;
+        //virtual void* GetHandle() const override;
 
         VLD_RF_FOR_EACH_RES(MTL_DECL_RF_CREATE_WITH_DESC)
 
@@ -57,6 +57,10 @@ namespace alloy::mtl{
         virtual common::sp<ITextureView> CreateTextureView(
             const common::sp<ITexture>& texture,
             const ITextureView::Description& description) override;
+
+
+        virtual common::sp<IRenderTarget> CreateRenderTarget(
+            const common::sp<ITextureView>& texView) override;
 
        
         //virtual sp<CommandList> CreateCommandList() override;

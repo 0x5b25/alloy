@@ -2,7 +2,6 @@
 
 namespace alloy
 {
-    const GraphicsApiVersion GraphicsApiVersion::Unknown = {};
 
 
 } // namespace alloy

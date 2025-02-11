@@ -304,7 +304,7 @@ namespace alloy::vk{
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(_cmdBuf, &beginInfo);
+        VK_DEV_CALL(_dev, vkBeginCommandBuffer(_cmdBuf, &beginInfo));
 
     }
     void VulkanCommandList::End(){
@@ -312,7 +312,7 @@ namespace alloy::vk{
             assert(false);
         }
 
-        vkEndCommandBuffer(_cmdBuf);
+        VK_DEV_CALL(_dev, vkEndCommandBuffer(_cmdBuf));
     }
 
     void VkRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
@@ -321,8 +321,10 @@ namespace alloy::vk{
                 
         resources.insert(pipeline);
 
-        vkCmdBindPipeline(
-            cmdList, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline->GetHandle());
+        VK_DEV_CALL(dev,
+            vkCmdBindPipeline(cmdList,
+                              VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              vkPipeline->GetHandle()));
 
 
         //Mark current pipeline
@@ -335,8 +337,10 @@ namespace alloy::vk{
                 
         resources.insert(pipeline);
 
-        vkCmdBindPipeline(
-            cmdList, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE, vkPipeline->GetHandle());
+        VK_DEV_CALL(dev, vkCmdBindPipeline(
+            cmdList, 
+            VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE, 
+            vkPipeline->GetHandle()));
 
 
         //Mark current pipeline
@@ -346,7 +350,7 @@ namespace alloy::vk{
 
     
     void VkRenderCmdEnc::EndPass() {
-        vkCmdEndRenderingKHR(cmdList);
+        VK_DEV_CALL(dev, vkCmdEndRenderingKHR(cmdList));
     }
 
     
@@ -357,7 +361,8 @@ namespace alloy::vk{
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject());
         std::uint64_t offset64 = buffer->GetShape().GetOffsetInBytes();
-        vkCmdBindVertexBuffers(cmdList, index, 1, &(vkBuffer->GetHandle()), &offset64);
+        VK_DEV_CALL(dev,
+            vkCmdBindVertexBuffers(cmdList, index, 1, &(vkBuffer->GetHandle()), &offset64));
     }
 
     void VkRenderCmdEnc::SetIndexBuffer(
@@ -367,7 +372,11 @@ namespace alloy::vk{
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject());
         auto offset = buffer->GetShape().GetOffsetInBytes();
-        vkCmdBindIndexBuffer(cmdList, vkBuffer->GetHandle(), offset, alloy::vk::VdToVkIndexFormat(format));
+        VK_DEV_CALL(dev,
+            vkCmdBindIndexBuffer(cmdList,
+                                 vkBuffer->GetHandle(),
+                                 offset,
+                                 alloy::vk::VdToVkIndexFormat(format)));
     }
 
     
@@ -392,6 +401,7 @@ namespace alloy::vk{
         if (!descriptorSets.empty())
         {
             // Flush current batch.
+            VK_DEV_CALL(dev,
             vkCmdBindDescriptorSets(
                 cmdList,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -400,7 +410,7 @@ namespace alloy::vk{
                 descriptorSets.size(),
                 descriptorSets.data(),
                 0,
-                nullptr);
+                nullptr));
         }
         resources.insert(rs);
         //auto& entry = _resourceSets[slot];
@@ -431,15 +441,16 @@ namespace alloy::vk{
         if (!descriptorSets.empty())
         {
             // Flush current batch.
-            vkCmdBindDescriptorSets(
-                cmdList,
-                VK_PIPELINE_BIND_POINT_COMPUTE,
-                pipeline->GetLayout(),
-                0,
-                descriptorSets.size(),
-                descriptorSets.data(),
-                0,
-                nullptr);
+            VK_DEV_CALL(dev,
+                vkCmdBindDescriptorSets(
+                    cmdList,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    pipeline->GetLayout(),
+                    0,
+                    descriptorSets.size(),
+                    descriptorSets.data(),
+                    0,
+                    nullptr));
         }
         
         resources.insert(rs);
@@ -560,7 +571,8 @@ namespace alloy::vk{
                 vkViewport.minDepth = v.minDepth;
                 vkViewport.maxDepth = v.maxDepth;
             }
-            vkCmdSetViewport(cmdList, 0, vkViewports.size(), vkViewports.data());
+            VK_DEV_CALL(dev,
+                vkCmdSetViewport(cmdList, 0, vkViewports.size(), vkViewports.data()));
         }
     }
     void VkRenderCmdEnc::SetFullViewports() {
@@ -600,7 +612,7 @@ namespace alloy::vk{
             
             }
             
-            vkCmdSetScissor(cmdList, 0, scissors.size(), scissors.data());
+            VK_DEV_CALL(dev, vkCmdSetScissor(cmdList, 0, scissors.size(), scissors.data()));
             //}
         }
     }
@@ -620,7 +632,8 @@ namespace alloy::vk{
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        vkCmdDraw(cmdList, vertexCount, instanceCount, vertexStart, instanceStart);
+        VK_DEV_CALL(dev,
+            vkCmdDraw(cmdList, vertexCount, instanceCount, vertexStart, instanceStart));
     }
     
     void VkRenderCmdEnc::DrawIndexed(
@@ -629,7 +642,14 @@ namespace alloy::vk{
         std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        vkCmdDrawIndexed(cmdList, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        VK_DEV_CALL(dev,
+            vkCmdDrawIndexed(
+                cmdList, 
+                indexCount, 
+                instanceCount, 
+                indexStart, 
+                vertexOffset, 
+                instanceStart));
     }
 #if 0
     void VulkanCommandList::DrawIndirect(
@@ -665,7 +685,7 @@ namespace alloy::vk{
     void VkComputeCmdEnc::Dispatch(
         std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
     ){
-        vkCmdDispatch(cmdList, groupCountX, groupCountY, groupCountZ);
+        VK_DEV_CALL(dev, vkCmdDispatch(cmdList, groupCountX, groupCountY, groupCountZ));
     };
 
 #if 0
@@ -725,14 +745,14 @@ namespace alloy::vk{
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
         //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferDstOptimal);
 
-        vkCmdResolveImage(
+        VK_DEV_CALL(dev,vkCmdResolveImage(
             cmdList,
             vkSource->GetHandle(),
             VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             vkDestination->GetHandle(),
             VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             1,
-            &region);
+            &region));
 
         if (vkDestination->GetDesc().usage.sampled)
         {
@@ -770,9 +790,9 @@ namespace alloy::vk{
         dstSubresource.mipLevel = dstMipLevel;
         dstSubresource.baseArrayLayer = dstBaseArrayLayer;
 
-        vkCmdCopyBufferToImage(
+        VK_DEV_CALL(dev,vkCmdCopyBufferToImage(
             cmdList, srcBuffer->GetHandle(), 
-            dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions);
+            dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions));
 
         //if ((dstVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -834,10 +854,10 @@ namespace alloy::vk{
         srcSubresource.baseArrayLayer = srcBaseArrayLayer;            
             
 
-        vkCmdCopyImageToBuffer(
+        VK_DEV_CALL(dev,vkCmdCopyImageToBuffer(
             cmdList,
             srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            dstBuffer->GetHandle(), 1, &region);
+            dstBuffer->GetHandle(), 1, &region));
 
         //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -865,7 +885,13 @@ namespace alloy::vk{
         region.dstOffset = destination->GetShape().GetOffsetInBytes(),
         region.size = sizeInBytes;
 
-        vkCmdCopyBuffer(cmdList, srcVkBuffer->GetHandle(), dstVkBuffer->GetHandle(), 1, &region);
+        VK_DEV_CALL(dev, 
+            vkCmdCopyBuffer(
+                cmdList, 
+                srcVkBuffer->GetHandle(), 
+                dstVkBuffer->GetHandle(), 
+                1, 
+                &region));
 
         //VkMemoryBarrier barrier;
         //barrier.sType = VkStructureType.MemoryBarrier;
@@ -935,14 +961,15 @@ namespace alloy::vk{
         //    layerCount,
         //    VkImageLayout.TransferDstOptimal);
 
-        vkCmdCopyImage(
-            cmdList,
-            srcVkTexture->GetHandle(),
-            VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            dstVkTexture->GetHandle(),
-            VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &region);
+        VK_DEV_CALL(dev,
+            vkCmdCopyImage(
+                cmdList,
+                srcVkTexture->GetHandle(),
+                VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                dstVkTexture->GetHandle(),
+                VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &region));
 
         //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -1230,7 +1257,7 @@ namespace alloy::vk{
             .pStencilAttachment = hasStencil ? &stencilAttachment : nullptr,   
         };
 
-        vkCmdBeginRenderingKHR(_cmdBuf, &render_info);
+        VK_DEV_CALL(_dev, vkCmdBeginRenderingKHR(_cmdBuf, &render_info));
 
 
         return *pNewEnc;

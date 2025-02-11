@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(veldridcpp
     DESCRIPTION "A C++ port of the legendary veldrid library"
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
 
 set(VLD_MISC_HEADERS
     "include/alloy/backend/Backends.hpp"
@@ -48,6 +48,7 @@ set(VLD_IFACE_IMP_SRCS
     "src/Helpers.cpp"
     #"src/DeviceResource.cpp"
     "src/Backends.cpp"
+    "src/Context.cpp"
 )
 
 source_group(
@@ -122,6 +123,7 @@ endif()
 
 if(${VLD_BACKEND_MTL})
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_MTL=1)
+    enable_language(OBJC)
     enable_language(OBJCXX)
     #target_compile_options(Veldrid PRIVATE -fobjc-arc)
     #target_compile_features(Veldrid PUBLIC objcxx_std_23)

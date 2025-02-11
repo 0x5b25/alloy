@@ -319,6 +319,7 @@ namespace alloy
             case IndexFormat::UInt16: return 2;
             case IndexFormat::UInt32: return 4;
         }
+        return 1;
     }
     
         std::int32_t GetElementCount(ShaderDataType format)

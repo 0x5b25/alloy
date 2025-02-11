@@ -360,7 +360,8 @@ namespace alloy::vk {
         
         VkSubresourceLayout outLayout{ };
 
-        vkGetImageSubresourceLayout(_dev->LogicalDev(), _img, &subResDesc, &outLayout);
+        VK_DEV_CALL(_dev, 
+            vkGetImageSubresourceLayout(_dev->LogicalDev(), _img, &subResDesc, &outLayout));
 
         ITexture::SubresourceLayout ret {};
         ret.offset = outLayout.offset;
@@ -432,14 +433,14 @@ namespace alloy::vk {
         VkPipelineStageFlags srcStageFlags = _pipelineFlag;
         VkPipelineStageFlags dstStageFlags = pipelineFlag;
 
-        vkCmdPipelineBarrier(
+        VK_DEV_CALL(_dev, vkCmdPipelineBarrier(
             cb,
             srcStageFlags,
             dstStageFlags,
             0,
             0, nullptr,
             0, nullptr,
-            1, &barrier);
+            1, &barrier));
 
         _layout = layout;
         _pipelineFlag = pipelineFlag;
@@ -450,7 +451,7 @@ namespace alloy::vk {
     VulkanTextureView::~VulkanTextureView() {
         auto vkTex = static_cast<VulkanTexture*>(target.get());
         auto& _dev = vkTex->GetDevice();
-        vkDestroyImageView(_dev.LogicalDev(), _view, nullptr);
+        _dev.GetFnTable().vkDestroyImageView(_dev.LogicalDev(), _view, nullptr);
     }
 
 	common::sp<VulkanTextureView> VulkanTextureView::Make(
@@ -515,7 +516,7 @@ namespace alloy::vk {
         }
 
         VkImageView vkImgView;
-        vkCreateImageView(dev.LogicalDev(), &imageViewCI, nullptr, &vkImgView);
+        dev.GetFnTable().vkCreateImageView(dev.LogicalDev(), &imageViewCI, nullptr, &vkImgView);
 
         auto imgView = new VulkanTextureView(target, desc);
         imgView->_view = vkImgView;
@@ -565,7 +566,7 @@ namespace alloy::vk {
 
 
     VulkanSampler::~VulkanSampler(){
-        vkDestroySampler(_dev->LogicalDev(), _sampler, nullptr);
+        VK_DEV_CALL(_dev, vkDestroySampler(_dev->LogicalDev(), _sampler, nullptr));
     }
 
 
@@ -600,7 +601,7 @@ namespace alloy::vk {
         samplerCI.borderColor = VdToVkSamplerBorderColor(desc.borderColor);
 
         VkSampler rawSampler;
-        vkCreateSampler(dev->LogicalDev(), &samplerCI, nullptr, &rawSampler);
+        VK_DEV_CALL(dev, vkCreateSampler(dev->LogicalDev(), &samplerCI, nullptr, &rawSampler));
 
         auto* sampler = new VulkanSampler(dev, desc);
         sampler->_sampler = rawSampler;
