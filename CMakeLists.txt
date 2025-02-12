@@ -130,6 +130,13 @@ if(${VLD_BACKEND_MTL})
     include("src/backend/mtl/CMakeLists.txt")
 endif()
 
+target_sources(Veldrid
+    PUBLIC
+    FILE_SET  vld_headers
+    TYPE      HEADERS
+    BASE_DIRS include
+    FILES     ${VLD_MISC_HEADERS} ${VLD_IFACE_HEADERS} )
+
 
 target_link_libraries(Veldrid 
     PUBLIC
@@ -160,7 +167,30 @@ function(link_with_veldrid TARGET)
 
 endfunction()
 
-add_subdirectory("demo")
 
-#add_executable("APITest" "demo.cpp")
-#target_link_libraries(APITest PRIVATE Veldrid)
+function(alloy_install_runtime_libs COMP_NAME PREFIX_PATH)
+    install(CODE "MESSAGE(\"alloy: installing runtime libraries for each backend to ${PREFIX_PATH}...\")"  COMPONENT ${COMP_NAME})
+    if(${VLD_BACKEND_DXC})
+        alloy_install_dxc_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+    endif()
+
+    if(${VLD_BACKEND_VK})
+        alloy_install_vulkan_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+    endif()
+
+    if(${VLD_BACKEND_MTL})
+        alloy_install_metal_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+    endif()
+endfunction()
+
+if(${ALLOY_BUILD_TESTS})
+    add_subdirectory("demo")
+endif()
+
+install(TARGETS Veldrid 
+    COMPONENT alloy
+    FILE_SET vld_headers DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+    RUNTIME              DESTINATION "${CMAKE_INSTALL_PREFIX}/bin"
+    LIBRARY              DESTINATION "${CMAKE_INSTALL_PREFIX}/lib")
+
+alloy_install_runtime_libs(alloy "${CMAKE_INSTALL_PREFIX}/bin")

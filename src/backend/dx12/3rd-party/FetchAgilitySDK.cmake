@@ -68,6 +68,21 @@ function(agility_sdk_copy_binaries TARGET)
     )
 endfunction()
 
+
+function(alloy_install_agility_sdk_binaries COMP_NAME PREFIX_PATH)
+
+    install(
+        PROGRAMS
+            ${AGILITY_Core_DLL}
+            ${AGILITY_DX12SDKLayers_DLL}
+        DESTINATION
+            ${PREFIX_PATH}/DX12
+        COMPONENT
+            ${COMP_NAME}
+    )
+
+endfunction()
+
 # Export DXC variables for use in parent projects
 set(AGILITY_SDK_FOUND TRUE)
 set(AGILITY_SDK_DIR ${AGILITY_SDK_SRC})

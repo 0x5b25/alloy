@@ -88,3 +88,9 @@ target_link_libraries(Veldrid
     #    vma
     #    spdlog
     )
+
+
+function(alloy_install_metal_runtime_libs COMP_NAME PREFIX_PATH)
+    install(CODE "MESSAGE(\"alloy: installing metal runtime libraries...\")" COMPONENT ${COMP_NAME})
+    #message("alloy: installing metal runtime libraries to ${PREFIX_PATH}...")
+endfunction()

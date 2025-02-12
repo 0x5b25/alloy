@@ -84,14 +84,23 @@ function(CreateDemoApp DemoName)
     )
 
     target_link_libraries(${DemoName} 
-        PUBLIC demoAppBase
+        PUBLIC
+            demoAppBase
+        PRIVATE 
+            Veldrid
+            dxc
     )
-    link_with_veldrid(${DemoName})
-    target_link_libraries(${DemoName} PRIVATE dxc)
-    dxc_copy_binaries(${DemoName})  # If you need the DLLs in your output directory
+    
+    #target_link_libraries(${DemoName} PRIVATE dxc)
+    #dxc_copy_binaries(${DemoName})  # If you need the DLLs in your output directory
 
     #target_compile_options(${DemoName} PUBLIC -123456)
     set_target_properties(${DemoName} PROPERTIES FOLDER "demo")
+
+    install(TARGETS ${DemoName} 
+        COMPONENT alloy_demo
+        RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}/bin/demo")
+
 
 endfunction(CreateDemoApp)
 
@@ -100,3 +109,6 @@ CreateDemoApp(uniformBufferTest)
 CreateDemoApp(textureTest)
 CreateDemoApp(imguiTest)
 CreateDemoApp(renderTargetTest)
+
+alloy_install_runtime_libs(alloy_demo "${CMAKE_INSTALL_PREFIX}/bin/demo")
+alloy_install_dxc_binaries(alloy_demo "${CMAKE_INSTALL_PREFIX}/bin/demo")
