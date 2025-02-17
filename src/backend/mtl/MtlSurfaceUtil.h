@@ -1,6 +1,5 @@
 #pragma once
 
-#include <AppKit/AppKit.h>
 #include <QuartzCore/QuartzCore.h>
 
 #include "alloy/SwapChainSources.hpp"
@@ -11,4 +10,4 @@ struct MtlSurfaceContainer{
 };
 
 
-MtlSurfaceContainer CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src);
+CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src);

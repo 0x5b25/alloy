@@ -11,7 +11,7 @@
 #include "alloy/common/Macros.h"
 #include "alloy/common/Waitable.hpp"
 #include "alloy/backend/Backends.hpp"
-#include "MtlSurfaceUtil.hpp"
+//#include "MtlSurfaceUtil.hpp"
 #include "MetalCommandList.h"
 #include "MetalSwapChain.h"
 
@@ -144,10 +144,10 @@ namespace alloy::mtl
                     ,MTLFeatureSet_iOS_GPUFamily2_v4
                     ,MTLFeatureSet_iOS_GPUFamily2_v5
                     
-                    ,MTLFeatureSet_tvOS_GPUFamily1_v1
-                    ,MTLFeatureSet_tvOS_GPUFamily1_v2
-                    ,MTLFeatureSet_tvOS_GPUFamily1_v3
-                    ,MTLFeatureSet_tvOS_GPUFamily1_v4
+                    //,MTLFeatureSet_tvOS_GPUFamily1_v1
+                    //,MTLFeatureSet_tvOS_GPUFamily1_v2
+                    //,MTLFeatureSet_tvOS_GPUFamily1_v3
+                    //,MTLFeatureSet_tvOS_GPUFamily1_v4
                 })){
                     arch = MTLGPUFamilyApple2;
                 }else break;
@@ -159,8 +159,8 @@ namespace alloy::mtl
                     ,MTLFeatureSet_iOS_GPUFamily3_v3
                     ,MTLFeatureSet_iOS_GPUFamily3_v4
                     
-                    ,MTLFeatureSet_tvOS_GPUFamily2_v1
-                    ,MTLFeatureSet_tvOS_GPUFamily2_v2
+                    //,MTLFeatureSet_tvOS_GPUFamily2_v1
+                    //,MTLFeatureSet_tvOS_GPUFamily2_v2
                 })){
                     arch = MTLGPUFamilyApple3;
                 }else break;
@@ -246,8 +246,8 @@ namespace alloy::mtl
         }
 
         operator GraphicsApiVersion() const {
-            int major = (int)_arch / 1000;
-            int minor = (int)_arch % 1000;
+            uint32_t major = _arch / 1000;
+            uint32_t minor = _arch % 1000;
             return GraphicsApiVersion{Backend::Metal, major, minor, 0, 0};
         }
 
@@ -449,10 +449,12 @@ namespace alloy::mtl
                 auto dev = devices[i];
                 //Argument buffer tier2 support is mandatory for
                 //metal shader converter.
+#ifndef VLD_PLATFORM_IOS_SIM
                 if(dev.argumentBuffersSupport < MTLArgumentBuffersTier2) {
                     [dev release];
                     continue;
                 }
+#endif
                 auto mtlAdp = new MetalAdapter(dev);
                 adps.emplace_back(mtlAdp);
             }

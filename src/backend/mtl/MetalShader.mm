@@ -2,6 +2,7 @@
 
 #include "MetalDevice.h"
 #include "MtlTypeCvt.h"
+#include "alloy/common/Macros.h"
 
 #include <vector>
 
@@ -9,6 +10,15 @@
 
 //#define IR_PRIVATE_IMPLEMENTATION // define only once in an implementation file
 #include <metal_irconverter_runtime/metal_irconverter_runtime.h>
+
+#ifdef VLD_PLATFORM_IOS_SIM
+    #define SHADER_TARGET_OS IROperatingSystem_iOSSimulator, "18.0"
+#elif defined(VLD_PLATFORM_IOS)
+    #define SHADER_TARGET_OS IROperatingSystem_iOS, "18.0"
+#elif defined(VLD_PLATFORM_MACOS) || defined(VLD_PLATFORM_MACCATALYST)
+    #define SHADER_TARGET_OS IROperatingSystem_macOS, "14.0"
+#endif
+;
 
 namespace alloy::mtl {
 
@@ -97,7 +107,7 @@ id<MTLLibrary> TranspileDXILShader(
     id<MTLLibrary> sh = nil;
     IRCompiler* pCompiler = IRCompilerCreate();
     IRCompilerSetEntryPointName(pCompiler,entryPoint.c_str());
-    IRCompilerSetMinimumDeploymentTarget(pCompiler,IROperatingSystem_macOS,"14.0.0");
+    IRCompilerSetMinimumDeploymentTarget(pCompiler,SHADER_TARGET_OS);
     IRCompilerSetGlobalRootSignature(pCompiler, rootSig);
 
     IRObject* pDXIL = IRObjectCreateFromDXIL(
@@ -168,7 +178,7 @@ MetalVertexShaderStage TranspileVertexShader(id<MTLDevice> dev,
     //IRObject* pIR = // input IR
     IRCompilerSetEntryPointName(pCompiler,entryPoint.c_str());
     IRCompilerSetGlobalRootSignature(pCompiler, rootSig);
-    IRCompilerSetMinimumDeploymentTarget(pCompiler,IROperatingSystem_macOS,"14.0.0");
+    IRCompilerSetMinimumDeploymentTarget(pCompiler,SHADER_TARGET_OS);
 
     IRObject* pDXIL = IRObjectCreateFromDXIL(dxil.data(),
                                              dxil.size(),

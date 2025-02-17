@@ -4,10 +4,11 @@
 #include "alloy/SwapChainSources.hpp"
 
 #include "MtlTypeCvt.h"
-#include "MtlSurfaceUtil.hpp"
+#include "MtlSurfaceUtil.h"
+
 
 //#include <AppKit/AppKit.h>
-#import <AppKit/NSWindow.h>
+//#import <AppKit/NSWindow.h>
 
 
 namespace alloy::mtl {
@@ -18,9 +19,12 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
 ) {
     @autoreleasepool{
         
-        //auto surf = CreateSurface(dev->GetHandle(), desc.source);
+        auto swapChain = CreateSurface(dev->GetHandle(), desc.source);
+        if(!swapChain) {
+            return nullptr;
+        }
         //[[MTLRenderPassDescriptor alloc] init];
-        CAMetalLayer *swapChain = [CAMetalLayer new];
+        //CAMetalLayer *swapChain = [CAMetalLayer new];
 
         swapChain.device = dev->GetHandle();
         //swapChain.opaque = true;
@@ -29,7 +33,7 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
         //Metal specs say that drawable count can only be 2 or 3
         swapChain.maximumDrawableCount = desc.backBufferCnt;
         swapChain.drawableSize = {(float)desc.initialWidth, (float)desc.initialHeight};
-
+#if 0
         if(desc.source){
             switch(desc.source->tag){
 
@@ -55,6 +59,7 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
             break;
             }
         }
+#endif
         //[swapChain retain];
         auto sc = new MetalSwapChain(dev, swapChain, desc);
 

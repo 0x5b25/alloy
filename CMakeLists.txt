@@ -20,10 +20,12 @@ set(VLD_MISC_SRCS
 
 
 set(VLD_IFACE_HEADERS
+    "include/alloy/Context.hpp"
     "include/alloy/RenderPass.hpp"
     "include/alloy/CommandQueue.hpp"
     "include/alloy/Buffer.hpp"
     "include/alloy/CommandList.hpp"
+    "include/alloy/ResourceBarrier.hpp"
     "include/alloy/BindableResource.hpp"
     "include/alloy/SyncObjects.hpp"
     "include/alloy/FixedFunctions.hpp"

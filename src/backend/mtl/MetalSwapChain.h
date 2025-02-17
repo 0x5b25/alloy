@@ -2,7 +2,7 @@
 
 #include "MetalDevice.h"
 #include "MetalTexture.h"
-#include "alloy/Framebuffer.hpp"
+#include "alloy/FrameBuffer.hpp"
 #include "alloy/SwapChain.hpp"
 
 #include <cassert>
