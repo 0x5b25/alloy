@@ -1,4 +1,4 @@
-#include <alloy/backend/Backends.hpp>
+#include <alloy/Context.hpp>
 #include <alloy/SwapChainSources.hpp>
 #include <alloy/SwapChain.hpp>
 #include <alloy/BindableResource.hpp>
@@ -419,14 +419,17 @@ class UniformApp : public AppBase {
         unsigned surfaceWidth,
         unsigned surfaceHeight
     ) override {
+        
+        auto ctx = alloy::IContext::CreateDefault();
+
         alloy::IGraphicsDevice::Options opt{};
         opt.debug = true;
         opt.preferStandardClipSpaceYDirection = true;
         //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
-        dev = alloy::CreateVulkanGraphicsDevice(opt);
+        dev = ctx->CreateDefaultDevice(opt);
         //dev = alloy::CreateDX12GraphicsDevice(opt);
 
-        auto& adpInfo = dev->GetAdapterInfo();
+        auto& adpInfo = dev->GetAdapter().GetAdapterInfo();
 
         std::cout << "Picked device:\n";
         std::cout << "    Vendor ID   : " << std::hex << adpInfo.vendorID << "\n";

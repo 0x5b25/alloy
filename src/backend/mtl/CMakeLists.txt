@@ -48,21 +48,28 @@ set(VLD_BACKEND_MTL_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/MetalResourceFactory.h"
 
     "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.mm"
-    "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.h"
 
 
     "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.h"
+
+    "${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m"
 )
+
+#enable objc ARC for metal shader converter
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m" PROPERTIES COMPILE_FLAGS -fobjc-arc)
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${VLD_BACKEND_MTL_SRCS})
 
-add_library(metal_shader_converter_impl STATIC "${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m")
-target_compile_options(metal_shader_converter_impl PRIVATE -fobjc-arc)
-target_link_libraries(metal_shader_converter_impl 
-    PRIVATE
-        "-framework Metal"
-        MetalShaderConverter)
+#add_library(metal_shader_converter_impl STATIC "${CMAKE_CURRENT_LIST_DIR}/MtlShaderCvtImpl.m")
+#target_compile_options(metal_shader_converter_impl PRIVATE -fobjc-arc)
+#target_link_libraries(metal_shader_converter_impl 
+#    PRIVATE
+#        "-framework Metal"
+#        MetalShaderConverter)
+
+#target_compile_options(metal_shader_converter_impl PRIVATE "-I${CMAKE_CURRENT_SOURCE_DIR}/3rd-party/MetalShaderConverter/include")
 
 target_sources(Veldrid
     PRIVATE
@@ -73,9 +80,9 @@ target_link_libraries(Veldrid
         "-framework Foundation"
         "-framework Metal"
         "-framework QuartzCore"
+        "-framework IOKit"
         MetalShaderConverter
-        demo_dep
-        metal_shader_converter_impl
+    #    metal_shader_converter_impl
     #    common
     #    glm
     #    vulkan
@@ -88,3 +95,10 @@ target_link_libraries(Veldrid
     #    vma
     #    spdlog
     )
+
+
+function(alloy_install_metal_runtime_libs COMP_NAME PREFIX_PATH)
+    install(CODE "MESSAGE(\"alloy: installing metal runtime libraries...\")" COMPONENT ${COMP_NAME})
+    #message("alloy: installing metal runtime libraries to ${PREFIX_PATH}...")
+    alloy_install_metal_shader_converter(${COMP_NAME} ${PREFIX_PATH})
+endfunction()

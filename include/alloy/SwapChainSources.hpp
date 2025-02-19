@@ -12,6 +12,7 @@ namespace alloy
             Opaque,
             Win32,
             NSView,
+            UIView,
             NSWindow,
         } tag;
 
@@ -62,6 +63,19 @@ namespace alloy
 
 
 #endif
+
+
+#if defined(VLD_PLATFORM_IOS) || defined(VLD_PLATFORM_IOS_SIM) || defined(VLD_PLATFORM_MACCATALYST)
+    struct UIViewSwapChainSource : SwapChainSource
+    {
+        void* uiView;
+
+        UIViewSwapChainSource(void* uiView)
+            : SwapChainSource(SwapChainSource::Tag::UIView)
+            , uiView(uiView)
+        { }
+    };
+#endif
     /*
     internal class UwpSwapchainSource : SwapchainSource
     {
@@ -100,15 +114,6 @@ namespace alloy
     }
 
 
-    internal class UIViewSwapchainSource : SwapchainSource
-    {
-        public IntPtr UIView{ get; }
-
-            public UIViewSwapchainSource(IntPtr uiView)
-        {
-            UIView = uiView;
-        }
-    }
 
     internal class AndroidSurfaceSwapchainSource : SwapchainSource
     {

@@ -251,7 +251,7 @@ namespace alloy::mtl {
         auto samplerHeapSize = samplerCnt * sizeof(IRDescriptorTableEntry);
         auto rootSigSize = 2 * sizeof(uint64_t); /*ptr to combined res table and sampler table*/
         
-        uint64_t argBufferSize = 0x10000;//combinedResHeapSize + samplerHeapSize + rootSigSize;
+        uint64_t argBufferSize = combinedResHeapSize + samplerHeapSize + rootSigSize;
         
         @autoreleasepool {
             
@@ -289,9 +289,9 @@ namespace alloy::mtl {
             //MTL::Buffer* pSamplerTable = _pScratch->newBuffer(sizeof(IRDescriptorTableEntry), MTL::ResourceStorageModeShared)->autorelease();
             //pEntry                     = (IRDescriptorTableEntry*)pSamplerTable->contents();
             //IRDescriptorTableSetSampler(pEntry, _pSampler, 0);
-            
-            auto* pCombinedResEntry = (IRDescriptorTableEntry*)((uint64_t)heapArgAddr);
-            auto* pSamplerEntry = (IRDescriptorTableEntry*)((uint64_t)heapArgAddr + combinedResHeapSize);
+            auto entryStartCpuAddr = ((uint64_t)[_argBuf contents]) + rootSigSize;
+            auto* pCombinedResEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr);
+            auto* pSamplerEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr + combinedResHeapSize);
             
             
             for(unsigned i = 0; i < layoutDesc.elements.size(); i++) {

@@ -95,3 +95,10 @@ target_link_libraries(Veldrid
         dxil-spirv-c-static
     #    spdlog
     )
+
+
+function(alloy_install_vulkan_runtime_libs COMP_NAME PREFIX_PATH)
+    #message("alloy: installing vulkan runtime libraries to ${PREFIX_PATH}...")
+    
+    install(CODE "MESSAGE(\"alloy: installing vulkan runtime libraries...\")"  COMPONENT ${COMP_NAME})
+endfunction()

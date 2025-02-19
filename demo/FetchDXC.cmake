@@ -26,6 +26,7 @@ endif()
 
 # Define the path to the DXC binaries relative to this CMakeLists.txt
 set(DXC_BIN_DIR "${DXC_SRC}/bin")
+set(DXC_BIN_DIR "${DXC_BIN_DIR}" PARENT_SCOPE)
 
 # Determine architecture
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -71,6 +72,21 @@ function(dxc_copy_binaries TARGET)
             "${DXC_DXIL_DLL}"
             $<TARGET_FILE_DIR:${TARGET}>
     )
+endfunction()
+
+
+function(alloy_install_dxc_binaries COMP_NAME PREFIX_PATH)
+
+    install(
+        PROGRAMS
+            "${DXC_COMPILER_DLL}"
+            "${DXC_DXIL_DLL}"
+        DESTINATION
+            ${PREFIX_PATH}
+        COMPONENT
+            ${COMP_NAME}
+    )
+
 endfunction()
 
 # Export DXC variables for use in parent projects

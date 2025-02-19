@@ -64,19 +64,19 @@
     #include <TargetConditionals.h>
     #if TARGET_IPHONE_SIMULATOR
     // iOS, tvOS, or watchOS Simulator
-        #define VLD_PLATFORM_IOS_SIM
+        #define VLD_PLATFORM_IOS_SIM 1
         #define VLD_PLATFORM VLD_PLATFORM_IOS_SIM
     #elif TARGET_OS_MACCATALYST
      // Mac's Catalyst (ports iOS API into Mac, like UIKit).
-        #define VLD_PLATFORM_MACCATALYST
+        #define VLD_PLATFORM_MACCATALYST 1
         #define VLD_PLATFORM VLD_PLATFORM_MACCATALYST
     #elif TARGET_OS_IPHONE
     // iOS, tvOS, or watchOS device
-        #define VLD_PLATFORM_IOS
+        #define VLD_PLATFORM_IOS 1
         #define VLD_PLATFORM VLD_PLATFORM_IOS
     #elif TARGET_OS_MAC
     // Other kinds of Apple platforms
-        #define VLD_PLATFORM_MACOS
+        #define VLD_PLATFORM_MACOS 1
         #define VLD_PLATFORM VLD_PLATFORM_MACOS
     #else
     #   error "Unknown Apple platform"
