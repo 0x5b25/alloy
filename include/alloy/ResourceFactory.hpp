@@ -54,7 +54,7 @@ namespace alloy
             void* nativeHandle,
             const ITexture::Description& description) = 0;
 
-        common::sp<ITextureView> CreateTextureView(common::sp<ITexture>& texture) {
+        common::sp<ITextureView> CreateTextureView(const common::sp<ITexture>& texture) {
             ITextureView::Description desc{};
             auto& texDesc = texture->GetDesc();
             

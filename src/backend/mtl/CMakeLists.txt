@@ -97,8 +97,8 @@ target_link_libraries(Veldrid
     )
 
 
-function(alloy_install_metal_runtime_libs COMP_NAME PREFIX_PATH)
+function(alloy_install_metal_runtime_libs PREFIX_PATH COMP_NAME)
     install(CODE "MESSAGE(\"alloy: installing metal runtime libraries...\")" COMPONENT ${COMP_NAME})
     #message("alloy: installing metal runtime libraries to ${PREFIX_PATH}...")
-    alloy_install_metal_shader_converter(${COMP_NAME} ${PREFIX_PATH})
+    alloy_install_metal_shader_converter(${PREFIX_PATH} ${COMP_NAME})
 endfunction()

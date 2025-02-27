@@ -37,7 +37,9 @@ namespace alloy::vk
 
         ~VulkanTexture();
 
-        const VkImage& GetHandle() const { return _img; }
+        VkImage GetHandle() const { return _img; }
+        virtual void* GetNativeHandle() const override {return GetHandle();}
+
         const VulkanDevice& GetDevice() const { return *_dev; }
         bool IsOwnTexture() const {return _allocation != VK_NULL_HANDLE; }
 

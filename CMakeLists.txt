@@ -74,6 +74,19 @@ elseif(UNIX)
     set(VLD_BACKEND_MTL false)
 endif()
 
+if(VLD_BACKEND_DXC)
+    set(VLD_BACKEND_DXC true PARENT_SCOPE)
+endif()
+
+
+if(VLD_BACKEND_VK)
+    set(VLD_BACKEND_VK true PARENT_SCOPE)
+endif()
+
+if(VLD_BACKEND_MTL)
+    set(VLD_BACKEND_MTL true PARENT_SCOPE)
+endif()
+
 function(PrintBackendInfo)
     if(WIN32)
         message("Platform       : Windows")
@@ -170,18 +183,19 @@ function(link_with_veldrid TARGET)
 endfunction()
 
 
-function(alloy_install_runtime_libs COMP_NAME PREFIX_PATH)
+function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
+
     install(CODE "MESSAGE(\"alloy: installing runtime libraries for each backend to ${PREFIX_PATH}...\")"  COMPONENT ${COMP_NAME})
     if(${VLD_BACKEND_DXC})
-        alloy_install_dxc_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+        alloy_install_dxc_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
     endif()
 
     if(${VLD_BACKEND_VK})
-        alloy_install_vulkan_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+        alloy_install_vulkan_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
     endif()
 
     if(${VLD_BACKEND_MTL})
-        alloy_install_metal_runtime_libs(${COMP_NAME} ${PREFIX_PATH})
+        alloy_install_metal_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
     endif()
 endfunction()
 
@@ -189,10 +203,26 @@ if(${ALLOY_BUILD_TESTS})
     add_subdirectory("demo")
 endif()
 
-install(TARGETS Veldrid 
-    COMPONENT alloy
-    FILE_SET vld_headers DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
-    RUNTIME              DESTINATION "${CMAKE_INSTALL_PREFIX}/bin"
-    LIBRARY              DESTINATION "${CMAKE_INSTALL_PREFIX}/lib")
+if(ALLOY_INSTALL_LIBS)
+    message("Will install libraries to ${ALLOY_INSTALL_LIBS}")
+    install(TARGETS Veldrid LIBRARY DESTINATION "${ALLOY_INSTALL_LIBS}")
+endif()
 
-alloy_install_runtime_libs(alloy "${CMAKE_INSTALL_PREFIX}/bin")
+if(ALLOY_INSTALL_HEADERS)
+    message("Will install headers to ${ALLOY_INSTALL_HEADERS}")
+    install(TARGETS Veldrid FILE_SET vld_headers DESTINATION "${ALLOY_INSTALL_HEADERS}")
+endif()
+
+
+if(ALLOY_INSTALL_RUNTIME_DEPS)
+    message("Will install runtime dependencies to ${ALLOY_INSTALL_RUNTIME_DEPS}")
+    alloy_install_runtime_libs("${ALLOY_INSTALL_RUNTIME_DEPS}" NO)
+endif()
+
+
+#install(TARGETS Veldrid 
+#    COMPONENT alloy
+#    FILE_SET vld_headers DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
+#    RUNTIME              DESTINATION "${CMAKE_INSTALL_PREFIX}/bin"
+#    LIBRARY              DESTINATION "${CMAKE_INSTALL_PREFIX}/lib")
+

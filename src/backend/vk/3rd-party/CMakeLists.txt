@@ -125,7 +125,7 @@ set_property(TARGET vulkan PROPERTY FOLDER "3rd-party/vk")
 
 # volk
 set(VOLK_STATIC_DEFINES ${VULKAN_WSI_DEF})
-add_subdirectory(volk)
+add_subdirectory(volk EXCLUDE_FROM_ALL )
 target_link_libraries(volk PUBLIC vulkan)
 
 #target_include_directories(volk PUBLIC ${VOLK_DIR})
@@ -157,7 +157,7 @@ set_property(TARGET vma PROPERTY FOLDER "3rd-party/vk")
 # dxil-spirv
 
 set(DXIL_SPIRV_CLI OFF CACHE BOOL "" FORCE)
-add_subdirectory(dxil-spirv)
+add_subdirectory(dxil-spirv EXCLUDE_FROM_ALL )
 set_property(TARGET dxil-spirv-c-static PROPERTY FOLDER "3rd-party/vk/dxil-spv")
 set_property(TARGET dxil-spirv-c-shared PROPERTY FOLDER "3rd-party/vk/dxil-spv")
 set_property(TARGET dxil-converter PROPERTY FOLDER "3rd-party/vk/dxil-spv")

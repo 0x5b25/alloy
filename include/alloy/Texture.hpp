@@ -30,8 +30,8 @@ namespace alloy
                     std::uint8_t renderTarget : 1;
                     std::uint8_t depthStencil : 1;
                     std::uint8_t cubemap : 1;
-                    //bool staging : 1;
-                    std::uint8_t generateMipmaps : 1;
+                    std::uint8_t shareable : 1;
+                    //std::uint8_t generateMipmaps : 1;
                 };
                 std::uint8_t value;
             } usage;
@@ -101,6 +101,9 @@ namespace alloy
 
     public:
         const Description& GetDesc() const {return description;}
+
+        
+        virtual void* GetNativeHandle() const = 0;
 
         virtual void WriteSubresource(
             uint32_t mipLevel,

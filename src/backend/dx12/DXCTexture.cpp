@@ -68,14 +68,15 @@ namespace alloy::dxc {
         if ((desc.usage.depthStencil || desc.usage.renderTarget)
             && desc.type == ITexture::Description::Type::Texture2D) {
             resourceDesc.SampleDesc.Count = (uint32_t)desc.sampleCount;
-            //switch(desc.sampleCount) {
-            //    case SampleCount::x1 : resourceDesc.SampleDesc.Count = 1; break;
-            //    case SampleCount::x2 : resourceDesc.SampleDesc.Count = 2; break;
-            //    case SampleCount::x4 : resourceDesc.SampleDesc.Count = 4; break;
-            //    case SampleCount::x8 : resourceDesc.SampleDesc.Count = 8; break;
-            //    case SampleCount::x16: resourceDesc.SampleDesc.Count = 16; break;
-            //    case SampleCount::x32: resourceDesc.SampleDesc.Count = 32 break;
-            //}
+            switch(desc.sampleCount) {
+                default:
+                case SampleCount::x1 : resourceDesc.SampleDesc.Count = 1; break;
+                case SampleCount::x2 : resourceDesc.SampleDesc.Count = 2; break;
+                case SampleCount::x4 : resourceDesc.SampleDesc.Count = 4; break;
+                case SampleCount::x8 : resourceDesc.SampleDesc.Count = 8; break;
+                case SampleCount::x16: resourceDesc.SampleDesc.Count = 16; break;
+                case SampleCount::x32: resourceDesc.SampleDesc.Count = 32; break;
+            }
         }
         else {
             resourceDesc.SampleDesc.Count = 1;
@@ -95,6 +96,11 @@ namespace alloy::dxc {
 
         D3D12MA::ALLOCATION_DESC allocationDesc = {};
         D3D12_RESOURCE_STATES resourceState;
+
+        if(desc.usage.shareable) {
+            allocationDesc.Flags |= D3D12MA::ALLOCATION_FLAG_COMMITTED;
+            allocationDesc.ExtraHeapFlags |= D3D12_HEAP_FLAG_SHARED;
+        }
 
         //D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
         //Make sure that we default to a invalid heap

@@ -69,17 +69,29 @@ function(agility_sdk_copy_binaries TARGET)
 endfunction()
 
 
-function(alloy_install_agility_sdk_binaries COMP_NAME PREFIX_PATH)
+function(alloy_install_agility_sdk_binaries PREFIX_PATH COMP_NAME)
 
-    install(
-        PROGRAMS
-            ${AGILITY_Core_DLL}
-            ${AGILITY_DX12SDKLayers_DLL}
-        DESTINATION
-            ${PREFIX_PATH}/DX12
-        COMPONENT
-            ${COMP_NAME}
-    )
+    if(COMP_NAME)
+        message("Agility SDK install using component ${COMP_NAME} into ${PREFIX_PATH}")
+        install(
+            PROGRAMS
+                ${AGILITY_Core_DLL}
+                ${AGILITY_DX12SDKLayers_DLL}
+            DESTINATION
+                ${PREFIX_PATH}/D3D12
+            COMPONENT
+                ${COMP_NAME}
+        )
+    else()
+
+        install(
+            PROGRAMS
+                ${AGILITY_Core_DLL}
+                ${AGILITY_DX12SDKLayers_DLL}
+            DESTINATION
+                ${PREFIX_PATH}/D3D12
+            )
+    endif()
 
 endfunction()
 

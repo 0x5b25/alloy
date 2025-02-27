@@ -27,6 +27,8 @@ class MetalDevice;
 
 
         id<MTLTexture> GetHandle() const {return _tex;}
+        
+        virtual void* GetNativeHandle() const override {return GetHandle();}
 
 
         static common::sp<MetalTexture> WrapNative(

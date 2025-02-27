@@ -46,6 +46,9 @@ namespace alloy::dxc
         virtual ~DXCTexture() override;
 
         ID3D12Resource* GetHandle() const { return _res; }
+        
+        virtual void* GetNativeHandle() const override {return GetHandle();}
+
         DXCDevice* GetDevice() const { return dev.get(); }
         bool IsOwnTexture() const {return _allocation != nullptr; }
 

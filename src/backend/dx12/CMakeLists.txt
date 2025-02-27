@@ -89,10 +89,11 @@ target_link_libraries(Veldrid
     )
 
 
-function(alloy_install_dxc_runtime_libs COMP_NAME PREFIX_PATH)
+function(alloy_install_dxc_runtime_libs PREFIX_PATH COMP_NAME)
         
-    install(CODE "MESSAGE(\"alloy: installing directx 12 runtime libraries...\")"  COMPONENT ${COMP_NAME})
+    install(CODE "MESSAGE(\"alloy: installing directx 12 runtime libraries...\")"  
+        COMPONENT ${COMP_NAME})
 
-    alloy_install_agility_sdk_binaries(${COMP_NAME} ${PREFIX_PATH})
+    alloy_install_agility_sdk_binaries(${PREFIX_PATH} ${COMP_NAME})
 
 endfunction()

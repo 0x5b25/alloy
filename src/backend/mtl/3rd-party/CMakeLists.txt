@@ -27,7 +27,7 @@ set_property(TARGET MetalShaderConverter PROPERTY FOLDER "3rd-party/mtl")
 
 message("******** Using ${CMAKE_OSX_SYSROOT} for build ********")
 
-function(alloy_install_metal_shader_converter COMP_NAME PREFIX_PATH)
+function(alloy_install_metal_shader_converter PREFIX_PATH COMP_NAME)
 
     #install(IMPORTED_RUNTIME_ARTIFACTS MetalShaderConverter
     #        RUNTIME
@@ -37,9 +37,15 @@ function(alloy_install_metal_shader_converter COMP_NAME PREFIX_PATH)
     #           DESTINATION ${PREFIX_PATH}
     #           COMPONENT ${COMP_NAME}
     #   )
-    install(DIRECTORY
-        "src/backend/mtl/3rd-party/MetalShaderConverter/bin/MetalShaderConverter.xcframework/"
-        DESTINATION "${PREFIX_PATH}/MetalShaderConverter.xcframework/"
-        COMPONENT ${COMP_NAME})
+    if(COMP_NAME)
+        install(DIRECTORY
+            "src/backend/mtl/3rd-party/MetalShaderConverter/bin/MetalShaderConverter.xcframework/"
+            DESTINATION "${PREFIX_PATH}/MetalShaderConverter.xcframework/"
+            COMPONENT ${COMP_NAME})
+    else()
+        install(DIRECTORY
+            "src/backend/mtl/3rd-party/MetalShaderConverter/bin/MetalShaderConverter.xcframework/"
+            DESTINATION "${PREFIX_PATH}/MetalShaderConverter.xcframework/")
+    endif()
 
 endfunction()
