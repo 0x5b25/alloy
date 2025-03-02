@@ -176,6 +176,19 @@ namespace alloy
         
         const Shape& GetShape() const {return _shape;}
 
+        void* MapToCPU() {
+            auto ptr = _buffer->MapToCPU();
+            if(!ptr) {
+                return nullptr;
+            }
+
+            return (void*)(((size_t)ptr) + _shape.GetOffsetInBytes());
+        }
+
+        void UnMap() {
+            _buffer->UnMap();
+        }
+
     };
 
 } // namespace alloy

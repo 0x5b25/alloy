@@ -399,7 +399,16 @@ namespace alloy::dxc
         {
             psoDesc.SampleMask = 0xffffffff; //This has to do with multi-sampling. 0xffffffff means point sampling is used. 
             auto& msState = psoDesc.SampleDesc;
-            msState.Count = (std::uint8_t)desc.outputs.sampleCount;
+
+            switch(desc.attachmentState.sampleCount) {
+                default:
+                case SampleCount::x1:  msState.Count = 1; break;
+                case SampleCount::x2:  msState.Count = 2; break;
+                case SampleCount::x4:  msState.Count = 4; break;
+                case SampleCount::x8:  msState.Count = 8; break;
+                case SampleCount::x16: msState.Count = 16; break;
+                case SampleCount::x32: msState.Count = 32; break;
+            }
             msState.Quality = 0;//TODO: Query quality support for device:
             //D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msLevels;
             //msLevels.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Replace with your render target format.

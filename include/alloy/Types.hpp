@@ -319,6 +319,5 @@ namespace alloy
         x16 = 16,
         x32 = 32
     };
-
 } // namespace alloy
 

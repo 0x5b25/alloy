@@ -193,7 +193,15 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         alPipelineObj->_pipelineLayout = desc.resourceLayout;
 
         // Multisample
-        pipelineDesc.rasterSampleCount = (unsigned)desc.outputs.sampleCount;
+        switch(desc.attachmentState.sampleCount) {
+            default:
+            case SampleCount::x1:  pipelineDesc.rasterSampleCount = 1; break;
+            case SampleCount::x2:  pipelineDesc.rasterSampleCount = 2; break;
+            case SampleCount::x4:  pipelineDesc.rasterSampleCount = 4; break;
+            case SampleCount::x8:  pipelineDesc.rasterSampleCount = 8; break;
+            case SampleCount::x16: pipelineDesc.rasterSampleCount = 16; break;
+            case SampleCount::x32: pipelineDesc.rasterSampleCount = 32; break;
+        }
 
         // Vertex Input State
         //For metal version until metal 3, we only support max 31 attributes per descriptor

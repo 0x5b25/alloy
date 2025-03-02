@@ -142,13 +142,15 @@ namespace alloy
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resources in the <see cref="Pipeline"/>.
         common::sp<IResourceLayout> resourceLayout;
         
-        // A description of the output attachments used by the <see cref="Pipeline"/>.
-        OutputDescription outputs;
-        /// <summary>
-        /// Specifies which model the rendering backend should use for binding resources.
-        /// If <code>null</code>, the pipeline will use the value specified in <see cref="GraphicsDeviceOptions"/>.
-        /// </summary>
-        ResourceBindingModel* resourceBindingModel;
+        //// A description of the output attachments used by the <see cref="Pipeline"/>.
+        //OutputDescription outputs;
+
+        ///#TODO: Enable bindless rendering
+        ///// <summary>
+        ///// Specifies which model the rendering backend should use for binding resources.
+        ///// If <code>null</code>, the pipeline will use the value specified in <see cref="GraphicsDeviceOptions"/>.
+        ///// </summary>
+        //ResourceBindingModel* resourceBindingModel;
     };
 
 

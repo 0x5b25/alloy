@@ -598,7 +598,7 @@ public:
         // Multisample
         VkPipelineMultisampleStateCreateInfo multisampleCI{};
         multisampleCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.outputs.sampleCount);
+        VkSampleCountFlagBits vkSampleCount = VdToVkSampleCount(desc.attachmentState.sampleCount);
         multisampleCI.rasterizationSamples = vkSampleCount;
         multisampleCI.alphaToCoverageEnable = desc.attachmentState.alphaToCoverageEnabled;
         pipelineCI.pMultisampleState = &multisampleCI;

@@ -240,6 +240,8 @@ namespace alloy
         // or otherwise ignored.
         Color4f blendConstant;
 
+        SampleCount sampleCount;
+
         std::vector<ColorAttachment> colorAttachments;
 
         struct DepthStencilAttachment{
