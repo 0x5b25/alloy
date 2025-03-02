@@ -418,7 +418,34 @@ namespace alloy::vk{
         //entry.resSet = RefRawPtr(vkrs);
         //entry.offsets = dynamicOffsets;
     }
+
+    
+    void VkRenderCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
+                                           std::uint32_t num32BitValuesToSet,
+                                           const uint32_t* pSrcData,
+                                           std::uint32_t destOffsetIn32BitValues
+    ) {
         
+        CHK_PIPELINE_SET();
+        auto pipeline = _currentPipeline;
+        auto& pcs = pipeline->GetPushConstants();
+        assert(pcs.size() > pushConstantIndex);
+
+        auto& pc = pcs[pushConstantIndex];
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + num32BitValuesToSet);
+
+        auto offset = pc.offsetInDwords;
+
+        VK_DEV_CALL(dev,
+        vkCmdPushConstants(
+            cmdList,
+            pipeline->GetLayout(),
+            VK_SHADER_STAGE_ALL_GRAPHICS,
+            (offset + destOffsetIn32BitValues) * 4,
+            num32BitValuesToSet * 4,
+            pSrcData));
+    }
+
     void VkComputeCmdEnc::SetComputeResourceSet(
         const common::sp<IResourceSet>& rs
     ){
@@ -459,6 +486,34 @@ namespace alloy::vk{
         //entry.isNewlyChanged = true;
         //entry.resSet = RefRawPtr(vkrs);
         //entry.offsets = dynamicOffsets;
+    }
+
+    
+    
+    void VkComputeCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
+                                           std::uint32_t num32BitValuesToSet,
+                                           const uint32_t* pSrcData,
+                                           std::uint32_t destOffsetIn32BitValues
+    ) {
+        
+        CHK_PIPELINE_SET();
+        auto pipeline = _currentPipeline;
+        auto& pcs = pipeline->GetPushConstants();
+        assert(pcs.size() > pushConstantIndex);
+
+        auto& pc = pcs[pushConstantIndex];
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + num32BitValuesToSet);
+
+        auto offset = pc.offsetInDwords;
+
+        VK_DEV_CALL(dev,
+        vkCmdPushConstants(
+            cmdList,
+            pipeline->GetLayout(),
+            VK_SHADER_STAGE_COMPUTE_BIT,
+            (offset + destOffsetIn32BitValues) * 4,
+            num32BitValuesToSet * 4,
+            pSrcData));
     }
 
 #if 0

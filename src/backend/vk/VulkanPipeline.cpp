@@ -4,7 +4,7 @@
 #include "alloy/Helpers.hpp"
 
 #include <vector>
-#include <set>
+#include <cassert>
 #include <cstring>
 
 #include "VkTypeCvt.hpp"
@@ -87,11 +87,13 @@ public:
     class PipelineRemapper : public alloy::vk::SPVRemapper {
     public:
         using BindingRemapInfo = std::vector<VulkanResourceLayout::ResourceBindInfo>;
+        using PushConstantRemapInfo = std::vector<VulkanResourceLayout::PushConstantInfo>;
         using IAMappingInfo = std::unordered_map<VertexInputSemantic, uint32_t>;
 
     private:
         const BindingRemapInfo* _bindingRemappings;
         const IAMappingInfo* _iaMappings;
+        const PushConstantRemapInfo* _pushConstantRemappings;
 
         bool FindVkBindingSet(
             VulkanResourceLayout::BindType type,
@@ -120,10 +122,12 @@ public:
 
         PipelineRemapper (
             const BindingRemapInfo* bindingRemappings,
-            const IAMappingInfo* iaMappings
+            const IAMappingInfo* iaMappings,
+            const PushConstantRemapInfo* pushConstantRemappings
         )
             : _bindingRemappings(bindingRemappings)
             , _iaMappings(iaMappings)
+            , _pushConstantRemappings(pushConstantRemappings)
         { }
 
         bool RemapSRV( const dxil_spv_d3d_binding& binding,
@@ -184,6 +188,24 @@ public:
         ) override {
 
             vk_binding.vulkan.uniform_binding.bindless.use_heap = DXIL_SPV_FALSE;
+
+            /* Try to map to root constant -> push constant. */
+            for (auto& push : *_pushConstantRemappings)
+            {
+                if (push.bindingSpace == binding.register_space &&
+                    push.bindingSlot == binding.register_index 
+                    ///#TODO: Shader visibility
+                    //&& dxil_match_shader_visibility(push.shaderVisibility, binding.stage)
+                ) {
+                    vk_binding = {};
+                    vk_binding.push_constant = DXIL_SPV_TRUE;
+                    vk_binding.vulkan.push_constant.offset_in_words = push.offsetInDwords;
+                    return DXIL_SPV_TRUE;
+                }
+            }
+
+            vk_binding.push_constant = DXIL_SPV_FALSE;
+
             uint32_t set;
             if(FindVkBindingSet(VulkanResourceLayout::BindType::UniformBuffer,
                                 binding.register_space,
@@ -612,11 +634,23 @@ public:
 
         // Pipeline Layout
         std::vector<VkDescriptorSetLayout> dsls{};
+        std::vector<VkPushConstantRange> pushConstantRanges; 
         const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
+        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
             //refCnts.push_back(desc.resourceLayout);
             pBindInfo = &resourceLayout->GetBindings();
+            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+
+            if(!pPushConstantRemapInfo->empty()) {
+                pushConstantRanges.emplace_back(
+                    /*stageFlags*/ VK_SHADER_STAGE_ALL_GRAPHICS,
+                    /*offset    */ 0,
+                    /*size      */ resourceLayout->GetPushConstantSize() * 4
+                );
+            }
+            
             for(auto& b : *pBindInfo) {
                 for(auto& s : b.sets) {
                     dsls.push_back(s.layout);
@@ -627,7 +661,9 @@ public:
         VkPipelineLayoutCreateInfo pipelineLayoutCI {};
         pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCI.setLayoutCount = dsls.size();
-        pipelineLayoutCI.pSetLayouts = dsls.empty() ? nullptr : dsls.data();
+        pipelineLayoutCI.pSetLayouts = dsls.data();
+        pipelineLayoutCI.pushConstantRangeCount = pushConstantRanges.size();
+        pipelineLayoutCI.pPushConstantRanges = pushConstantRanges.data();
         
         VkPipelineLayoutRAII pipelineLayout{dev.get()};
         VK_CHECK(VK_DEV_CALL(dev, 
@@ -725,7 +761,8 @@ public:
 
         PipelineRemapper remapper {
             pBindInfo,
-            &iaMappings
+            &iaMappings,
+            pPushConstantRemapInfo
         };
         //alloy::vk::SPVRemapper remapper{
         //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
@@ -758,6 +795,10 @@ public:
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_VERTEX_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            if(desc.resourceLayout) {
+                auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+                compiler_args.root_constant_words =  resourceLayout->GetPushConstantSize();
+            }
             
             remapper.SetStage(alloy::IShader::Stage::Vertex);
 
@@ -787,6 +828,10 @@ public:
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_FRAGMENT_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            if(desc.resourceLayout) {
+                auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+                compiler_args.root_constant_words =  resourceLayout->GetPushConstantSize();
+            }
             
             remapper.SetStage(alloy::IShader::Stage::Fragment);
 
@@ -893,6 +938,10 @@ public:
         rawPipe->scissorTestEnabled = rsDesc.scissorTestEnabled;
         rawPipe->resourceSetCount = resourceSetCount;
         rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
+        if(desc.resourceLayout) {
+            auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+            rawPipe->pushConstants = resourceLayout->GetPushConstants();
+        }
         rawPipe->_refCnts = std::move(refCnts);
 
         return common::sp(rawPipe);
@@ -907,13 +956,26 @@ public:
         VkComputePipelineCreateInfo pipelineCI {};
 
         // Pipeline Layout
-        auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
-        //refCnts.push_back(desc.resourceLayout);
-        auto& bindInfo = resourceLayout->GetBindings();
+        
         std::vector<VkDescriptorSetLayout> dsls{};
-        for(auto& b : bindInfo) {
-            for(auto& s : b.sets) {
-                dsls.push_back(s.layout);
+        std::vector<VkPushConstantRange> pushConstantRanges; 
+        const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
+        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        if(desc.resourceLayout) {
+            auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+            pBindInfo = &(resourceLayout->GetBindings());
+            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+            if(!pPushConstantRemapInfo->empty()) {
+                pushConstantRanges.emplace_back(
+                    /*stageFlags*/ VK_SHADER_STAGE_COMPUTE_BIT,
+                    /*offset    */ 0,
+                    /*size      */ resourceLayout->GetPushConstantSize() * 4
+                );
+            }
+            for(auto& b : *pBindInfo) {
+                for(auto& s : b.sets) {
+                    dsls.push_back(s.layout);
+                }
             }
         }
 
@@ -921,6 +983,8 @@ public:
         pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCI.setLayoutCount = dsls.size();
         pipelineLayoutCI.pSetLayouts = dsls.data();
+        pipelineLayoutCI.pushConstantRangeCount = pushConstantRanges.size();
+        pipelineLayoutCI.pPushConstantRanges = pushConstantRanges.data();
 
         VkPipelineLayoutRAII pipelineLayout{dev.get()};
         VK_CHECK(VK_DEV_CALL(dev,
@@ -961,8 +1025,9 @@ public:
         }
 
         PipelineRemapper remapper {
-            &bindInfo,
-            nullptr
+            pBindInfo,
+            nullptr,
+            pPushConstantRemapInfo
         };
 
         VkShaderRAII cs{dev.get()};
@@ -1018,6 +1083,11 @@ public:
         rawPipe->_devicePipeline = devicePipeline;
         rawPipe->_pipelineLayout = *pipelineLayout;
         rawPipe->resourceSetCount = resourceSetCount;
+        
+        if(desc.resourceLayout) {
+            auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+            rawPipe->pushConstants = resourceLayout->GetPushConstants();
+        }
         //rawPipe->dynamicOffsetsCount = dynamicOffsetsCount;
 
         return common::sp(rawPipe);

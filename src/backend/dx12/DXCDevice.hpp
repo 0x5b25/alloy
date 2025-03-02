@@ -163,6 +163,8 @@ namespace alloy::dxc{
 
         alloy::dxc::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
+        _ShaderResDescriptorHeapMgr _shaderResHeap, _samplerHeap;
+
         //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
@@ -187,6 +189,12 @@ namespace alloy::dxc{
 
         _Descriptor AllocateDSV() { return _dsvHeap.Allocate(); }
         void FreeDSV(const _Descriptor& desc) { _dsvHeap.Free(desc); }
+
+        _ShaderResDescriptor AllocateShaderRes(uint32_t count) { return _shaderResHeap.Allocate(count); }
+        void FreeShaderRes(const _ShaderResDescriptor& desc) { _shaderResHeap.Free(desc); }
+
+        _ShaderResDescriptor AllocateSampler(uint32_t count) { return _samplerHeap.Allocate(count); }
+        void FreeSampler(const _ShaderResDescriptor& desc) { _samplerHeap.Free(desc); }
 
         static common::sp<IGraphicsDevice> Make(
             const common::sp<DXCAdapter>& adp,

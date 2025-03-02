@@ -292,6 +292,8 @@ namespace alloy::dxc {
         : _dev(dev)
         , _rtvHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64)
         , _dsvHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64)
+        , _shaderResHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 512)
+        , _samplerHeap(dev, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 512)
     {}
 
     DXCDevice::~DXCDevice() {

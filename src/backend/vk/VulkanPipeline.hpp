@@ -6,6 +6,8 @@
 #include "alloy/common/RefCnt.hpp"
 #include "alloy/Pipeline.hpp"
 
+#include "VulkanBindableResource.hpp"
+
 #include <vector>
 
 
@@ -23,6 +25,8 @@ namespace alloy::vk
 
     protected:
         common::sp<VulkanDevice> dev;
+
+        std::vector<VulkanResourceLayout::PushConstantInfo> pushConstants;
 
         VkPipelineLayout _pipelineLayout;
         VkPipeline _devicePipeline;
@@ -138,6 +142,8 @@ namespace alloy::vk
         const VkPipelineLayout& GetLayout() const { return _pipelineLayout; }
         std::uint32_t GetResourceSetCount() const { return resourceSetCount; }
         std::uint32_t GetDynamicOffsetCount() const {return dynamicOffsetsCount;}
+        const std::vector<VulkanResourceLayout::PushConstantInfo>& GetPushConstants() 
+            const { return pushConstants; }
     
     };
 

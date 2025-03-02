@@ -14,6 +14,7 @@
 
 //standard library headers
 #include <vector>
+#include <optional>
 
 //backend specific headers
 #include <d3d12.h>
@@ -47,6 +48,10 @@ namespace alloy::dxc {
     
         std::uint32_t _dynamicBufferCount;
         //DescriptorResourceCounts _drcs;
+
+        std::uint32_t _rootConstantCount;
+        std::optional<std::uint32_t> _shaderResHeapArgIdx,
+                                     _samplerHeapArgIdx;
     
         DXCResourceLayout(
             const common::sp<DXCDevice>& dev,
@@ -69,6 +74,9 @@ namespace alloy::dxc {
         //const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
         //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
         //const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
+
+        std::optional<std::uint32_t> GetShaderResHeapArgIdx() const { return _shaderResHeapArgIdx; }
+        std::optional<std::uint32_t> GetSamplerHeapArgIdx() const { return _samplerHeapArgIdx; }
     };
     
     class DXCResourceSet : public IResourceSet{ //Actually d3d12 descriptor heap?
@@ -80,9 +88,11 @@ namespace alloy::dxc {
         common::sp<DXCDevice> dev;
 //
     //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
-//
+//  
+        ID3D12DescriptorHeap* _shaderResHeap;
+        ID3D12DescriptorHeap* _samplerHeap;
         
-        std::vector<ID3D12DescriptorHeap*> _descHeap;
+        //std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
             const common::sp<DXCDevice>& dev,
@@ -105,7 +115,7 @@ namespace alloy::dxc {
 //
     //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
     //    void VisitElements(ElementVisitor visitor);
-        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const {return _descHeap;}
-        virtual void* GetNativeHandle() const override {return (void*)_descHeap.data(); }
+        ID3D12DescriptorHeap* GetShaderResHeap() const { return _shaderResHeap; }
+        ID3D12DescriptorHeap* GetSamplerHeap() const {return _samplerHeap; }
     };
 }

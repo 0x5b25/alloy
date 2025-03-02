@@ -131,24 +131,61 @@ namespace alloy::dxc
         CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
 
-        
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        auto heaps = d3dkrs->GetHeaps();
+        auto shaderResHeapArgIdx = dxcLayout->GetShaderResHeapArgIdx();
+        auto samplerHeapArgIdx = dxcLayout->GetSamplerHeapArgIdx();
+
+        std::vector< ID3D12DescriptorHeap* > heaps;
+
+        if (shaderResHeapArgIdx) {
+            auto heap = d3dkrs->GetShaderResHeap();
+            assert(heap != nullptr);
+            heaps.push_back(heap);
+        }
+        if (samplerHeapArgIdx) {
+            auto heap = d3dkrs->GetSamplerHeap();
+            assert(heap != nullptr);
+            heaps.push_back(heap);
+        }
 
         cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        for(uint32_t i = 0; i < heaps.size(); i++) {
+        if (shaderResHeapArgIdx) {
+            cmdList->SetGraphicsRootDescriptorTable(
+                shaderResHeapArgIdx.value(),
+                d3dkrs->GetShaderResHeap()->GetGPUDescriptorHandleForHeapStart());
+        }
 
-            cmdList->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        if (samplerHeapArgIdx) {
+            cmdList->SetGraphicsRootDescriptorTable(
+                samplerHeapArgIdx.value(),
+                d3dkrs->GetSamplerHeap()->GetGPUDescriptorHandleForHeapStart());
         }
 
         //auto& entry = _resourceSets[slot];
         //entry.isNewlyChanged = true;
         //entry.resSet = RefRawPtr(vkrs);
         //entry.offsets = dynamicOffsets;
+    }
+
+            
+    void DXCRenderCmdEnc::SetPushConstants(
+        std::uint32_t pushConstantIndex,
+        std::uint32_t num32BitValuesToSet,
+        const uint32_t* pSrcData,
+        std::uint32_t destOffsetIn32BitValues
+    ) {
+        cmdList->SetGraphicsRoot32BitConstants(
+            pushConstantIndex,
+            num32BitValuesToSet,
+            pSrcData,
+            destOffsetIn32BitValues
+        );
     }
 
     void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
@@ -173,20 +210,57 @@ namespace alloy::dxc
         CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
 
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        auto heaps = d3dkrs->GetHeaps();
+        auto shaderResHeapArgIdx = dxcLayout->GetShaderResHeapArgIdx();
+        auto samplerHeapArgIdx = dxcLayout->GetSamplerHeapArgIdx();
+
+        std::vector< ID3D12DescriptorHeap* > heaps;
+
+        if (shaderResHeapArgIdx) {
+            auto heap = d3dkrs->GetShaderResHeap();
+            assert(heap != nullptr);
+            heaps.push_back(heap);
+        }
+        if (samplerHeapArgIdx) {
+            auto heap = d3dkrs->GetSamplerHeap();
+            assert(heap != nullptr);
+            heaps.push_back(heap);
+        }
 
         cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        for(uint32_t i = 0; i < heaps.size(); i++) {
+        if (shaderResHeapArgIdx) {
+            cmdList->SetGraphicsRootDescriptorTable(
+                shaderResHeapArgIdx.value(),
+                d3dkrs->GetShaderResHeap()->GetGPUDescriptorHandleForHeapStart());
+        }
 
-            cmdList->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        if (samplerHeapArgIdx) {
+            cmdList->SetGraphicsRootDescriptorTable(
+                samplerHeapArgIdx.value(),
+                d3dkrs->GetSamplerHeap()->GetGPUDescriptorHandleForHeapStart());
         }
     }
 
+        
+    void DXCComputeCmdEnc::SetPushConstants(
+        std::uint32_t pushConstantIndex,
+        std::uint32_t num32BitValuesToSet,
+        const uint32_t* pSrcData,
+        std::uint32_t destOffsetIn32BitValues
+    ) {
+        cmdList->SetComputeRoot32BitConstants(
+            pushConstantIndex,
+            num32BitValuesToSet,
+            pSrcData,
+            destOffsetIn32BitValues
+        );
+    }
 
 
     void DXCRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport){

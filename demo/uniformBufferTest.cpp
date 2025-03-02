@@ -343,17 +343,17 @@ class UniformApp : public AppBase {
         alloy::IResourceLayout::Description resLayoutDesc{};
         using ElemKind = alloy::IBindableResource::ResourceKind;
         using alloy::common::operator|;
-        resLayoutDesc.elements.resize(2, {});
+        resLayoutDesc.shaderResources.resize(2, {});
         {
-            resLayoutDesc.elements[0].name = "ObjectUniform";
-            resLayoutDesc.elements[0].kind = ElemKind::UniformBuffer;
-            resLayoutDesc.elements[0].stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            //resLayoutDesc.shaderResources[0].name = "ObjectUniform";
+            resLayoutDesc.shaderResources[0].kind = ElemKind::UniformBuffer;
+            resLayoutDesc.shaderResources[0].stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
         }
 
         {
-            resLayoutDesc.elements[1].name = "Struct";
-            resLayoutDesc.elements[1].kind = ElemKind::StorageBuffer;
-            resLayoutDesc.elements[1].stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            //resLayoutDesc.shaderResources[1].name = "Struct";
+            resLayoutDesc.shaderResources[1].kind = ElemKind::StorageBuffer;
+            resLayoutDesc.shaderResources[1].stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
         }
 
         auto _layout = factory.CreateResourceLayout(resLayoutDesc);
@@ -379,6 +379,7 @@ class UniformApp : public AppBase {
             
             pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
         }//pipelineDescription.blendState.attachments[0].blendEnabled = true;
+        pipelineDescription.attachmentState.sampleCount = SampleCount::x1;
 
         pipelineDescription.depthStencilState.depthTestEnabled = false;
         pipelineDescription.depthStencilState.depthWriteEnabled = true;
@@ -403,7 +404,7 @@ class UniformApp : public AppBase {
         pipelineDescription.shaderSet.vertexShader = vertexShader;
         pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
-        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+        //pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
         //pipelineDescription.outputs = fb->GetOutputDescription();
         pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
     }

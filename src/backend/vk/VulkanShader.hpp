@@ -51,7 +51,7 @@ namespace alloy::vk {
         //std::vector< vkd3d_shader_target_extension > target_extensions;
 
         //std::vector<vkd3d_shader_parameter> parameters;
-
+        uint32_t root_constant_words;
         bool dual_source_blending;
         const unsigned int *output_swizzles;
         unsigned int output_swizzle_count;

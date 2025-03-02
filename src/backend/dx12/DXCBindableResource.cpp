@@ -4,6 +4,8 @@
 #include "D3DTypeCvt.hpp"
 #include "DXCDevice.hpp"
 #include "DXCTexture.hpp"
+
+#include <stdexcept>
 #include <d3d12.h>
 
 namespace alloy::dxc
@@ -19,9 +21,9 @@ namespace alloy::dxc
         std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
         std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
 
-        for(unsigned i = 0; i < desc.elements.size(); i++) {
+        for(unsigned i = 0; i < desc.shaderResources.size(); i++) {
             
-            auto& elem = desc.elements[i];
+            auto& elem = desc.shaderResources[i];
             D3D12_DESCRIPTOR_RANGE* pDescRange = nullptr;
 
             switch (elem.kind)
@@ -59,9 +61,37 @@ namespace alloy::dxc
         
         }
 
+        uint32_t rootConstantCnt = MAX_ROOT_SIGNATURE_SIZE_DW;
+        if(!combinedShaderResDescTableRanges.empty())
+            rootConstantCnt -= 1;
+        if(!samplerDescTableRanges.empty())
+            rootConstantCnt -= 1;
+
+        
+
         std::vector<D3D12_ROOT_PARAMETER> rootParams;
 
+        uint32_t rootConstantRequested = 0;
+        for(auto& rootConsts : desc.pushConstants) {
+            rootParams.emplace_back(); auto& rootParam = rootParams.back();
+            rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+            rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
+            rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
+            rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
+            rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+            rootConstantRequested += rootConsts.sizeInDwords;
+        }
+
+        if(rootConstantCnt < rootConstantRequested) {
+            throw std::invalid_argument("Too many root constants, root signature exceeded 256 DWORDS");
+        }
+
+        
+        std::optional<std::uint32_t> shaderResHeapArgIdx, samplerHeapArgIdx;
+
         if(!combinedShaderResDescTableRanges.empty()) {
+            shaderResHeapArgIdx = rootParams.size();
             rootParams.emplace_back(); auto& rootParam = rootParams.back();
             rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
             rootParam.DescriptorTable.NumDescriptorRanges = combinedShaderResDescTableRanges.size();
@@ -70,6 +100,7 @@ namespace alloy::dxc
         }
 
         if(!samplerDescTableRanges.empty()) {
+            samplerHeapArgIdx = rootParams.size();
             rootParams.emplace_back(); auto& rootParam = rootParams.back();
             rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
             rootParam.DescriptorTable.NumDescriptorRanges = samplerDescTableRanges.size();
@@ -99,6 +130,9 @@ namespace alloy::dxc
 
         auto layout = common::sp(new DXCResourceLayout(dev, desc));
         layout->_rootSig = rootSignature;
+        layout->_rootConstantCount = rootConstantRequested;
+        layout->_shaderResHeapArgIdx = shaderResHeapArgIdx;
+        layout->_samplerHeapArgIdx = samplerHeapArgIdx;
 
         return layout;
     }
@@ -124,9 +158,9 @@ namespace alloy::dxc
         std::vector<IBindableResource*> combinedBindables;
         std::vector<IBindableResource*> samplerBindables;
 
-        for(unsigned i = 0; i < layoutDesc.elements.size(); i++) {
+        for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
             
-            auto& elemDesc = layoutDesc.elements[i];
+            auto& elemDesc = layoutDesc.shaderResources[i];
             auto& elem = desc.boundResources[i];
             
             switch (elemDesc.kind)
@@ -142,19 +176,19 @@ namespace alloy::dxc
             }
         }
 
-        std::vector<ID3D12DescriptorHeap*> descHeap;
+        //std::vector<ID3D12DescriptorHeap*> descHeap;
+        ID3D12DescriptorHeap* shaderResHeap = nullptr;
+        ID3D12DescriptorHeap* samplerHeap = nullptr;
         //Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> samplerHeap;
         //std::vector<D3D12_ROOT_PARAMETER> rootParams;
 
         if(!combinedBindables.empty()) {
-            descHeap.emplace_back();
-            auto& combinedShaderResHeap = descHeap.back();
 
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
             heapDesc.NumDescriptors = combinedBindables.size();
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&combinedShaderResHeap));
+            auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&shaderResHeap));
             if (FAILED(hr))
             {
                 //Running = false;
@@ -162,8 +196,6 @@ namespace alloy::dxc
         }
 
         if(!samplerBindables.empty()) {
-            descHeap.emplace_back();
-            auto& samplerHeap = descHeap.back();
 
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
             heapDesc.NumDescriptors = samplerBindables.size();
@@ -183,15 +215,15 @@ namespace alloy::dxc
         auto combinedIncrSize = pDev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         auto samplerIncrSize = pDev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
-        for(unsigned i = 0; i < layoutDesc.elements.size(); i++) {
+        for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
             
-            auto& elemDesc = layoutDesc.elements[i];
+            auto& elemDesc = layoutDesc.shaderResources[i];
             auto& elem = desc.boundResources[i];
 
             switch (elemDesc.kind)
             {
             case IBindableResource::ResourceKind::UniformBuffer : {
-                auto combinedDescHeap = descHeap.front();
+                auto combinedDescHeap = shaderResHeap;
 
                 auto* range = PtrCast<BufferRange>(elem.get());
                 auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
@@ -232,7 +264,7 @@ namespace alloy::dxc
                 //    } 	;
                 //}
 
-                auto combinedDescHeap = descHeap.front();
+                auto combinedDescHeap = shaderResHeap;
                 auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
                 heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
 
@@ -383,7 +415,7 @@ namespace alloy::dxc
 
                     }
 
-                    auto combinedDescHeap = descHeap.front();
+                    auto combinedDescHeap = shaderResHeap;
                     auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
                     heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
                     pDev->CreateShaderResourceView(pRes, &srvDesc, heapSlot);
@@ -432,7 +464,7 @@ namespace alloy::dxc
                 samplerDesc.MaxLOD = desc.maximumLod;
 
                 
-                auto samplerDescHeap = descHeap.back();
+                auto samplerDescHeap = samplerHeap;
                 auto heapSlot = samplerDescHeap->GetCPUDescriptorHandleForHeapStart();
                 heapSlot.ptr += samplerIncrSize * samplerCnt;
                 pDev->CreateSampler(&samplerDesc, heapSlot);
@@ -444,15 +476,20 @@ namespace alloy::dxc
         }
 
         auto resSet = common::sp(new DXCResourceSet(dev, desc));
-        resSet->_descHeap = std::move(descHeap);
+        resSet->_shaderResHeap = shaderResHeap;
+        resSet->_samplerHeap = samplerHeap;
 
         return resSet;
     }
 
     
     DXCResourceSet::~DXCResourceSet() {
-        for(auto* pHeap : _descHeap) {
-            pHeap->Release();
+        if (_shaderResHeap) {
+            _shaderResHeap->Release();
+        }
+
+        if (_samplerHeap) {
+            _samplerHeap->Release();
         }
     }
 

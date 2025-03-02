@@ -50,7 +50,7 @@ namespace alloy
 			// The compute shader stage.
 			Compute,
 
-			MAX_VALUE
+			ALLOY_BITFLAG_MAX
 		};
 
 		using Stages = alloy::common::BitFlags<Stage>;

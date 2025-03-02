@@ -408,32 +408,32 @@ class UniformApp : public AppBase {
         using alloy::common::operator|;
         //resLayoutDesc.elements.resize(3, {});
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "ObjectUniform";
+            auto& elem = resLayoutDesc.shaderResources.emplace_back();
+            //elem.name = "ObjectUniform";
             elem.bindingSlot = 0;
             elem.kind = ElemKind::UniformBuffer;
             elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
         }
 
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "Struct";
+            auto& elem = resLayoutDesc.shaderResources.emplace_back();
+            //elem.name = "Struct";
             elem.bindingSlot = 0;
             elem.kind = ElemKind::StorageBuffer;
             elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
         }
 
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "tex1";
+            auto& elem = resLayoutDesc.shaderResources.emplace_back();
+            //elem.name = "tex1";
             elem.bindingSlot = 1;
             elem.kind = ElemKind::Texture;
             elem.stages = alloy::IShader::Stage::Fragment;
         }
 
         {
-            auto& elem = resLayoutDesc.elements.emplace_back();
-            elem.name = "samp1";
+            auto& elem = resLayoutDesc.shaderResources.emplace_back();
+            //elem.name = "samp1";
             elem.bindingSlot = 0;
             elem.kind = ElemKind::Sampler;
             elem.stages = alloy::IShader::Stage::Fragment;
@@ -465,6 +465,7 @@ class UniformApp : public AppBase {
             pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
         }
         //pipelineDescription.blendState.attachments[0].blendEnabled = true;
+        pipelineDescription.attachmentState.sampleCount = SampleCount::x1;
 
         pipelineDescription.depthStencilState.depthTestEnabled = false;
         pipelineDescription.depthStencilState.depthWriteEnabled = true;
@@ -489,7 +490,7 @@ class UniformApp : public AppBase {
         pipelineDescription.shaderSet.vertexShader = vertexShader;
         pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
-        pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+        //pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
         //pipelineDescription.outputs = fb->GetOutputDescription();
         pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
     }

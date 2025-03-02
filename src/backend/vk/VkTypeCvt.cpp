@@ -84,7 +84,7 @@ namespace alloy::vk {
 
     VkDescriptorType VdToVkDescriptorType(
         IBindableResource::ResourceKind kind, 
-        IResourceLayout::Description::ElementDescription::Options options)
+        IResourceLayout::ShaderResourceDescription::Options options)
     {
         using ResourceKind = typename IBindableResource::ResourceKind;
         bool dynamicBinding = false;//(options.dynamicBinding) != 0;

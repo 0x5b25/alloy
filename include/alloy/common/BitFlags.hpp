@@ -192,7 +192,7 @@ struct BitFlags
 
 private:
   using utype = std::underlying_type_t<T>;
-  std::bitset<static_cast<utype>(T::MAX_VALUE)> bitset;
+  std::bitset<static_cast<utype>(T::ALLOY_BITFLAG_MAX)> bitset;
 
   void set_true(const T&val)
   {

@@ -45,7 +45,20 @@ namespace alloy::vk
         const common::sp<VulkanDevice>& dev,
         const Description& desc
     ){
-        auto& elements = desc.elements;
+        std::vector<PushConstantInfo> pushConstants;
+        uint32_t pushConstantSize = 0;
+
+        for(auto& pc : desc.pushConstants){
+            pushConstants.push_back({
+                .bindingSlot = pc.bindingSlot,
+                .bindingSpace = pc.bindingSpace,
+                .sizeInDwords = pc.sizeInDwords,
+                .offsetInDwords = pushConstantSize
+            });
+            pushConstantSize += pc.sizeInDwords;
+        }
+
+        auto& elements = desc.shaderResources;
         //Count the set numbers for each descriptor types
         
 
@@ -187,6 +200,8 @@ namespace alloy::vk
 
         auto dsl = new VulkanResourceLayout(dev, desc);
         dsl->_bindings = std::move(resBindings);
+        dsl->_pushConstants = std::move(pushConstants);
+        dsl->_pushConstantSize = pushConstantSize;
         //dsl->_dynamicBufferCount = dynamicBufferCount;
         //dsl->_drcs = drcs;
 
@@ -205,7 +220,7 @@ namespace alloy::vk
 
         auto& bindings = vkLayout->GetBindings();
         auto& boundResources = desc.boundResources;
-        auto& elems = vkLayout->GetDesc().elements;
+        auto& elems = vkLayout->GetDesc().shaderResources;
 
         //std::vector<sp<BindableResource>> _refCounts;
         std::unordered_set<VulkanTexture*> texReadOnly, texRW;

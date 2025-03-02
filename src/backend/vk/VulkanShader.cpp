@@ -280,10 +280,10 @@ namespace alloy::vk
             
             dxil_spv_converter_set_entry_point(converter.converter, compiler_args.entryPoint.c_str());
 
-            uint32_t root_constant_words = 0;
+            uint32_t root_constant_words = compiler_args.root_constant_words;
             uint32_t num_root_descriptors = 0; /*One for srv_uav_cbv_combined, one for samplers*/
 
-            //dxil_spv_converter_set_root_constant_word_count(converter.converter, root_constant_words);
+            dxil_spv_converter_set_root_constant_word_count(converter.converter, root_constant_words);
             //dxil_spv_converter_set_root_descriptor_count(converter.converter, num_root_descriptors);
             dxil_spv_converter_set_srv_remapper(converter.converter, SPVRemapper_RemapSRV, &remapper);
             dxil_spv_converter_set_sampler_remapper(converter.converter, SPVRemapper_RemapSampler, &remapper);

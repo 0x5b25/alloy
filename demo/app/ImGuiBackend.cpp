@@ -313,8 +313,8 @@ void ImGuiAlloyBackend::_CreateRenderPipeline() {
     using alloy::common::operator|;
     //resLayoutDesc.elements.resize(3, {});
     {
-        auto& elem = resLayoutDesc.elements.emplace_back();
-        elem.name = "ObjectUniform";
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        //elem.name = "ObjectUniform";
         elem.bindingSlot = 0;
         elem.kind = ElemKind::UniformBuffer;
         elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
@@ -329,16 +329,16 @@ void ImGuiAlloyBackend::_CreateRenderPipeline() {
     //}
 
     {
-        auto& elem = resLayoutDesc.elements.emplace_back();
-        elem.name = "tex1";
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        //elem.name = "tex1";
         elem.bindingSlot = 0;
         elem.kind = ElemKind::Texture;
         elem.stages = alloy::IShader::Stage::Fragment;
     }
 
     {
-        auto& elem = resLayoutDesc.elements.emplace_back();
-        elem.name = "samp1";
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        //elem.name = "samp1";
         elem.bindingSlot = 0;
         elem.kind = ElemKind::Sampler;
         elem.stages = alloy::IShader::Stage::Fragment;
@@ -351,7 +351,7 @@ void ImGuiAlloyBackend::_CreateRenderPipeline() {
     psoDesc.resourceLayout = pipelineLayout;
     //psoDesc.RTVFormats[0] = bd->RTVFormat;
     //psoDesc.DSVFormat = bd->DSVFormat;
-    psoDesc.outputs.sampleCount = SampleCount::x1;
+    psoDesc.attachmentState.sampleCount = SampleCount::x1;
 
     // Create the vertex shader
     {

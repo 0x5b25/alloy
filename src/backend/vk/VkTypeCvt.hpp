@@ -20,7 +20,7 @@ namespace alloy::vk {
 
     VkDescriptorType VdToVkDescriptorType(
         IBindableResource::ResourceKind kind, 
-        IResourceLayout::Description::ElementDescription::Options options);
+        IResourceLayout::ShaderResourceDescription::Options options);
 
     VkSampleCountFlagBits VdToVkSampleCount(SampleCount sampleCount);
 

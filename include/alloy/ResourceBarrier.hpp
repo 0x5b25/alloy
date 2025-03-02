@@ -99,7 +99,7 @@ namespace alloy
         COPY_RAYTRACING_ACCELERATION_STRUCTURE,
         //SPLIT, //used in pairs, indicates sync across commandlists
 
-        MAX_VALUE
+        ALLOY_BITFLAG_MAX
     };
 
     enum class ResourceAccess {
@@ -123,7 +123,7 @@ namespace alloy
         RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
         SHADING_RATE_SOURCE,
 
-        MAX_VALUE
+        ALLOY_BITFLAG_MAX
     };
 
 

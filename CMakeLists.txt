@@ -16,6 +16,8 @@ set(VLD_MISC_HEADERS
 set(VLD_MISC_SRCS
 
     "src/common/Waitable.cpp"
+    "src/utils/Allocators.cpp"
+    "src/utils/Allocators.hpp"
 )
 
 
@@ -169,7 +171,14 @@ if(WIN32)
     #add_definitions(-DNOMINMAX)
 endif()
 
-target_include_directories(Veldrid PUBLIC "include" "${CMAKE_CURRENT_BINARY_DIR}")
+target_include_directories(Veldrid 
+    PUBLIC 
+        "include"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+    PRIVATE
+        "src")
+
+
 target_compile_features(Veldrid PUBLIC cxx_std_20)
 
 function(link_with_veldrid TARGET)
@@ -199,9 +208,9 @@ function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
     endif()
 endfunction()
 
-if(${ALLOY_BUILD_TESTS})
+#if(${ALLOY_BUILD_TESTS})
     add_subdirectory("demo")
-endif()
+#endif()
 
 if(ALLOY_INSTALL_LIBS)
     message("Will install libraries to ${ALLOY_INSTALL_LIBS}")

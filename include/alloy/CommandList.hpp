@@ -43,6 +43,12 @@ namespace alloy
         virtual void SetIndexBuffer(
             const common::sp<BufferRange>& buffer, IndexFormat format) = 0;
 
+        virtual void SetPushConstants(
+            std::uint32_t pushConstantIndex,
+            std::uint32_t num32BitValuesToSet,
+            const uint32_t* pSrcData,
+            std::uint32_t destOffsetIn32BitValues) = 0;
+
         // Sets the active <see cref="ResourceSet"/> for the given index. This ResourceSet is only active for the graphics
         // Pipeline.
         // <param name="slot">The resource slot.</param>
@@ -160,6 +166,12 @@ namespace alloy
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
+
+        virtual void SetPushConstants(
+            std::uint32_t pushConstantIndex,
+            std::uint32_t num32BitValuesToSet,
+            const uint32_t* pSrcData,
+            std::uint32_t destOffsetIn32BitValues) = 0;
 
         /// <summary>
         /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.

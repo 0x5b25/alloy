@@ -413,33 +413,39 @@ class UniformApp : public AppBase {
             using ElemKind = alloy::IBindableResource::ResourceKind;
             using alloy::common::operator|;
             //resLayoutDesc.elements.resize(3, {});
+            //{
+            //    auto& elem = resLayoutDesc.shaderResources.emplace_back();
+            //    //elem.name = "ObjectUniform";
+            //    elem.bindingSlot = 0;
+            //    elem.kind = ElemKind::UniformBuffer;
+            //    elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+            //}
             {
-                auto& elem = resLayoutDesc.elements.emplace_back();
-                elem.name = "ObjectUniform";
-                elem.bindingSlot = 0;
-                elem.kind = ElemKind::UniformBuffer;
-                elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+                auto& pc = resLayoutDesc.pushConstants.emplace_back();
+                pc.bindingSlot = 0;
+                pc.bindingSpace = 0;
+                pc.sizeInDwords = (sizeof(UniformBufferObject) + 3) / 4;
             }
 
             {
-                auto& elem = resLayoutDesc.elements.emplace_back();
-                elem.name = "Struct";
+                auto& elem = resLayoutDesc.shaderResources.emplace_back();
+                //elem.name = "Struct";
                 elem.bindingSlot = 0;
                 elem.kind = ElemKind::StorageBuffer;
                 elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
             }
 
             {
-                auto& elem = resLayoutDesc.elements.emplace_back();
-                elem.name = "tex1";
+                auto& elem = resLayoutDesc.shaderResources.emplace_back();
+                //elem.name = "tex1";
                 elem.bindingSlot = 1;
                 elem.kind = ElemKind::Texture;
                 elem.stages = alloy::IShader::Stage::Fragment;
             }
 
             {
-                auto& elem = resLayoutDesc.elements.emplace_back();
-                elem.name = "samp1";
+                auto& elem = resLayoutDesc.shaderResources.emplace_back();
+                //elem.name = "samp1";
                 elem.bindingSlot = 0;
                 elem.kind = ElemKind::Sampler;
                 elem.stages = alloy::IShader::Stage::Fragment;
@@ -450,7 +456,7 @@ class UniformApp : public AppBase {
             alloy::IResourceSet::Description resSetDesc{};
             resSetDesc.layout = _layout;
             resSetDesc.boundResources = {
-                alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
+                //alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
                 alloy::BufferRange::MakeByteBuffer(structBuffer),
                 tex1,
                 samp1
@@ -471,6 +477,7 @@ class UniformApp : public AppBase {
                 pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
             }
             //pipelineDescription.blendState.attachments[0].blendEnabled = true;
+            pipelineDescription.attachmentState.sampleCount = SampleCount::x1;
 
             pipelineDescription.depthStencilState.depthTestEnabled = false;
             pipelineDescription.depthStencilState.depthWriteEnabled = false;
@@ -495,7 +502,7 @@ class UniformApp : public AppBase {
             pipelineDescription.shaderSet.vertexShader = vertexShader;
             pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
-            pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+            //pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
             //pipelineDescription.outputs = fb->GetOutputDescription();
             pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
         }
@@ -505,6 +512,7 @@ class UniformApp : public AppBase {
             alloy::GraphicsPipelineDescription pipelineDescription{};
             pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
             pipelineDescription.attachmentState.colorAttachments.front().format = tex1->GetTextureObject()->GetDesc().format;
+            pipelineDescription.attachmentState.sampleCount = SampleCount::x1;
             
             //pipelineDescription.blendState.attachments[0].blendEnabled = true;
 
@@ -526,7 +534,7 @@ class UniformApp : public AppBase {
             OutputDescription outputs {};
             outputs.colorAttachments.push_back(rt1);
 
-            pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
+            //pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
             //pipelineDescription.outputs = fb->GetOutputDescription();
             rectDrawPipeline = factory.CreateGraphicsPipeline(pipelineDescription);
         }
@@ -548,7 +556,7 @@ class UniformApp : public AppBase {
         opt.preferStandardClipSpaceYDirection = true;
 
         //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
-        #if 0//defined( _WIN32 )
+        #if 1//defined( _WIN32 )
             alloy::Backend backend = alloy::Backend::DX12;
         #elif __APPLE__
             alloy::Backend backend = alloy::Backend::Metal;
@@ -776,6 +784,7 @@ class UniformApp : public AppBase {
         pass.SetVertexBuffer(0, alloy::BufferRange::MakeByteBuffer(vertexBuffer) );
         pass.SetIndexBuffer(alloy::BufferRange::MakeByteBuffer(indexBuffer), alloy::IndexFormat::UInt32);
         pass.SetGraphicsResourceSet(shaderResources);
+        pass.SetPushConstants(0, sizeof(ubo) / 4, (uint32_t*)& ubo, 0);
 
         pass.DrawIndexed(
             /*indexCount:    */4,
@@ -832,7 +841,7 @@ class UniformApp : public AppBase {
         //renderFinishFenceValue++;
         renderFinishFenceValue++;
         //Update uniformbuffer
-        memcpy(ubMapped, &ubo, sizeof(ubo));
+        //memcpy(ubMapped, &ubo, sizeof(ubo));
         
         gfxQ->SubmitCommand(_commandList.get());
         gfxQ->EncodeSignalEvent(renderFinishFence.get(), renderFinishFenceValue );

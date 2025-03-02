@@ -261,7 +261,7 @@ namespace alloy::vk
 	        	nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
 	        	nameInfo.object = (uint64_t)_buffer;
 	        	nameInfo.pObjectName = name.c_str();
-	        	vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+                _dev->GetFnTable().vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
 	        }
         }
 

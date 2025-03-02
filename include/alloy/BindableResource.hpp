@@ -36,7 +36,7 @@ namespace alloy
             /// </summary>
             Sampler,
 
-            MAX_VALUE
+            ALLOY_BITFLAG_MAX
         };
 
         virtual ~IBindableResource() = default;
@@ -48,8 +48,24 @@ namespace alloy
     class IResourceLayout : public common::RefCntBase{
 
     public:
-        struct Description{
+        struct PushConstantDescription {
+            uint32_t bindingSlot;
+            uint32_t bindingSpace;
+            uint32_t sizeInDwords;
+        };
 
+        struct ShaderResourceDescription {
+            uint32_t  bindingSlot;
+            uint32_t  bindingSpace;
+            IBindableResource::ResourceKind kind;
+            alloy::common::BitFlags<IShader::Stage> stages;
+            struct Options {
+                std::uint32_t writable : 1;
+            } options;
+        };
+
+        struct Description{
+#if 0
             struct ElementDescription{
                 uint32_t  bindingSlot;
                 uint32_t  bindingSpace;
@@ -85,7 +101,9 @@ namespace alloy
             };
 
             std::vector<ElementDescription> elements;
-
+#endif
+            std::vector<PushConstantDescription> pushConstants;
+            std::vector<ShaderResourceDescription> shaderResources;
         };
 
     protected:

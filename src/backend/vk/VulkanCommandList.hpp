@@ -136,6 +136,12 @@ namespace alloy::vk
         
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
 
+        virtual void SetPushConstants(
+            std::uint32_t pushConstantIndex,
+            std::uint32_t num32BitValuesToSet,
+            const uint32_t* pSrcData,
+            std::uint32_t destOffsetIn32BitValues) override;
+
         virtual void SetViewports(const std::span<Viewport>& viewport) override;
         virtual void SetFullViewports() override;
 
@@ -181,6 +187,12 @@ namespace alloy::vk
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        
+        virtual void SetPushConstants(
+            std::uint32_t pushConstantIndex,
+            std::uint32_t num32BitValuesToSet,
+            const uint32_t* pSrcData,
+            std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
         /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.

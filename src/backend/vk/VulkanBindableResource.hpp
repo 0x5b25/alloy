@@ -41,11 +41,21 @@ namespace alloy::vk{
             std::vector<BindSetInfo> sets;
         };
 
+        struct PushConstantInfo {
+            uint32_t bindingSlot;
+            uint32_t bindingSpace;
+            uint32_t sizeInDwords;
+            uint32_t offsetInDwords;
+        };
+
     private:
         common::sp<VulkanDevice> _dev;
         
         std::vector<ResourceBindInfo> _bindings;
         //std::uint32_t _dynamicBufferCount;
+
+        std::vector<PushConstantInfo> _pushConstants;
+        uint32_t _pushConstantSize;
 
         VulkanResourceLayout(
             const common::sp<VulkanDevice>& dev,
@@ -68,6 +78,8 @@ namespace alloy::vk{
         //const alloy::VK::priv::DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
 
         const std::vector<ResourceBindInfo>& GetBindings() const {return _bindings;}
+        const std::vector<PushConstantInfo>& GetPushConstants() const {return _pushConstants;}
+        std::uint32_t GetPushConstantSize() const {return _pushConstantSize;}
     };
 
     class VulkanResourceSet : public IResourceSet{

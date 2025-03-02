@@ -50,7 +50,7 @@ namespace alloy::dxc
 
         virtual void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) = 0;
 
-        const common::sp<DXCResourceLayout>& GetPipelineLayout() const { _rootSig; }
+        const common::sp<DXCResourceLayout>& GetPipelineLayout() const { return _rootSig; }
 
     };
 

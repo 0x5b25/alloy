@@ -11,6 +11,7 @@
 //#include "alloy/SyncObjects.hpp"
 //#include "alloy/Buffer.hpp"
 //#include "alloy/SwapChain.hpp"
+#include "utils/Allocators.hpp"
 
 //standard library headers
 #include <vector>
@@ -28,86 +29,6 @@
 
 namespace alloy::dxc {
 
-    /*
-    A 3-level tree structure:
-
-    +-----------+------------------------------------------------
-    |           | +----------------------    ------------+ +------------------------+
-    |  flag2-0  | | flag1-0 | flag1-1 |  ...  | flag1-63 | | flag0-0 ... flag0-4095 |
-    |           | +----------------------    ------------+ +------------------------+
-    +-----------+------------------------------------------------
-    
-    */
-    class Bitmap {
-        uint32_t bitCnt;
-        uint32_t depth;
-        uint64_t* payload;
-
-        void ModifyBit(uint32_t whichBit, bool value);
-
-    public:
-
-        Bitmap(uint32_t bitCnt);
-
-        ~Bitmap() {
-            delete[] payload;
-        }
-
-        bool Test(uint32_t whichBit) const {
-            assert(whichBit < bitCnt);
-            uint32_t currDepth = 0;
-            uint64_t* pLayer = payload;
-            while(currDepth < depth) {
-                auto layerSizeInWord = 1u << ( currDepth * 6 );
-                pLayer += layerSizeInWord;
-            }
-            auto& whichWord = pLayer[whichBit >> 6];
-            auto mask = 1 << (whichBit & 0x3f);
-            return whichWord & mask;
-        }
-
-        void Set(uint32_t whichBit) { 
-            assert(whichBit < bitCnt);
-            ModifyBit(whichBit, 1);
-        }
-        void Clear(uint32_t whichBit) {
-            assert(whichBit < bitCnt);
-            ModifyBit(whichBit, 0);
-        }
-
-        void ClearAll() {
-            uint32_t currDepth = 0;
-            uint64_t* pLayer = payload;
-            while (currDepth <= depth) {
-                auto layerSizeInWord = 1u << (currDepth * 6);
-                for (uint32_t i = 0; i < layerSizeInWord; i++) {
-                    pLayer[i] = 0;
-                }
-                pLayer += layerSizeInWord;
-                currDepth++;
-            }
-        }
-
-        void SetAll() {
-            uint32_t currDepth = 0;
-            uint64_t* pLayer = payload;
-            while (currDepth <= depth) {
-                auto layerSizeInWord = 1u << (currDepth * 6);
-                for (uint32_t i = 0; i < layerSizeInWord; i++) {
-                    pLayer[i] = 0xffffffff'ffffffff;
-                }
-                pLayer += layerSizeInWord;
-                currDepth++;
-            }
-        }
-
-        bool IsFull() const {
-            return *payload == 0xffffffff'ffffffff;
-        }
-
-        bool Find(uint32_t& whichBit) const;
-    };
-
     struct _Descriptor{
         D3D12_CPU_DESCRIPTOR_HANDLE handle;
         uint32_t poolIndex;
@@ -122,7 +43,7 @@ namespace alloy::dxc {
     public:
         struct Container {
             ID3D12DescriptorHeap* heap;
-            Bitmap bitmap;
+            alloy::utils::Bitmap bitmap;
 
             Container (
                 ID3D12DescriptorHeap* heap,
@@ -155,5 +76,55 @@ namespace alloy::dxc {
     //
         _Descriptor Allocate();
         void Free(const _Descriptor&);
+    };
+
+    struct _ShaderResDescriptor{
+        D3D12_GPU_DESCRIPTOR_HANDLE handle;
+        uint32_t count;
+        uint32_t handleIncrSize;
+        uint32_t poolIndex;
+        
+        alloy::utils::FreeListAllocator::Allocation* pAlloc;
+
+        operator bool() const {
+            return handle.ptr;
+        }
+    };
+    
+    class _ShaderResDescriptorHeapMgr{
+
+        struct Container {
+            ID3D12DescriptorHeap* heap;
+            alloy::utils::FreeListAllocator allocator;
+
+            Container (
+                ID3D12DescriptorHeap* heap,
+                uint32_t descCount
+            ) : heap(heap)
+              , allocator(descCount)
+            {}
+        };
+
+        ID3D12Device* _dev;
+    
+        uint32_t _maxDescCnt;
+        D3D12_DESCRIPTOR_HEAP_TYPE _type;
+        uint32_t _incrSize;
+        //PoolSizes _poolSizes;
+    
+        std::vector<Container> _pools;
+    
+        std::mutex _m_pool;
+    
+        ID3D12DescriptorHeap* _CreatePool(uint32_t maxDescCnt);
+
+
+    public:
+        _ShaderResDescriptorHeapMgr(ID3D12Device* dev, D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t maxDescCnt);
+        ~_ShaderResDescriptorHeapMgr();
+
+        _ShaderResDescriptor Allocate(uint32_t count);
+        void Free(const _ShaderResDescriptor&);
+
     };
 }
