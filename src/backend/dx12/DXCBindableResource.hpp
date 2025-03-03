@@ -110,6 +110,6 @@ namespace alloy::dxc {
 //
     //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
     //    void VisitElements(ElementVisitor visitor);
-        const std::vector<ID3D12DescriptorHeap*>& GetDescriptorHeaps() const { return _descHeap; }
+        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const { return _descHeap; }
     };
 }
