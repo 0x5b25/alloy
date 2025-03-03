@@ -111,4 +111,6 @@ CreateDemoApp(imguiTest)
 CreateDemoApp(renderTargetTest)
 
 alloy_install_runtime_libs(alloy_demo "${CMAKE_INSTALL_PREFIX}/bin/demo")
-alloy_install_dxc_binaries(alloy_demo "${CMAKE_INSTALL_PREFIX}/bin/demo")
+if(WIN32)
+    alloy_install_dxc_binaries(alloy_demo "${CMAKE_INSTALL_PREFIX}/bin/demo")
+endif()

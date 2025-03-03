@@ -80,6 +80,15 @@ void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
     auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
     _drawResources.boundPipeline = common::ref_sp(mtlPipeline);
     mtlPipeline->BindToCmdBuf(_mtlEnc);
+
+    auto layout = mtlPipeline->GetPipelineLayout();
+    
+    if(layout) {
+        auto argBufferSize = layout->GetRootSigSizeInBytes();
+        _drawResources.argBuffer.resize(argBufferSize);
+    } else {
+        _drawResources.argBuffer.clear();
+    }
 }
 
 
@@ -111,7 +120,7 @@ void MetalRenderCmdEnc::SetIndexBuffer(const common::sp<BufferRange>& buffer, In
 void MetalRenderCmdEnc::SetGraphicsResourceSet(
     const common::sp<IResourceSet>& rs
 ) {
-    
+    assert(_drawResources.boundPipeline != nullptr);
     
     @autoreleasepool {
         resources.insert(rs);
@@ -127,11 +136,44 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
 
         id<MTLSamplerState> sampler;
         
+        auto layout = _drawResources.boundPipeline->GetPipelineLayout();
+
+        auto pHeap =(uint64_t*)_drawResources.argBuffer.data();
+        auto shResVA = mtlRS->GetShaderResHeapGPUVA();
+        auto sampVA = mtlRS->GetSamplerHeapGPUVA();
+        if(shResVA) {
+            *pHeap = shResVA;
+            pHeap++;
+        }
+        if(sampVA) {
+            *pHeap = sampVA;
+            pHeap++;
+        }
+
         //[_mtlEnc useResource:sampler usage:MTLResourceUsageRead];
         //[_mtlEnc useResources:(id<MTLResource>  _Nonnull const * _Nonnull) count:(NSUInteger) usage:(MTLResourceUsage) stages:(MTLRenderStages)]
         
-        [_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
-        [_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
+        //[_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
+        //[_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
+    }
+}
+
+
+void MetalRenderCmdEnc::SetPushConstants(
+    std::uint32_t pushConstantIndex,
+    std::uint32_t num32BitValuesToSet,
+    const uint32_t* pSrcData,
+    std::uint32_t destOffsetIn32BitValues
+) {
+    @autoreleasepool {
+        auto layout = _drawResources.boundPipeline->GetPipelineLayout();
+        auto& pcs = layout->GetPushConstants();
+        assert(pushConstantIndex < pcs.size());
+        auto& pc = pcs[pushConstantIndex];
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + num32BitValuesToSet);
+        auto offset = pc.offsetInDwords * sizeof(uint32_t);
+
+        memcpy(&_drawResources.argBuffer[offset], pSrcData, num32BitValuesToSet * sizeof(uint32_t));
     }
 }
 
@@ -220,7 +262,18 @@ void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
 
         //auto& bufferRange = registry.boundIndexBuffer;
         //auto mtlBuffer = static_cast<AllocationImpl*>(bufferRange->GetBufferObject());
+        if(!_drawResources.argBuffer.empty()) {
+            auto data = _drawResources.argBuffer.data();
+            auto size = _drawResources.argBuffer.size();
+            [_mtlEnc setVertexBytes:data 
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+            [_mtlEnc setFragmentBytes:data 
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+        }
         
+   
         IRRuntimeDrawPrimitives(_mtlEnc,
                                 mtlPipeline->GetPrimitiveTopology(),
                                 vertexStart,
@@ -283,6 +336,18 @@ void MetalRenderCmdEnc::DrawIndexed(
                          length:vertArgBuf.size() * sizeof(IRRuntimeVertexBuffer)
                         atIndex:kIRVertexBufferBindPoint];
         
+        if(!_drawResources.argBuffer.empty()) {
+            auto data = _drawResources.argBuffer.data();
+            auto size = _drawResources.argBuffer.size();
+            [_mtlEnc setVertexBytes:data 
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+            [_mtlEnc setFragmentBytes:data 
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+        }
+        
+        
         auto indexElemSize = FormatHelpers::GetSizeInBytes(registry.boundIndexBufferFormat);
         
         IRRuntimeDrawIndexedPrimitives(_mtlEnc,
@@ -316,6 +381,17 @@ void MetalComputeCmdEnc::SetComputeResourceSet(
 /*const std::vector<std::uint32_t>& dynamicOffsets*/) {
     
 }
+
+
+void MetalComputeCmdEnc::SetPushConstants(
+    std::uint32_t pushConstantIndex,
+    std::uint32_t num32BitValuesToSet,
+    const uint32_t* pSrcData,
+    std::uint32_t destOffsetIn32BitValues
+                                          ) {
+    
+}
+
 
 /// <summary>
 /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.

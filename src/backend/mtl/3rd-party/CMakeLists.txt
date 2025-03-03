@@ -18,7 +18,7 @@ add_library(MetalShaderConverter SHARED IMPORTED GLOBAL)
 set_target_properties(MetalShaderConverter PROPERTIES
     #IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/MetalShaderConverter/lib/libmetalirconverter.dylib"
     IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/MetalShaderConverter/bin/${MTL_SH_CVT_FRAMEWORK}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/bin/include"
+    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/MetalShaderConverter/bin/include"
 )
 set_property(TARGET MetalShaderConverter PROPERTY FOLDER "3rd-party/mtl")
 #set_property(TARGET MetalShaderConverter PROPERTY FRAMEWORK TRUE)

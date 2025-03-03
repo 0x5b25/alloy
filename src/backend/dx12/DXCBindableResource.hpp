@@ -50,8 +50,7 @@ namespace alloy::dxc {
         //DescriptorResourceCounts _drcs;
 
         std::uint32_t _rootConstantCount;
-        std::optional<std::uint32_t> _shaderResHeapArgIdx,
-                                     _samplerHeapArgIdx;
+        uint32_t _heapCount;
     
         DXCResourceLayout(
             const common::sp<DXCDevice>& dev,
@@ -75,8 +74,7 @@ namespace alloy::dxc {
         //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}
         //const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
 
-        std::optional<std::uint32_t> GetShaderResHeapArgIdx() const { return _shaderResHeapArgIdx; }
-        std::optional<std::uint32_t> GetSamplerHeapArgIdx() const { return _samplerHeapArgIdx; }
+        std::uint32_t GetHeapCount() const { return _heapCount; }
     };
     
     class DXCResourceSet : public IResourceSet{ //Actually d3d12 descriptor heap?
@@ -89,10 +87,7 @@ namespace alloy::dxc {
 //
     //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
 //  
-        ID3D12DescriptorHeap* _shaderResHeap;
-        ID3D12DescriptorHeap* _samplerHeap;
-        
-        //std::vector<ID3D12DescriptorHeap*> _descHeap;
+        std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
             const common::sp<DXCDevice>& dev,
@@ -115,7 +110,6 @@ namespace alloy::dxc {
 //
     //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
     //    void VisitElements(ElementVisitor visitor);
-        ID3D12DescriptorHeap* GetShaderResHeap() const { return _shaderResHeap; }
-        ID3D12DescriptorHeap* GetSamplerHeap() const {return _samplerHeap; }
+        const std::vector<ID3D12DescriptorHeap*>& GetDescriptorHeaps() const { return _descHeap; }
     };
 }

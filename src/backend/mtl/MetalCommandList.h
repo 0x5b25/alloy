@@ -87,6 +87,7 @@ class MetalRenderCmdEnc : public IRenderCommandEncoder, public CmdEncoderImplBas
         std::unordered_map<std::uint32_t, common::sp<BufferRange> > boundVertexBuffers;
         common::sp<BufferRange> boundIndexBuffer; IndexFormat boundIndexBufferFormat;
         //common::sp<IResourceSet> boundArgBuffers[31];
+        std::vector<uint8_t> argBuffer;
     };
 
     ///#TODO: Confirm can we have multiple draw calls in single render pass
@@ -147,8 +148,14 @@ public:
         const common::sp<IResourceSet>& rs
         //const std::vector<std::uint32_t>& dynamicOffsets
         ) override;
-        
     
+    
+    virtual void SetPushConstants(
+        std::uint32_t pushConstantIndex,
+        std::uint32_t num32BitValuesToSet,
+        const uint32_t* pSrcData,
+        std::uint32_t destOffsetIn32BitValues) override;
+
     //Subsituted by BeginWithRenderEncoder and EndEncoding
     //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
     //virtual void EndRenderPass() = 0;
@@ -271,6 +278,13 @@ public:
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+
+
+        virtual void SetPushConstants(
+            std::uint32_t pushConstantIndex,
+            std::uint32_t num32BitValuesToSet,
+            const uint32_t* pSrcData,
+            std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
         /// Dispatches a compute operation from the currently-bound compute state of this Pipeline.

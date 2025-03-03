@@ -7,6 +7,7 @@
 namespace alloy::mtl {
 
     class MetalDevice;
+    class MetalResourceLayout;
 
     
     struct _MtlRasteizerState {
@@ -16,8 +17,6 @@ namespace alloy::mtl {
     };
 
     
-
-
     class MetalGfxPipeline : public alloy::IGfxPipeline {
 
 
@@ -33,7 +32,7 @@ namespace alloy::mtl {
         id<MTLDepthStencilState> _mtlDepthStencilState;
 
         //Hold reference to resources
-        common::sp<IResourceLayout> _pipelineLayout;
+        common::sp<MetalResourceLayout> _pipelineLayout;
         std::vector<common::sp<IShader> > _shaders;
         
         std::vector<VertexLayout> _vertexLayouts;
@@ -60,11 +59,16 @@ namespace alloy::mtl {
         }
 
         MTLPrimitiveType GetPrimitiveTopology() const {return _mtlPrimitiveTopology;}
+    
+        common::sp<MetalResourceLayout> GetPipelineLayout() const;
     };
 
     class MetalComputePipeline : public alloy::IComputePipeline {
 
         common::sp<MetalDevice> _mtlDev;
+
+
+        common::sp<MetalResourceLayout> _pipelineLayout;
 
         MetalComputePipeline(common::sp<MetalDevice>&& dev) : _mtlDev(std::move(dev)) {}
     public:

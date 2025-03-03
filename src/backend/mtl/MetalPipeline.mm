@@ -144,7 +144,10 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         ///#TODO: cross validate pipeline resource layout and shader resources in DXIL
         MetalResourceLayout* mtlResLayout = nullptr;
         if(desc.resourceLayout){
-            mtlResLayout = common::PtrCast<MetalResourceLayout>(desc.resourceLayout.get());
+            // Pipeline Layout
+            alPipelineObj->_pipelineLayout
+                = common::SPCast<MetalResourceLayout>(desc.resourceLayout);
+            mtlResLayout = alPipelineObj->_pipelineLayout.get();
         }
         
         {
@@ -189,8 +192,6 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             //pipelineDescriptor.colorAttachments[0].pixelFormat = pixelFormat;
             //pipelineDescriptor
 
-        // Pipeline Layout
-        alPipelineObj->_pipelineLayout = desc.resourceLayout;
 
         // Multisample
         switch(desc.attachmentState.sampleCount) {
@@ -356,6 +357,8 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
 MetalGfxPipeline::~MetalGfxPipeline(){
 
 }
+
+    common::sp<MetalResourceLayout> MetalGfxPipeline::GetPipelineLayout() const { return _pipelineLayout; }
 
 
     MetalComputePipeline:: ~MetalComputePipeline() {

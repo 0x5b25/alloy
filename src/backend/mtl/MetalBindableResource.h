@@ -17,10 +17,22 @@ namespace alloy::mtl {
     class MetalResourceLayout : public IResourceLayout {
         
         friend class MetalResourceSet;
-    
+    public:
+        struct PushConstantInfo {
+            uint32_t bindingSlot;
+            uint32_t bindingSpace;
+            uint32_t sizeInDwords;
+            uint32_t offsetInDwords;
+        };
+
+    private:
         common::sp<MetalDevice> _dev;
         
         IRRootSignature* _rootSig;
+        uint32_t _descHeapCount;
+        std::vector<PushConstantInfo> _pushConstants;
+
+        uint64_t _rootSigSizeInBytes;
         
     public:
         
@@ -36,7 +48,11 @@ namespace alloy::mtl {
         
         
         const IRRootSignature* GetHandle() const {return _rootSig;}
+
+        uint32_t GetDescHeapCount() const { return _descHeapCount; }
+        const std::vector<PushConstantInfo>& GetPushConstants() const { return _pushConstants; }
         
+        uint64_t GetRootSigSizeInBytes() const { return _rootSigSizeInBytes; }
     };
 
     //Descriptor heap is implemented as a argument buffer
@@ -44,6 +60,9 @@ namespace alloy::mtl {
     class MetalResourceSet : public IResourceSet {
         
         id<MTLBuffer> _argBuf;
+
+        uint64_t _shaderResHeapGPUVA;
+        uint64_t _samplerHeapGPUVA;
         
     public:
         
@@ -57,9 +76,12 @@ namespace alloy::mtl {
                                                  const IResourceSet::Description& desc)
         { return common::sp(new MetalResourceSet(desc)); }
         
-        const id<MTLBuffer> GetHandle() const { return _argBuf; }
+        //const id<MTLBuffer> GetHandle() const { return _argBuf; }
         
         std::vector<id<MTLResource>> GetUseResources() const;
+
+        uint64_t GetShaderResHeapGPUVA() const { return _shaderResHeapGPUVA; }
+        uint64_t GetSamplerHeapGPUVA() const { return _samplerHeapGPUVA; }
         
     };
 

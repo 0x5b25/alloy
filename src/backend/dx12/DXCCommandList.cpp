@@ -137,34 +137,12 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        auto shaderResHeapArgIdx = dxcLayout->GetShaderResHeapArgIdx();
-        auto samplerHeapArgIdx = dxcLayout->GetSamplerHeapArgIdx();
-
-        std::vector< ID3D12DescriptorHeap* > heaps;
-
-        if (shaderResHeapArgIdx) {
-            auto heap = d3dkrs->GetShaderResHeap();
-            assert(heap != nullptr);
-            heaps.push_back(heap);
-        }
-        if (samplerHeapArgIdx) {
-            auto heap = d3dkrs->GetSamplerHeap();
-            assert(heap != nullptr);
-            heaps.push_back(heap);
-        }
+        auto& heaps = d3dkrs->GetHeaps();
 
         cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        if (shaderResHeapArgIdx) {
-            cmdList->SetGraphicsRootDescriptorTable(
-                shaderResHeapArgIdx.value(),
-                d3dkrs->GetShaderResHeap()->GetGPUDescriptorHandleForHeapStart());
-        }
-
-        if (samplerHeapArgIdx) {
-            cmdList->SetGraphicsRootDescriptorTable(
-                samplerHeapArgIdx.value(),
-                d3dkrs->GetSamplerHeap()->GetGPUDescriptorHandleForHeapStart());
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            cmdList->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
 
         //auto& entry = _resourceSets[slot];
@@ -180,8 +158,15 @@ namespace alloy::dxc
         const uint32_t* pSrcData,
         std::uint32_t destOffsetIn32BitValues
     ) {
+        CHK_PIPELINE_SET();
+        //assert(slot < _resourceSets.size());
+
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
+        auto argBase = dxcLayout->GetHeapCount();
+
         cmdList->SetGraphicsRoot32BitConstants(
-            pushConstantIndex,
+            pushConstantIndex + argBase,
             num32BitValuesToSet,
             pSrcData,
             destOffsetIn32BitValues
@@ -216,34 +201,12 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        auto shaderResHeapArgIdx = dxcLayout->GetShaderResHeapArgIdx();
-        auto samplerHeapArgIdx = dxcLayout->GetSamplerHeapArgIdx();
-
-        std::vector< ID3D12DescriptorHeap* > heaps;
-
-        if (shaderResHeapArgIdx) {
-            auto heap = d3dkrs->GetShaderResHeap();
-            assert(heap != nullptr);
-            heaps.push_back(heap);
-        }
-        if (samplerHeapArgIdx) {
-            auto heap = d3dkrs->GetSamplerHeap();
-            assert(heap != nullptr);
-            heaps.push_back(heap);
-        }
+        auto& heaps = d3dkrs->GetHeaps();
 
         cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        if (shaderResHeapArgIdx) {
-            cmdList->SetGraphicsRootDescriptorTable(
-                shaderResHeapArgIdx.value(),
-                d3dkrs->GetShaderResHeap()->GetGPUDescriptorHandleForHeapStart());
-        }
-
-        if (samplerHeapArgIdx) {
-            cmdList->SetGraphicsRootDescriptorTable(
-                samplerHeapArgIdx.value(),
-                d3dkrs->GetSamplerHeap()->GetGPUDescriptorHandleForHeapStart());
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            cmdList->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
     }
 
@@ -254,6 +217,14 @@ namespace alloy::dxc
         const uint32_t* pSrcData,
         std::uint32_t destOffsetIn32BitValues
     ) {
+        CHK_PIPELINE_SET();
+        //assert(slot < _resourceSets.size());
+
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
+        auto argBase = dxcLayout->GetHeapCount();
+
+
         cmdList->SetComputeRoot32BitConstants(
             pushConstantIndex,
             num32BitValuesToSet,
