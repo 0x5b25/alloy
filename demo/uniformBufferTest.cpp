@@ -544,7 +544,7 @@ class UniformApp : public AppBase {
                     .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
                     .stagesAfter = alloy::PipelineStage::DEPTH_STENCIL,
                     .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
-                    .accessAfter = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessAfter = alloy::ResourceAccess::DepthStencilWritable,
                 },
 
                 .resourceInfo = alloy::TextureBarrierResource {
@@ -622,7 +622,7 @@ class UniformApp : public AppBase {
                 .memBarrier = {
                     .stagesBefore = alloy::PipelineStage::DEPTH_STENCIL,
                     .stagesAfter = alloy::PipelineStage::All,
-                    .accessBefore = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessBefore = alloy::ResourceAccess::DepthStencilWritable,
                     .accessAfter = alloy::ResourceAccess::COMMON,
                 },
 

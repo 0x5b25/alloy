@@ -165,7 +165,7 @@ namespace alloy::vk {
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = img;
         tex->_allocation = allocation;
-        tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
+        tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
         tex->_accessFlag = 0;
         tex->_pipelineFlag = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         //ClearIfRenderTarget();
@@ -182,8 +182,12 @@ namespace alloy::vk {
         //    dev->TransitionImageLayout(tex, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         //}
         //RefCount = new ResourceRefCount(RefCountedDispose);
-
-		
+        alloy::utils::TextureState state {};
+        state.access = ResourceAccess::None;
+        state.stage = PipelineStage::None;
+        state.layout = alloy::TextureLayout::UNDEFINED;
+        dev->RegisterTextureState(state, tex);
+		tex->RegisterTimeline(dev.get());
 
 		return common::sp<ITexture>(tex);
 	}
@@ -222,6 +226,12 @@ namespace alloy::vk {
 //
         //    ClearIfRenderTarget();
         //    RefCount = new ResourceRefCount(DisposeCore);
+        alloy::utils::TextureState state {};
+        state.access = ResourceAccess::None;
+        state.stage = PipelineStage::None;
+        state.layout = alloy::TextureLayout::UNDEFINED;
+        dev->RegisterTextureState(state, tex);
+		tex->RegisterTimeline(dev.get());
         return common::sp(tex);
     }
 

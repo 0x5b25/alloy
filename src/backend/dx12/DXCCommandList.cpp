@@ -154,8 +154,7 @@ namespace alloy::dxc
             
     void DXCRenderCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
-        std::uint32_t num32BitValuesToSet,
-        const uint32_t* pSrcData,
+        const std::span<uint32_t>& data,
         std::uint32_t destOffsetIn32BitValues
     ) {
         CHK_PIPELINE_SET();
@@ -167,8 +166,8 @@ namespace alloy::dxc
 
         cmdList->SetGraphicsRoot32BitConstants(
             pushConstantIndex + argBase,
-            num32BitValuesToSet,
-            pSrcData,
+            data.size(),
+            data.data(),
             destOffsetIn32BitValues
         );
     }
@@ -213,8 +212,7 @@ namespace alloy::dxc
         
     void DXCComputeCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
-        std::uint32_t num32BitValuesToSet,
-        const uint32_t* pSrcData,
+        const std::span<uint32_t>& data,
         std::uint32_t destOffsetIn32BitValues
     ) {
         CHK_PIPELINE_SET();
@@ -227,8 +225,8 @@ namespace alloy::dxc
 
         cmdList->SetComputeRoot32BitConstants(
             pushConstantIndex,
-            num32BitValuesToSet,
-            pSrcData,
+            data.size(),
+            data.data(),
             destOffsetIn32BitValues
         );
     }
@@ -904,9 +902,9 @@ namespace alloy::dxc
             flags |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
         if(accesses[alloy::ResourceAccess::UNORDERED_ACCESS])
             flags |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_WRITE])
+        if(accesses[alloy::ResourceAccess::DepthStencilWritable])
             flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
-        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_READ])
+        if(accesses[alloy::ResourceAccess::DepthStencilReadOnly])
             flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
         if(accesses[alloy::ResourceAccess::SHADER_RESOURCE])
             flags |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;

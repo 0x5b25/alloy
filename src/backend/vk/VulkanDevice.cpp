@@ -20,7 +20,7 @@
 #include "VulkanContext.hpp"
 #include "VulkanCommandList.hpp"
 #include "VulkanSwapChain.hpp"
-
+#include "VulkanResourceBarrier.hpp"
 
 namespace alloy::vk {
 
@@ -379,18 +379,22 @@ bool Contains(T&& container, U&& element) {
     ISwapChain::State VulkanDevice::PresentToSwapChain(
         ISwapChain* sc
     ) {
-
+        
         VulkanSwapChain* vkSC = PtrCast<VulkanSwapChain>(sc);
+        auto tex = vkSC->GetCurrentColorTarget()->GetTextureObject().get();
+        
+        auto sem = _gfxQ->PrepareTextureForPresent(PtrCast<VulkanTexture>(tex));
+
         VkSwapchainKHR deviceSwapchain = vkSC->GetHandle();
         VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-        presentInfo.waitSemaphoreCount = 0;
-        presentInfo.pWaitSemaphores = nullptr;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &sem;
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &deviceSwapchain;
         auto imageIndex = vkSC->GetCurrentImageIdx();
         presentInfo.pImageIndices = &imageIndex;
-
         vkSC->MarkCurrentImageInUse();
+
 
         //object presentLock = vkSC.PresentQueueIndex == _graphicsQueueIndex ? _graphicsQueueLock : vkSC;
         //lock(presentLock)
@@ -522,6 +526,11 @@ bool Contains(T&& container, U&& element) {
         //buf->_usages = usages;
         //buf->_allocationType = allocationType;
 
+        alloy::utils::BufferState state {};
+        state.access = ResourceAccess::None;
+        state.stage = PipelineStage::None;
+        dev->RegisterBufferState(state, buf);
+		buf->RegisterTimeline(dev.get());
 
         return common::sp(buf);
     }
@@ -554,11 +563,12 @@ bool Contains(T&& container, U&& element) {
     
     uint64_t VulkanFence::GetSignaledValue() {
         uint64_t value;
-        _dev->GetFnTable().vkGetSemaphoreCounterValue(_dev->LogicalDev(), _timelineSem, &value);
+        _dev->GetFnTable().vkGetSemaphoreCounterValueKHR(_dev->LogicalDev(), _timelineSem, &value);
 
         return value;
     }
     void VulkanFence::SignalFromCPU(uint64_t signalValue) {
+        RegisterSyncPoint(_dev.get(), signalValue);
         VkSemaphoreSignalInfo signalInfo {};
         signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
         signalInfo.pNext = nullptr;
@@ -567,6 +577,7 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev, vkSignalSemaphoreKHR(_dev->LogicalDev(), &signalInfo));
     }
     bool VulkanFence::WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) {
+
         VkSemaphoreWaitInfo waitInfo {};
         waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
         waitInfo.pNext = nullptr;
@@ -579,7 +590,10 @@ bool Contains(T&& container, U&& element) {
 
         switch (res) {
         //On success, this command returns
-            case VK_SUCCESS: return true;
+            case VK_SUCCESS: {
+                SyncTimelineToThis(_dev.get(), expectedValue);
+                return true;
+            }
             case VK_TIMEOUT: return false;
 
         //On failure, this command returns
@@ -699,9 +713,39 @@ bool Contains(T&& container, U&& element) {
         : _dev(dev)
         , _cmdPoolMgr(dev, queueFamily)
         , _q(q)
-    { }
+        , _lastSubmittedFence(0)
+        , ITrackerCmdQ(*dev)
+    { 
+        
+        VkSemaphoreTypeCreateInfo timelineCreateInfo {};
+        timelineCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+        timelineCreateInfo.pNext = NULL;
+        timelineCreateInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        timelineCreateInfo.initialValue = 0;
+
+        VkSemaphoreCreateInfo createInfo {};
+        createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        createInfo.pNext = &timelineCreateInfo;
+        createInfo.flags = 0;
+
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &_submissionFence)));
+
+        createInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &_presentFence)));
+    }
+
+    VulkanCommandQueue::~VulkanCommandQueue() {
+        VK_DEV_CALL(_dev,vkDestroySemaphore(_dev->LogicalDev(), _submissionFence, nullptr));
+        VK_DEV_CALL(_dev,vkDestroySemaphore(_dev->LogicalDev(), _presentFence, nullptr));
+    }
 
     void VulkanCommandQueue::EncodeSignalEvent(IEvent* event, uint64_t value) {
+        
+        super::EncodeSignalEvent(event, value);
+
         auto rawFence = PtrCast<VulkanFence>(event)->GetHandle();
         const uint64_t signalValue = value; // Set semaphore value
 
@@ -722,6 +766,7 @@ bool Contains(T&& container, U&& element) {
     }
 
     void VulkanCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
+        super::EncodeWaitForEvent(evt, value);
         auto rawFence = PtrCast<VulkanFence>(evt)->GetHandle();
         const uint64_t waitValue = value; // Wait until semaphore value is >= 2
 
@@ -740,19 +785,177 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
     }
 
+    
+    void VulkanCommandQueue::_RecycleTransitionCmdBufs() {
+        uint64_t value;
+        _dev->GetFnTable().vkGetSemaphoreCounterValueKHR(
+            _dev->LogicalDev(), _submissionFence, &value);
+
+        while(! _transitionCmdBufs.empty()) {
+            auto& container = _transitionCmdBufs.front();
+            if(container.completionFenceValue <= value) {
+                container.cmdPool->FreeBuffer(container.cmdBuf);
+                _transitionCmdBufs.pop_front();
+            }
+        }
+
+    }
+    
+    void VulkanCommandQueue::InsertBarriers(
+        const alloy::utils::BarrierActions& barriers
+    ) {
+        //Recycle completed transition command buffers
+        _RecycleTransitionCmdBufs();
+
+        TransitionCmdBuf container {};
+        
+        auto cmdPool = _cmdPoolMgr.GetOnePool();
+        auto cmdBuf = cmdPool->AllocateBuffer();
+        container.cmdBuf = cmdBuf;
+        container.cmdPool = std::move(cmdPool);
+        container.completionFenceValue = _lastSubmittedFence;
+
+        {
+            VkCommandBufferBeginInfo beginInfo {};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.pNext = NULL;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            beginInfo.pInheritanceInfo = NULL;
+            VK_DEV_CALL(_dev, vkBeginCommandBuffer(cmdBuf, &beginInfo));
+            InsertBarrier(_dev, cmdBuf, barriers);
+            VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
+        }
+
+        _transitionCmdBufs.push_back(container);
+
+        VkSubmitInfo submitInfo {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuf;
+
+        VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
+    }
+
+    
+    VkSemaphore VulkanCommandQueue::PrepareTextureForPresent(VulkanTexture* tex) {
+        alloy::utils::TextureState currState {};
+        auto it = _currentState.textures.find(tex);
+        if(it != _currentState.textures.end()) {
+            currState = it->second;
+        } else {
+            currState = _cpuTimeline.GetCurrentState().textures[tex];
+            _currentState.textures[tex] = currState;
+        }
+
+        if(currState.layout != alloy::TextureLayout::PRESENT) {
+            auto& texDesc = tex->GetDesc();
+            VkImageMemoryBarrier barrier {};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.pNext = NULL;
+            barrier.srcAccessMask = 0;//vk_access_flags_from_d3d12_barrier(currState.access);
+            barrier.dstAccessMask = 0;
+            barrier.oldLayout = AlToVkTexLayout(currState.layout);
+            barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = tex->GetHandle();
+            barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texDesc.mipLevels, 0, texDesc.arrayLayers };
+
+            auto stagesBefore = VK_PIPELINE_STAGE_NONE_KHR;//vk_stage_flags_from_d3d12_barrier(currState.stage, currState.access);
+            
+
+            _RecycleTransitionCmdBufs();
+
+            TransitionCmdBuf container {};
+            
+            _lastSubmittedFence++;
+            auto cmdPool = _cmdPoolMgr.GetOnePool();
+            auto cmdBuf = cmdPool->AllocateBuffer();
+            container.cmdBuf = cmdBuf;
+            container.cmdPool = std::move(cmdPool);
+            container.completionFenceValue = _lastSubmittedFence;
+
+            {
+                VkCommandBufferBeginInfo beginInfo {};
+                beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                beginInfo.pNext = NULL;
+                beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                beginInfo.pInheritanceInfo = NULL;
+                VK_DEV_CALL(_dev, vkBeginCommandBuffer(cmdBuf, &beginInfo));
+                VK_DEV_CALL(_dev, vkCmdPipelineBarrier(
+                    cmdBuf,
+                    stagesBefore,
+                    0,
+                    0 /*VkDependencyFlags*/,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &barrier));
+                VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
+            }
+
+            _transitionCmdBufs.push_back(container);
+
+            uint64_t signalValues[] = {_lastSubmittedFence, 0};
+
+            VkTimelineSemaphoreSubmitInfo timelineInfo {};
+            timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+            timelineInfo.pNext = NULL;
+            timelineInfo.signalSemaphoreValueCount = 2;
+            timelineInfo.pSignalSemaphoreValues = signalValues;
+
+            VkSubmitInfo submitInfo {};
+            VkSemaphore sem[] = {_submissionFence, _presentFence};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.pNext = &timelineInfo;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &cmdBuf;
+            submitInfo.signalSemaphoreCount = 2;
+            submitInfo.pSignalSemaphores = sem;
+
+
+            VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
+        } else {
+            VkSubmitInfo submitInfo {};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.signalSemaphoreCount = 1;
+            submitInfo.pSignalSemaphores = &_presentFence;
+
+            VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
+        }
+    
+        _currentState.textures[tex].stage = PipelineStage::None;
+        _currentState.textures[tex].access = ResourceAccess::None;
+        _currentState.textures[tex].layout = TextureLayout::PRESENT;
+
+        return _presentFence;
+    }
+
     void VulkanCommandQueue::SubmitCommand(ICommandList* cmd) {
+        _lastSubmittedFence++;
+        super::SubmitCommand(cmd);
         assert(cmd != nullptr);
         auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
         auto rawCmdBuf = vkCmd->GetHandle();
+
+        VkTimelineSemaphoreSubmitInfo timelineInfo {};
+        timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timelineInfo.pNext = NULL;
+        timelineInfo.signalSemaphoreValueCount = 1;
+        timelineInfo.pSignalSemaphoreValues = &_lastSubmittedFence;
             
-        VkSubmitInfo info {};
-        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        info.commandBufferCount = 1;
-        info.pCommandBuffers = &rawCmdBuf;
+        VkSubmitInfo submitInfo {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = &timelineInfo;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &rawCmdBuf;
+        submitInfo.signalSemaphoreCount  = 1;
+        submitInfo.pSignalSemaphores = &_submissionFence;
        
         VK_CHECK(VK_DEV_CALL(_dev, vkQueueSubmit(
-            _q, 1, &info, nullptr
+            _q, 1, &submitInfo, nullptr
         )));
+
+        super::NotifySyncResources();
     }
 
     common::sp<ICommandList> VulkanCommandQueue::CreateCommandList(){

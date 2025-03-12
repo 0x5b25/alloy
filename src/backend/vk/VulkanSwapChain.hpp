@@ -303,6 +303,7 @@ namespace alloy::vk
         const VkSwapchainKHR& GetHandle() const { return _deviceSwapchain; }
 
         std::uint32_t GetCurrentImageIdx() const { return _currentImageIndex; }
+        VulkanTextureView* GetCurrentColorTarget() const { return _fbs[_currentImageIndex].colorTgt.get(); }
 
         void MarkCurrentImageInUse() { _currentImageInUse = true; }
 

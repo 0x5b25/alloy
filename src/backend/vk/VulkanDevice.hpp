@@ -10,6 +10,7 @@
 #include "alloy/Buffer.hpp"
 #include "alloy/SwapChain.hpp"
 #include "alloy/CommandQueue.hpp"
+#include "utils/ResourceStateTracker.hpp"
 
 #include <deque>
 #include <map>
@@ -26,6 +27,7 @@ namespace alloy::vk
     //class _VkCtx;
     class VulkanAdapter;
     class VulkanBuffer;
+    class VulkanTexture;
     class VulkanDevice;
     //class VulkanResourceFactory;
     //Manage command pools, to achieve one command pool per thread
@@ -70,17 +72,33 @@ namespace alloy::vk
         void FreeBuffer(VkCommandBuffer buf);
     };
 
-    class VulkanCommandQueue : public ICommandQueue {
+    class VulkanCommandQueue : public alloy::utils::ITrackerCmdQ {
+
+        using super = alloy::utils::ITrackerCmdQ;
 
         VulkanDevice* _dev;
         _CmdPoolMgr _cmdPoolMgr;
         VkQueue _q;
+        
+        VkSemaphore  _submissionFence, _presentFence;
+        uint64_t _lastSubmittedFence = 0;
+        struct TransitionCmdBuf{
+            common::sp<_CmdPoolContainer> cmdPool;
+            VkCommandBuffer cmdBuf;
+            uint64_t completionFenceValue;
+        };
+        std::deque<TransitionCmdBuf> _transitionCmdBufs;
+
+        void _RecycleTransitionCmdBufs();
+    
+        virtual void InsertBarriers(
+            const alloy::utils::BarrierActions& barriers) override;
 
     public:
 
         VulkanCommandQueue(VulkanDevice* dev, std::uint32_t queueFamily, VkQueue q);
 
-        //virtual ~VulkanCommandQueue() override {
+        virtual ~VulkanCommandQueue() override;
         //    _q->Release();
         //}
 
@@ -104,9 +122,16 @@ namespace alloy::vk
         
         virtual common::sp<ICommandList> CreateCommandList() override;
 
+        //Transition texture to present layout if necessary.
+        //Will always signal the semaphore for present sync
+        VkSemaphore PrepareTextureForPresent(VulkanTexture* tex);
+
     };
 
-    class VulkanDevice : public IGraphicsDevice, public VulkanResourceFactory {
+    class VulkanDevice : public IGraphicsDevice
+                       , public VulkanResourceFactory
+                       , public alloy::utils::CPUTimeline
+    {
 
     public:
         union Features {
@@ -214,7 +239,7 @@ namespace alloy::vk
         void WaitForIdle() override { _fnTable.vkDeviceWaitIdle(_dev);}
     };
 
-    class VulkanBuffer : public IBuffer{
+    class VulkanBuffer : public alloy::utils::ITrackedBuffer{
 
     private:
         common::sp<VulkanDevice> _dev;
@@ -229,9 +254,9 @@ namespace alloy::vk
             const common::sp<VulkanDevice>& dev,
             const IBuffer::Description& desc
         ) 
-            : IBuffer(desc)
+            : ITrackedBuffer(desc)
             , _dev(dev)
-        {}
+        { }
 
     public:
 
@@ -267,8 +292,9 @@ namespace alloy::vk
 
     };
 
-    class VulkanFence : public IEvent {
+    class VulkanFence : public alloy::utils::ITrackerEvent {
 
+        using super = alloy::utils::ITrackerEvent;
     private:
         common::sp<VulkanDevice> _dev;
         VkSemaphore  _timelineSem;

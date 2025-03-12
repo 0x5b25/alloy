@@ -45,8 +45,7 @@ namespace alloy
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            std::uint32_t num32BitValuesToSet,
-            const uint32_t* pSrcData,
+            const std::span<uint32_t>& data,
             std::uint32_t destOffsetIn32BitValues) = 0;
 
         // Sets the active <see cref="ResourceSet"/> for the given index. This ResourceSet is only active for the graphics
@@ -169,8 +168,7 @@ namespace alloy
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            std::uint32_t num32BitValuesToSet,
-            const uint32_t* pSrcData,
+            const std::span<uint32_t>& data,
             std::uint32_t destOffsetIn32BitValues) = 0;
 
         /// <summary>

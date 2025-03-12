@@ -78,8 +78,7 @@ namespace alloy::dxc
         
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            std::uint32_t num32BitValuesToSet,
-            const uint32_t* pSrcData,
+            const std::span<uint32_t>& data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         virtual void SetViewports(const std::span<Viewport>& viewport) override;
@@ -128,8 +127,7 @@ namespace alloy::dxc
         
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            std::uint32_t num32BitValuesToSet,
-            const uint32_t* pSrcData,
+            const std::span<uint32_t>& data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>

@@ -99,7 +99,9 @@ namespace alloy
         COPY_RAYTRACING_ACCELERATION_STRUCTURE,
         //SPLIT, //used in pairs, indicates sync across commandlists
 
-        ALLOY_BITFLAG_MAX
+        ALLOY_BITFLAG_MAX,
+
+        None
     };
 
     enum class ResourceAccess {
@@ -109,12 +111,12 @@ namespace alloy
         INDEX_BUFFER,
         RENDER_TARGET,
         UNORDERED_ACCESS,
-        DEPTH_STENCIL_WRITE,
-        DEPTH_STENCIL_READ,
+        DepthStencilWritable,
+        DepthStencilReadOnly,
         SHADER_RESOURCE,
         STREAM_OUTPUT,
         INDIRECT_ARGUMENT,
-        PREDICATION,
+        
         COPY_DEST,
         COPY_SOURCE,
         RESOLVE_DEST,
@@ -123,7 +125,11 @@ namespace alloy
         RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
         SHADING_RATE_SOURCE,
 
-        ALLOY_BITFLAG_MAX
+        ALLOY_BITFLAG_MAX,
+        ///#TODO:TBD for indirect draw/dispatch
+        None,
+        PREDICATION = INDIRECT_ARGUMENT,
+
     };
 
 

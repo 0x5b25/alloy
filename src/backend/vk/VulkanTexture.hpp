@@ -5,6 +5,7 @@
 
 #include "alloy/Texture.hpp"
 #include "alloy/Sampler.hpp"
+#include "utils/ResourceStateTracker.hpp"
 
 #include <vector>
 
@@ -12,7 +13,7 @@ namespace alloy::vk
 {
     class VulkanDevice;
     
-    class VulkanTexture : public ITexture{
+    class VulkanTexture : public alloy::utils::ITrackedTexture{
 
         common::sp<VulkanDevice> _dev;
         VkImage _img;
@@ -29,9 +30,11 @@ namespace alloy::vk
         VulkanTexture(
             const common::sp<VulkanDevice>& dev,
             const ITexture::Description& desc
-        ) : ITexture(desc)
+        ) : ITrackedTexture(desc)
           , _dev(dev)
-        { }
+        {
+            
+        }
 
     public:
 
