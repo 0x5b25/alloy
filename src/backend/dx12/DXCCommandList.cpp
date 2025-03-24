@@ -56,6 +56,67 @@ namespace alloy::dxc
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
     
+    ID3D12GraphicsCommandList* DXCCmdEncBase::GetCmdList() const {
+        return static_cast<ID3D12GraphicsCommandList*>(cmdList->GetHandle());
+    }
+
+    void DXCCmdEncBase::RegisterResourceUsage(
+        const std::span<ID3D12Resource* const>& resources, 
+        D3D12_RESOURCE_STATES state
+    ) {
+        cmdList->RegisterResourceUsage(resources, state);
+    }
+
+    void DXCCmdEncBase::RegisterResourceSet(DXCResourceSet* d3drs) {
+        auto dxcLayout = static_cast<DXCResourceLayout*>(d3drs->GetDesc().layout.get());
+        auto& boundResources = d3drs->GetDesc().boundResources;
+        auto& elemDescs = dxcLayout->GetDesc().shaderResources;
+        auto& elems = d3drs->GetDesc().boundResources;
+
+        std::vector<ID3D12Resource*> resReadOnly, resRW;
+
+        for(unsigned i = 0; i < elemDescs.size(); i++) {
+            
+            auto& elemDesc = elemDescs[i];
+            auto& elem = elems[i];
+
+            using _ResKind = IBindableResource::ResourceKind;
+
+            switch (elemDesc.kind) {
+                case _ResKind::Texture: {
+                    auto* texView = PtrCast<DXCTextureView>(elem.get());
+                    auto texture = PtrCast<DXCTexture>(texView->GetTextureObject().get());
+                    if(elemDesc.options.writable) {
+                        resRW.push_back(texture->GetHandle());
+                    } else {
+                        resReadOnly.push_back(texture->GetHandle());
+                    }
+                } break;
+                case _ResKind::UniformBuffer: {
+                    auto* range = PtrCast<BufferRange>(elem.get());
+                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
+                    resReadOnly.push_back(buffer->GetHandle());
+                } break;
+                case _ResKind::StorageBuffer: {
+                    auto* range = PtrCast<BufferRange>(elem.get());
+                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
+                    resRW.push_back(buffer->GetHandle());
+                    
+                } break;
+                default:
+                    // Samplers don't need to be registered for usage
+                    break;
+            }
+        }
+
+        if(!resReadOnly.empty()) {
+            RegisterResourceUsage(resReadOnly, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+        }
+
+        if(!resRW.empty()) {
+            RegisterResourceUsage(resRW, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
+    }
 
     void DXCRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
 
@@ -63,7 +124,7 @@ namespace alloy::dxc
         assert(dxcPipeline != _currentPipeline);
         resources.insert(pipeline);
 
-        dxcPipeline->CmdBindPipeline(cmdList);
+        dxcPipeline->CmdBindPipeline(GetCmdList());
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -94,12 +155,16 @@ namespace alloy::dxc
         auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
         auto pRes = dxcBuffer->GetHandle();
 
+        ID3D12Resource* resList[] = {pRes};
+
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+
         D3D12_VERTEX_BUFFER_VIEW view {};
         view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
         view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[index].stride;
         view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        cmdList->IASetVertexBuffers(index, 1, &view);
+        GetCmdList()->IASetVertexBuffers(index, 1, &view);
     }
 
     void DXCRenderCmdEnc::SetIndexBuffer(
@@ -118,12 +183,16 @@ namespace alloy::dxc
         auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
         auto pRes = dxcBuffer->GetHandle();
 
+        ID3D12Resource* resList[] = {pRes};
+
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+
         D3D12_INDEX_BUFFER_VIEW view{};
         view.Format = VdToD3DIndexFormat(format);
         view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
         view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        cmdList->IASetIndexBuffer(&view);
+        GetCmdList()->IASetIndexBuffer(&view);
     }
 
     
@@ -137,12 +206,14 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
+        RegisterResourceSet(d3dkrs);
+
         auto& heaps = d3dkrs->GetHeaps();
 
-        cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
 
         for(uint32_t i = 0; i < heaps.size(); i++) {
-            cmdList->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            GetCmdList()->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
 
         //auto& entry = _resourceSets[slot];
@@ -164,7 +235,7 @@ namespace alloy::dxc
 
         auto argBase = dxcLayout->GetHeapCount();
 
-        cmdList->SetGraphicsRoot32BitConstants(
+        GetCmdList()->SetGraphicsRoot32BitConstants(
             pushConstantIndex + argBase,
             data.size(),
             data.data(),
@@ -178,7 +249,7 @@ namespace alloy::dxc
         assert(dxcPipeline != _currentPipeline);
         resources.insert(pipeline);
 
-        dxcPipeline->CmdBindPipeline(cmdList);
+        dxcPipeline->CmdBindPipeline(GetCmdList());
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -200,12 +271,14 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
+        RegisterResourceSet(d3dkrs);
+
         auto& heaps = d3dkrs->GetHeaps();
 
-        cmdList->SetDescriptorHeaps(heaps.size(), heaps.data());
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
 
         for(uint32_t i = 0; i < heaps.size(); i++) {
-            cmdList->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
     }
 
@@ -223,7 +296,7 @@ namespace alloy::dxc
         auto argBase = dxcLayout->GetHeapCount();
 
 
-        cmdList->SetComputeRoot32BitConstants(
+        GetCmdList()->SetComputeRoot32BitConstants(
             pushConstantIndex,
             data.size(),
             data.data(),
@@ -253,7 +326,7 @@ namespace alloy::dxc
                 vps[i].MinDepth = viewport[i].minDepth;
                 vps[i].MaxDepth = viewport[i].maxDepth;
             }
-            cmdList->RSSetViewports(vps.size(), vps.data());
+            GetCmdList()->RSSetViewports(vps.size(), vps.data());
         }
     }
     void DXCRenderCmdEnc::SetFullViewports() {
@@ -276,7 +349,7 @@ namespace alloy::dxc
 
             vps.push_back(vp);
         }
-        cmdList->RSSetViewports(vps.size(), vps.data());
+        GetCmdList()->RSSetViewports(vps.size(), vps.data());
     }
 
     void DXCRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects
@@ -296,7 +369,7 @@ namespace alloy::dxc
             //if (_scissorRects[index] != scissor)
             //{
             //    _scissorRects[index] = scissor;
-            cmdList->RSSetScissorRects(srs.size(), srs.data());
+            GetCmdList()->RSSetScissorRects(srs.size(), srs.data());
             //}
         }
     }
@@ -319,7 +392,7 @@ namespace alloy::dxc
             srs.push_back(sr);
         }
         
-        cmdList->RSSetScissorRects(srs.size(), srs.data());
+        GetCmdList()->RSSetScissorRects(srs.size(), srs.data());
     }
 
     void DXCRenderCmdEnc::Draw(
@@ -327,7 +400,7 @@ namespace alloy::dxc
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        cmdList->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
+        GetCmdList()->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
     }
     
     void DXCRenderCmdEnc::DrawIndexed(
@@ -338,7 +411,7 @@ namespace alloy::dxc
         //PreDrawCommand();
         //vkCmdDrawIndexed(_cmdBuf, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         
-        cmdList->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
+        GetCmdList()->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
     }
     
 #if 0
@@ -381,7 +454,7 @@ namespace alloy::dxc
     ){
         //PreDispatchCommand();
         //vkCmdDispatch(_cmdBuf, groupCountX, groupCountY, groupCountZ);
-        cmdList->Dispatch(groupCountX, groupCountY, groupCountZ);
+        GetCmdList()->Dispatch(groupCountX, groupCountY, groupCountZ);
     };
 
 #if 0
@@ -423,14 +496,18 @@ namespace alloy::dxc
         
         auto* dxcSource = PtrCast<DXCTexture>(source.get());
         resources.insert(source);
+        ID3D12Resource* resList[] = {dxcSource->GetHandle()};
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
         auto* dxcDestination = PtrCast<DXCTexture>(destination.get());
         resources.insert(destination);
+        resList[0] = dxcDestination->GetHandle();
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
         
         //TODO:Implement full image layout tracking and transition systems
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
         //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferDstOptimal);
 
-        cmdList->ResolveSubresource(
+        GetCmdList()->ResolveSubresource(
             dxcSource->GetHandle(),
             0,
             dxcDestination->GetHandle(),
@@ -451,6 +528,13 @@ namespace alloy::dxc
 
         auto* srcDxcBuffer = PtrCast<DXCBuffer>(src->GetBufferObject());
         auto* dstDxcTexture = PtrCast<DXCTexture>(dst.get());
+
+        resources.insert(src);
+        ID3D12Resource* resList[] = {srcDxcBuffer->GetHandle()};
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        resources.insert(dst);
+        resList[0] = dstDxcTexture->GetHandle();
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         auto& srcDesc = dst->GetDesc(); 
 
@@ -480,7 +564,7 @@ namespace alloy::dxc
         srcRegion.bottom = copySize.height;
         srcRegion.back = copySize.depth;
 
-        cmdList->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
+        GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
                                    &srcSubresource, &srcRegion);
 
     }
@@ -497,11 +581,16 @@ namespace alloy::dxc
         const Size3D& copySize
     ) {
 
-        resources.insert(src);
-        resources.insert(dst);
 
         auto srcImage = PtrCast<DXCTexture>(src.get());
         auto dstBuffer = PtrCast<DXCBuffer>(dst->GetBufferObject());
+
+        resources.insert(src);
+        ID3D12Resource* resList[] = {srcImage->GetHandle()};
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        resources.insert(dst);
+        resList[0] = dstBuffer->GetHandle();
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         auto srcDesc = srcImage->GetDesc();
 
@@ -531,7 +620,7 @@ namespace alloy::dxc
         srcRegion.back   = srcOrigin.z + copySize.depth;
 
 
-        cmdList->CopyTextureRegion(&dstSubresource, 0, 0, 0, &srcSubresource, &srcRegion);
+        GetCmdList()->CopyTextureRegion(&dstSubresource, 0, 0, 0, &srcSubresource, &srcRegion);
     }
 
     void DXCTransferCmdEnc::CopyBuffer(
@@ -542,11 +631,15 @@ namespace alloy::dxc
 
         auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
         auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject());
-
+        
         resources.insert(source);
+        ID3D12Resource* resList[] = {srcDxcBuffer->GetHandle()};
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(destination);
+        resList[0] = dstDxcBuffer->GetHandle();
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-        cmdList->CopyBufferRegion(
+        GetCmdList()->CopyBufferRegion(
             dstDxcBuffer->GetHandle(), destination->GetShape().GetOffsetInBytes(),
             srcDxcBuffer->GetHandle(), source->GetShape().GetOffsetInBytes(),
             sizeInBytes
@@ -564,12 +657,16 @@ namespace alloy::dxc
         std::uint32_t dstBaseArrayLayer,
         const Size3D& copySize
     ){
-        
-        resources.insert(src);
-        resources.insert(dst);
 
         auto srcDxcTexture = PtrCast<DXCTexture>(src.get());
         auto dstDxcTexture = PtrCast<DXCTexture>(dst.get());
+        
+        resources.insert(src);
+        ID3D12Resource* resList[] = {srcDxcTexture->GetHandle()};
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        resources.insert(dst);
+        resList[0] = dstDxcTexture->GetHandle();
+        RegisterResourceUsage(resList, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
@@ -592,7 +689,7 @@ namespace alloy::dxc
         srcRegion.bottom = srcOrigin.y + copySize.height;
         srcRegion.back   = srcOrigin.z + copySize.depth;
 
-        cmdList->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
+        GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z, 
                                    &srcSubresource, &srcRegion);
 
     }
@@ -646,7 +743,7 @@ namespace alloy::dxc
 
         //auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
 
-        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc(_dev.get(), _cmdList, actions);
+        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc(_dev.get(), this, actions);
 
         ///#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
         _passes.push_back(pNewEnc);
@@ -735,7 +832,7 @@ namespace alloy::dxc
         CHK_RENDERPASS_ENDED();
         ////Record render pass
 
-        auto* pNewEnc = new DXCComputeCmdEnc(_dev.get(), _cmdList);
+        auto* pNewEnc = new DXCComputeCmdEnc(_dev.get(), this);
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;
 
@@ -746,7 +843,7 @@ namespace alloy::dxc
         CHK_RENDERPASS_ENDED();
         ////Record render pass
 
-        auto* pNewEnc = new DXCTransferCmdEnc(_dev.get(), _cmdList);
+        auto* pNewEnc = new DXCTransferCmdEnc(_dev.get(), this);
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;
 
@@ -760,6 +857,42 @@ namespace alloy::dxc
         _currentPass->EndPass();
         _currentPass = nullptr;
     }
+
+    void DXCCommandList::RegisterResourceUsage(
+        const std::span<ID3D12Resource* const>& resources, 
+        D3D12_RESOURCE_STATES state
+    ) {
+
+        std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+        for(auto r : resources) {
+            D3D12_RESOURCE_STATES prevState = D3D12_RESOURCE_STATE_COMMON;
+            auto it = _resState.find(r);
+            if(it != _resState.end()) {
+                prevState = it->second;
+            } else {
+                _resState[r] = state;
+            }
+
+            if(prevState == state) {
+                if(prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                    auto& b = barriers.emplace_back();
+                    b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                    b.UAV.pResource = r;
+                }
+            } else {
+                auto& b = barriers.emplace_back();
+                b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                b.Transition.StateBefore = prevState;
+                b.Transition.StateAfter = state;
+                b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                b.Transition.pResource = r;
+            }
+        }
+
+        _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+    }
+
 
     static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
         const D3D12_BARRIER_SYNC& sync,

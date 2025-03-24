@@ -7,7 +7,7 @@
 #include "VkTypeCvt.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
-#include "VulkanResourceBarrier.hpp"
+//#include "VulkanResourceBarrier.hpp"
 
 #include <ranges>
 
@@ -68,7 +68,7 @@ namespace alloy::vk{
 
     void VkCmdEncBase::RegisterBufferUsage(
         VulkanBuffer* buffer,
-        const alloy::utils::BufferState& state
+        const VulkanCommandList::BufferState& state
     ) {
 
         //Find usages
@@ -83,7 +83,7 @@ namespace alloy::vk{
 
     void VkCmdEncBase::RegisterTexUsage(
         VulkanTexture* tex,
-        const alloy::utils::TextureState& state
+        const VulkanCommandList::TextureState& state
     ) {
 
         //Find usages
@@ -103,11 +103,16 @@ namespace alloy::vk{
         auto& elems = vkLayout->GetDesc().shaderResources;
         auto& bindings = vkLayout->GetBindings();
 
+
         for(auto& b : bindings) {
             for(auto& s : b.sets) {
                 for(auto elemIdx : s.elementIdInList) {
                     auto& elem = elems[elemIdx];
                     auto& resource = boundResources[elemIdx];
+
+                    //#TODO: calculate first access stages
+                    VkPipelineStageFlagBits firstAccessBit = 
+                        VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 
                     using _ResKind = IBindableResource::ResourceKind;
 
@@ -115,32 +120,32 @@ namespace alloy::vk{
                         case _ResKind::Texture: {
                             auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
                             auto texture = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-                            alloy::utils::TextureState state{};
-                            state.access = elem.options.writable ? 
-                                alloy::ResourceAccess::UNORDERED_ACCESS : 
-                                alloy::ResourceAccess::SHADER_RESOURCE;
-                            state.stage = alloy::PipelineStage::AllShading; // Adjust as needed
+                            VulkanCommandList::TextureState state{};
+                            state.access = VK_ACCESS_SHADER_READ_BIT;
+                            if(elem.options.writable)
+                                state.access |= VK_ACCESS_SHADER_WRITE_BIT;
+                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
                             state.layout = elem.options.writable ? 
-                                alloy::TextureLayout::UNORDERED_ACCESS : 
-                                alloy::TextureLayout::SHADER_RESOURCE;
+                                VK_IMAGE_LAYOUT_GENERAL : 
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                             RegisterTexUsage(texture, state);
                             break;
                         }
                         case _ResKind::UniformBuffer: {
                             auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
                             auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                            alloy::utils::BufferState state{};
-                            state.access = alloy::ResourceAccess::SHADER_RESOURCE;
-                            state.stage = alloy::PipelineStage::AllShading;
+                            VulkanCommandList::BufferState state{};
+                            state.access = VK_ACCESS_UNIFORM_READ_BIT;
+                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
                             RegisterBufferUsage(buffer, state);
                             break;
                         }
                         case _ResKind::StorageBuffer: {
                             auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
                             auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                            alloy::utils::BufferState state{};
-                            state.access = alloy::ResourceAccess::UNORDERED_ACCESS;
-                            state.stage = alloy::PipelineStage::AllShading;
+                            VulkanCommandList::BufferState state{};
+                            state.access = VK_ACCESS_SHADER_READ_BIT;
+                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
                             RegisterBufferUsage(buffer, state);
                             break;
                         }
@@ -355,9 +360,9 @@ namespace alloy::vk{
         std::uint32_t index, const common::sp<BufferRange>& buffer
     ){
         resources.insert(buffer);
-        alloy::utils::BufferState state {};
-        state.access = alloy::ResourceAccess::VERTEX_BUFFER;
-        state.stage = alloy::PipelineStage::INPUT_ASSEMBLER;
+        VulkanCommandList::BufferState state {};
+        state.access = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        state.stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
         RegisterBufferUsage(
             PtrCast<VulkanBuffer>(buffer->GetBufferObject()),
             state
@@ -375,9 +380,9 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetIndexBuffer(
         const common::sp<BufferRange>& buffer, IndexFormat format
     ){
-        alloy::utils::BufferState state {};
-        state.access = alloy::ResourceAccess::INDEX_BUFFER;
-        state.stage = alloy::PipelineStage::INPUT_ASSEMBLER;
+        VulkanCommandList::BufferState state {};
+        state.access = VK_ACCESS_INDEX_READ_BIT;
+        state.stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
         RegisterBufferUsage(
             PtrCast<VulkanBuffer>(buffer->GetBufferObject()),
             state
@@ -827,16 +832,19 @@ namespace alloy::vk{
         resources.insert(source);
         VulkanTexture* vkDestination = PtrCast<VulkanTexture>(destination.get());
         resources.insert(destination);
+
+        auto resolveStage = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                /*VK_PIPELINE_STAGE_RESOLVE_BIT |*/ VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         
-        alloy::utils::TextureState sourceState{}, destinationState{};
-        sourceState.access = alloy::ResourceAccess::RESOLVE_SOURCE;
-        sourceState.stage = alloy::PipelineStage::RESOLVE;
-        sourceState.layout = alloy::TextureLayout::RESOLVE_SOURCE;
+        VulkanCommandList::TextureState sourceState{}, destinationState{};
+        sourceState.access = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+        sourceState.stage = resolveStage;
+        sourceState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         RegisterTexUsage(vkSource, sourceState);
 
-        destinationState.access = alloy::ResourceAccess::RESOLVE_DEST;
-        destinationState.stage = alloy::PipelineStage::RESOLVE;
-        destinationState.layout = alloy::TextureLayout::RESOLVE_DEST;
+        destinationState.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        destinationState.stage = resolveStage;
+        destinationState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         RegisterTexUsage(vkDestination, destinationState);
 
         
@@ -896,15 +904,15 @@ namespace alloy::vk{
         auto* srcBuffer = PtrCast<VulkanBuffer>(src->GetBufferObject());
         auto* dstImg = PtrCast<VulkanTexture>(dst.get());
 
-        alloy::utils::BufferState srcState{};
-        srcState.access = alloy::ResourceAccess::COPY_SOURCE;
-        srcState.stage = alloy::PipelineStage::COPY;
+        VulkanCommandList::BufferState srcState{};
+        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
+        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(srcBuffer, srcState);
 
-        alloy::utils::TextureState dstState{};
-        dstState.access = alloy::ResourceAccess::COPY_DEST;
-        dstState.stage = alloy::PipelineStage::COPY;
-        dstState.layout = alloy::TextureLayout::COPY_DEST;
+        VulkanCommandList::TextureState dstState{};
+        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         RegisterTexUsage(dstImg, dstState);
 
         recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
@@ -962,15 +970,15 @@ namespace alloy::vk{
         auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
         auto* dstBuffer = PtrCast<VulkanBuffer>(dst->GetBufferObject());
 
-        alloy::utils::TextureState srcState{};
-        srcState.access = alloy::ResourceAccess::COPY_SOURCE;
-        srcState.stage = alloy::PipelineStage::COPY;
-        srcState.layout = alloy::TextureLayout::COPY_SOURCE;
+        VulkanCommandList::TextureState srcState{};
+        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
+        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         RegisterTexUsage(srcVkTexture, srcState);
 
-        alloy::utils::BufferState dstState{};
-        dstState.access = alloy::ResourceAccess::COPY_DEST;
-        dstState.stage = alloy::PipelineStage::COPY;
+        VulkanCommandList::BufferState dstState{};
+        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(dstBuffer, dstState);
 
         recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
@@ -1038,14 +1046,14 @@ namespace alloy::vk{
         auto* dstVkBuffer = PtrCast<VulkanBuffer>(destination->GetBufferObject());
 
         
-        alloy::utils::BufferState srcState{};
-        srcState.access = alloy::ResourceAccess::COPY_SOURCE;
-        srcState.stage = alloy::PipelineStage::COPY;
+        VulkanCommandList::BufferState srcState{};
+        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
+        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(srcVkBuffer, srcState);
 
-        alloy::utils::BufferState dstState{};
-        dstState.access = alloy::ResourceAccess::COPY_DEST;
-        dstState.stage = alloy::PipelineStage::COPY;
+        VulkanCommandList::BufferState dstState{};
+        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(dstVkBuffer, dstState);
 
         recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
@@ -1097,17 +1105,17 @@ namespace alloy::vk{
         auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(dst.get());
         
-        alloy::utils::TextureState srcState{};
-        srcState.access = alloy::ResourceAccess::COPY_SOURCE;
-        srcState.stage = alloy::PipelineStage::COPY;
-        srcState.layout = alloy::TextureLayout::COPY_SOURCE;
+        VulkanCommandList::TextureState srcState{};
+        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
+        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         RegisterTexUsage(srcVkTexture, srcState);
 
         
-        alloy::utils::TextureState dstState{};
-        dstState.access = alloy::ResourceAccess::COPY_DEST;
-        dstState.stage = alloy::PipelineStage::COPY;
-        dstState.layout = alloy::TextureLayout::COPY_DEST;
+        VulkanCommandList::TextureState dstState{};
+        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         RegisterTexUsage(dstVkTexture, dstState);
 
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
@@ -1294,6 +1302,7 @@ namespace alloy::vk{
 
     
     void VulkanCommandList::Barrier(const std::vector<alloy::BarrierDescription>& barriers) {
+#if 0
         for(auto& desc : barriers) {
             if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
             }
@@ -1308,6 +1317,7 @@ namespace alloy::vk{
         }
 
         BindBarrier(this, barriers);
+#endif
     }
 
     VkRenderCmdEnc::VkRenderCmdEnc(VulkanDevice* dev,
@@ -1322,10 +1332,12 @@ namespace alloy::vk{
             auto& vkTexView = ctAct.target->GetTexture();
             auto vkColorTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
             
-            alloy::utils::TextureState state{};
-            state.access = alloy::ResourceAccess::RENDER_TARGET;
-            state.stage = alloy::PipelineStage::RENDER_TARGET;
-            state.layout = alloy::TextureLayout::RENDER_TARGET;
+            VulkanCommandList::TextureState state{};
+            state.access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            if(ctAct.loadAction == LoadAction::Load)
+                state.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            state.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            state.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             RegisterTexUsage(vkColorTex, state);
         };
 
@@ -1334,16 +1346,18 @@ namespace alloy::vk{
             auto& vkTexView = fb.depthTargetAction->target->GetTexture();
             auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
-            alloy::utils::TextureState state{};
-            state.stage = alloy::PipelineStage::DEPTH_STENCIL;
+            VulkanCommandList::TextureState state{};
+            state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT 
+                        | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
             if(fb.depthTargetAction->storeAction != alloy::StoreAction::DontCare)
             {
-                state.access = alloy::ResourceAccess::DepthStencilWritable;
-                state.layout = alloy::TextureLayout::DEPTH_STENCIL_WRITE;
+                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                             | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             } else {
-                state.access = alloy::ResourceAccess::DepthStencilReadOnly;
-                state.layout = alloy::TextureLayout::DEPTH_STENCIL_READ;
+                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             }
             RegisterTexUsage(vkDepthTex, state);
         }
@@ -1353,16 +1367,18 @@ namespace alloy::vk{
             auto& vkTexView = fb.depthTargetAction->target->GetTexture();
             auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
-            alloy::utils::TextureState state{};
-            state.stage = alloy::PipelineStage::DEPTH_STENCIL;
+            VulkanCommandList::TextureState state{};
+            state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT 
+                        | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
             if(fb.depthTargetAction->storeAction != alloy::StoreAction::DontCare)
             {
-                state.access = alloy::ResourceAccess::DepthStencilWritable;
-                state.layout = alloy::TextureLayout::DEPTH_STENCIL_WRITE;
+                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                             | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             } else {
-                state.access = alloy::ResourceAccess::DepthStencilReadOnly;
-                state.layout = alloy::TextureLayout::DEPTH_STENCIL_READ;
+                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             }
             RegisterTexUsage(vkDepthTex, state);
         }
@@ -1545,35 +1561,114 @@ namespace alloy::vk{
         CHK_RENDERPASS_BEGUN();
         
         auto& currPassReqStates = _currentPass->firstState;
-        _requestedStates.buffers.insert(
-            currPassReqStates.buffers.begin(),
-            currPassReqStates.buffers.end());
+        //_requestedStates.buffers.insert(
+        //    currPassReqStates.buffers.begin(),
+        //    currPassReqStates.buffers.end());
         
-        _requestedStates.textures.insert(
-            currPassReqStates.textures.begin(),
-            currPassReqStates.textures.end());
-        
+        //_requestedStates.textures.insert(
+        //    currPassReqStates.textures.begin(),
+        //    currPassReqStates.textures.end());
 
-        auto barrierActions = alloy::utils::CalculateBarriersBetweenStates(
-            _finalStates,
-            currPassReqStates,
-            [&](auto buffer) {
-                alloy::utils::BufferState state{};
-                state.access = ResourceAccess::None;
-                state.stage = PipelineStage::None;
-                //return currPassReqStates.buffers[buffer];
-                return state;
-            },
-            [&](auto texture) {
-                alloy::utils::TextureState state{};
-                state.access = ResourceAccess::None;
-                state.stage = PipelineStage::None;
-                state.layout = currPassReqStates.textures[texture].layout;
-                return state;
+        std::vector<VkBufferMemoryBarrier2KHR> bufferBarriers {};
+
+        for(auto& [buffer, stateReq] : currPassReqStates.buffers) {
+            //BufferState state {};
+            //Search for current recorded state
+            auto it = _finalStates.buffers.find(buffer);
+            if(it == _finalStates.buffers.end()) {
+                //All mem accesses are guaranteed finished after 
+                //semaphore signaled in submission
+                //No need to insert barriers if this is the first access
+                _finalStates.buffers.insert({buffer, stateReq});
+                continue;
             }
-        );
 
-        InsertBarrier(_dev.get(), _cmdBuf, barrierActions);
+            auto& state = it->second;
+
+            if(_HasAccessHarzard(state.access, stateReq.access)) {
+                auto& action = bufferBarriers.emplace_back(
+                    VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2_KHR
+                );
+                action.srcStageMask = state.stage;
+                action.srcAccessMask = state.access;
+                action.dstStageMask = stateReq.stage;
+                action.dstAccessMask = stateReq.access;
+                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.buffer = buffer->GetHandle();
+                action.offset = 0;
+                action.size = buffer->GetDesc().sizeInBytes;
+            }
+
+            _finalStates.buffers[buffer] = stateReq;
+        }
+
+        std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
+
+        for(auto& [texture, stateReq] : currPassReqStates.textures) {
+            //TextureState state {};
+            //Search for current recorded state
+            auto it = _finalStates.textures.find(texture);
+            if(it == _finalStates.textures.end()) {
+                //All mem accesses are guaranteed finished after 
+                //semaphore signaled in submission
+                //No need to insert barriers if this is the first access
+                _finalStates.textures.insert({texture, stateReq});
+                //Request for expected texture layout
+                _requestedStates.textures.insert({texture, stateReq});
+                continue;
+            }
+
+            auto& state = it->second;
+
+            if( _HasAccessHarzard(state.access, stateReq.access) ||
+                state.layout != stateReq.layout) {
+
+                auto& desc = texture->GetDesc();
+                auto& action = texBarriers.emplace_back(
+                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
+                );
+                action.srcStageMask = state.stage;
+                action.srcAccessMask = state.access;
+                action.dstStageMask = stateReq.stage;
+                action.dstAccessMask = stateReq.access;
+                action.oldLayout = state.layout;
+                action.newLayout = stateReq.layout;
+                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.image = texture->GetHandle();
+                action.subresourceRange.baseMipLevel = 0;
+                action.subresourceRange.levelCount = desc.mipLevels;
+                action.subresourceRange.baseArrayLayer = 0;
+                action.subresourceRange.layerCount = desc.arrayLayers;
+                
+                auto& aspectMask = action.subresourceRange.aspectMask;
+                if (desc.usage.depthStencil) {
+                    aspectMask = FormatHelpers::IsStencilFormat(desc.format)
+                        ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
+                        : VK_IMAGE_ASPECT_DEPTH_BIT;
+                }
+                else {
+                    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                }
+            }
+        }
+
+        VkDependencyInfoKHR depInfo {};
+        depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR;
+        //TODO: figure out which scope to use
+        depInfo.dependencyFlags = 0;
+        
+        //uint32_t                         memoryBarrierCount;
+        //const VkMemoryBarrier2*          pMemoryBarriers;
+        depInfo.bufferMemoryBarrierCount = bufferBarriers.size();
+        depInfo.pBufferMemoryBarriers = bufferBarriers.data();
+        depInfo.imageMemoryBarrierCount = texBarriers.size();
+        depInfo.pImageMemoryBarriers = texBarriers.data();
+
+
+        _dev->GetFnTable().vkCmdPipelineBarrier2KHR(_cmdBuf, &depInfo);
+        //InsertBarrier(_dev.get(), _cmdBuf, barrierActions);
 
         auto& currPassStates = _currentPass->lastState;
         _finalStates.SyncTo(currPassStates);

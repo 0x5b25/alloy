@@ -53,6 +53,7 @@ struct VkDevExtNames {
     static const char* VK_KHR_DEDICATED_ALLOCATION;
     static const char* VK_KHR_DRIVER_PROPS;
     static const char* VK_EXT_DEPTH_CLIP_ENABLE;
+    static const char* VK_KHR_SYNCHRONIZATION2;
     static const char* VK_KHR_TIMELINE_SEMAPHORE;
     static const char* VK_KHR_DYNAMIC_RENDERING;
 };

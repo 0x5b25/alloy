@@ -4,6 +4,7 @@
 #include "alloy/CommandList.hpp"
 
 #include <vector>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -35,17 +36,29 @@ namespace alloy::dxc
     struct DXCCmdEncBase {
 
         DXCDevice* dev;
-        ID3D12GraphicsCommandList* cmdList;
+        DXCCommandList* cmdList;
+
         std::unordered_set<common::sp<common::RefCntBase>> resources;
         
         DXCCmdEncBase(DXCDevice* dev,
-                      ID3D12GraphicsCommandList* cmdList) 
+                      DXCCommandList* cmdList) 
             : dev(dev)
-            , cmdList(cmdList) {}
+            , cmdList(cmdList)
+        { }
 
         virtual ~DXCCmdEncBase() {}
 
         virtual void EndPass() {}
+
+        
+        ID3D12GraphicsCommandList* GetCmdList() const;
+
+        void RegisterResourceUsage(
+            const std::span<ID3D12Resource* const>& resources, 
+            D3D12_RESOURCE_STATES state
+        );
+
+        void RegisterResourceSet(DXCResourceSet* d3drs);
     };
 
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
@@ -55,8 +68,9 @@ namespace alloy::dxc
 
         RenderPassAction _fb;
 
+
         DXCRenderCmdEnc(DXCDevice* dev,
-                        ID3D12GraphicsCommandList* cmdList,
+                        DXCCommandList* cmdList,
                         const RenderPassAction& act )
             : DXCCmdEncBase{dev, cmdList}
             , _currentPipeline(nullptr)
@@ -115,7 +129,7 @@ namespace alloy::dxc
         
         DXCComputePipeline* _currentPipeline;
 
-        DXCComputeCmdEnc(DXCDevice* dev, ID3D12GraphicsCommandList* cmdList)
+        DXCComputeCmdEnc(DXCDevice* dev, DXCCommandList* cmdList)
             : DXCCmdEncBase{ dev, cmdList }
         { }
 
@@ -158,7 +172,7 @@ namespace alloy::dxc
     };
 
     struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {
-        DXCTransferCmdEnc(DXCDevice* dev, ID3D12GraphicsCommandList* cmdList)
+        DXCTransferCmdEnc(DXCDevice* dev, DXCCommandList* cmdList)
             : DXCCmdEncBase{ dev, cmdList }
         { }
 
@@ -247,6 +261,7 @@ namespace alloy::dxc
         //Resources used
         std::unordered_set<common::sp<RefCntBase>> _devRes;
 
+        std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> _resState;
 
         //sp<VulkanPipelineBase> _currentPipeline;
         //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
@@ -299,6 +314,12 @@ namespace alloy::dxc
         virtual void PopDebugGroup() override;
 
         virtual void InsertDebugMarker(const std::string& name) override;
+
+    public:
+
+        void RegisterResourceUsage(
+            const std::span<ID3D12Resource* const>& resources, 
+            D3D12_RESOURCE_STATES state);
     };
 
     class DXCCommandList6 : public DXCCommandList {

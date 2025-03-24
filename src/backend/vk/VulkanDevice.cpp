@@ -20,7 +20,7 @@
 #include "VulkanContext.hpp"
 #include "VulkanCommandList.hpp"
 #include "VulkanSwapChain.hpp"
-#include "VulkanResourceBarrier.hpp"
+//#include "VulkanResourceBarrier.hpp"
 
 namespace alloy::vk {
 
@@ -143,7 +143,13 @@ bool Contains(T&& container, U&& element) {
         VkPhysicalDeviceFeatures deviceFeatures{};
         vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
 
+        VkPhysicalDeviceSynchronization2FeaturesKHR syncFeatures{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+            .synchronization2 = 1u
+        };
+
         VkPhysicalDeviceVulkan12Features features12 { };
+        features12.pNext = &syncFeatures;
         features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         features12.timelineSemaphore = true;
         createInfo.pNext = &features12;
@@ -525,13 +531,6 @@ bool Contains(T&& container, U&& element) {
 
         //buf->_usages = usages;
         //buf->_allocationType = allocationType;
-
-        alloy::utils::BufferState state {};
-        state.access = ResourceAccess::None;
-        state.stage = PipelineStage::None;
-        dev->RegisterBufferState(state, buf);
-		buf->RegisterTimeline(dev.get());
-
         return common::sp(buf);
     }
 
@@ -606,6 +605,43 @@ bool Contains(T&& container, U&& element) {
         }
 
         return false;
+    }
+
+    void VulkanFence::RegisterSyncPoint(IVkTimeline* timeline, uint64_t syncValue) {
+        _signalingTimelines[timeline] = syncValue;
+    }
+
+    void VulkanFence::SyncTimelineToThis(IVkTimeline* timeline, uint64_t syncValue) {
+
+        struct _Kvpair {
+            IVkTimeline* timeline;
+            uint64_t fenceValue;
+        };
+
+        std::vector<_Kvpair> timelinesSorted{};
+
+        for(auto& [k, v] : _signalingTimelines) {
+            if(k == timeline) {
+                //Same queue signal and wait may cause deadlocks.
+                //Put an assertion here for ease of debugging
+                assert(v >= syncValue);
+                continue;
+            }
+            timelinesSorted.push_back({k, v});
+        }
+
+        std::sort(timelinesSorted.begin(), timelinesSorted.end(),
+            [](const _Kvpair& a, const _Kvpair& b) {
+                return a.fenceValue < b.fenceValue;
+            }
+        );
+
+        IVkTimeline::ResourceStates states {};
+        for(auto&[k, _] : timelinesSorted) {
+            states.SyncTo(k->GetCurrentState());
+        }
+
+        timeline->GetCurrentState().SyncTo(states);
     }
 
     common::sp<IEvent> VulkanFence::Make(const common::sp<VulkanDevice>& dev)
@@ -714,7 +750,6 @@ bool Contains(T&& container, U&& element) {
         , _cmdPoolMgr(dev, queueFamily)
         , _q(q)
         , _lastSubmittedFence(0)
-        , ITrackerCmdQ(*dev)
     { 
         
         VkSemaphoreTypeCreateInfo timelineCreateInfo {};
@@ -742,11 +777,11 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev,vkDestroySemaphore(_dev->LogicalDev(), _presentFence, nullptr));
     }
 
-    void VulkanCommandQueue::EncodeSignalEvent(IEvent* event, uint64_t value) {
-        
-        super::EncodeSignalEvent(event, value);
+    void VulkanCommandQueue::EncodeSignalEvent(IEvent* evt, uint64_t value) {
+        auto vkFence = PtrCast<VulkanFence>(evt);
+        vkFence->RegisterSyncPoint(this, value);
 
-        auto rawFence = PtrCast<VulkanFence>(event)->GetHandle();
+        auto rawFence = vkFence->GetHandle();
         const uint64_t signalValue = value; // Set semaphore value
 
         VkTimelineSemaphoreSubmitInfo timelineInfo {};
@@ -766,8 +801,11 @@ bool Contains(T&& container, U&& element) {
     }
 
     void VulkanCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
-        super::EncodeWaitForEvent(evt, value);
-        auto rawFence = PtrCast<VulkanFence>(evt)->GetHandle();
+        auto vkFence = PtrCast<VulkanFence>(evt);
+        vkFence->SyncTimelineToThis(this, value);
+
+        auto rawFence = vkFence->GetHandle();
+
         const uint64_t waitValue = value; // Wait until semaphore value is >= 2
 
         VkTimelineSemaphoreSubmitInfo timelineInfo {};
@@ -801,11 +839,70 @@ bool Contains(T&& container, U&& element) {
 
     }
     
-    void VulkanCommandQueue::InsertBarriers(
-        const alloy::utils::BarrierActions& barriers
+    void VulkanCommandQueue::_TransitResourceStatesBeforeSubmit(
+        const VulkanCommandList& cmdList
     ) {
         //Recycle completed transition command buffers
         _RecycleTransitionCmdBufs();
+
+        auto& currCmdListReqStates = cmdList.GetRequestedResourceStates();
+
+        auto& cpuTimeline = _dev->GetCurrentState();
+
+        std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
+
+        for(auto& [texture, stateReq] : currCmdListReqStates.textures) {
+            //TextureState state {};
+            //Search for current recorded state
+            VkImageLayout currLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            auto it = _currentState.textures.find(texture);
+            if(it == _currentState.textures.end()) {
+                currLayout = cpuTimeline.textures[texture];
+                texture->RegisterTimeline(this);
+            } else {
+                auto& state = it->second;
+            }
+
+            if(currLayout != stateReq.layout) {
+
+                auto& desc = texture->GetDesc();
+                auto& action = texBarriers.emplace_back(
+                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
+                );
+                action.srcStageMask = VK_PIPELINE_STAGE_2_NONE_KHR;
+                action.srcAccessMask = VK_ACCESS_2_NONE_KHR;
+                action.dstStageMask = stateReq.stage;
+                action.dstAccessMask = stateReq.access;
+                action.oldLayout = currLayout;
+                action.newLayout = stateReq.layout;
+                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                action.image = texture->GetHandle();
+                action.subresourceRange.baseMipLevel = 0;
+                action.subresourceRange.levelCount = desc.mipLevels;
+                action.subresourceRange.baseArrayLayer = 0;
+                action.subresourceRange.layerCount = desc.arrayLayers;
+
+                auto& aspectMask = action.subresourceRange.aspectMask;
+                if (desc.usage.depthStencil) {
+                    aspectMask = FormatHelpers::IsStencilFormat(desc.format)
+                        ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
+                        : VK_IMAGE_ASPECT_DEPTH_BIT;
+                }
+                else {
+                    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                }
+            }
+        }
+
+        VkDependencyInfoKHR depInfo {};
+        depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR;
+        //TODO: figure out which scope to use
+        depInfo.dependencyFlags = 0;
+        depInfo.imageMemoryBarrierCount = texBarriers.size();
+        depInfo.pImageMemoryBarriers = texBarriers.data();
+
+
 
         TransitionCmdBuf container {};
         
@@ -822,7 +919,7 @@ bool Contains(T&& container, U&& element) {
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             beginInfo.pInheritanceInfo = NULL;
             VK_DEV_CALL(_dev, vkBeginCommandBuffer(cmdBuf, &beginInfo));
-            InsertBarrier(_dev, cmdBuf, barriers);
+            VK_DEV_CALL(_dev, vkCmdPipelineBarrier2KHR(cmdBuf, &depInfo));
             VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
         }
 
@@ -837,24 +934,34 @@ bool Contains(T&& container, U&& element) {
     }
 
     
+    void VulkanCommandQueue::_MarkResourceStatesAfterSubmit(
+        const VulkanCommandList& cmdList
+    ) {
+        auto& finalStates = cmdList.GetFinalResourceStates();
+        for(auto&[tex, state] : finalStates.textures) {
+            _currentState.textures[tex] = state.layout;
+        }
+    }
+
+    
     VkSemaphore VulkanCommandQueue::PrepareTextureForPresent(VulkanTexture* tex) {
-        alloy::utils::TextureState currState {};
+        VkImageLayout currState {};
         auto it = _currentState.textures.find(tex);
         if(it != _currentState.textures.end()) {
             currState = it->second;
         } else {
-            currState = _cpuTimeline.GetCurrentState().textures[tex];
+            currState = _dev->GetCurrentState().textures[tex];
             _currentState.textures[tex] = currState;
         }
 
-        if(currState.layout != alloy::TextureLayout::PRESENT) {
+        if(currState != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
             auto& texDesc = tex->GetDesc();
             VkImageMemoryBarrier barrier {};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             barrier.pNext = NULL;
             barrier.srcAccessMask = 0;//vk_access_flags_from_d3d12_barrier(currState.access);
             barrier.dstAccessMask = 0;
-            barrier.oldLayout = AlToVkTexLayout(currState.layout);
+            barrier.oldLayout = currState;
             barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -923,19 +1030,23 @@ bool Contains(T&& container, U&& element) {
             VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
         }
     
-        _currentState.textures[tex].stage = PipelineStage::None;
-        _currentState.textures[tex].access = ResourceAccess::None;
-        _currentState.textures[tex].layout = TextureLayout::PRESENT;
+        //_currentState.textures[tex].stage = PipelineStage::None;
+        //_currentState.textures[tex].access = ResourceAccess::None;
+        _currentState.textures[tex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         return _presentFence;
     }
 
     void VulkanCommandQueue::SubmitCommand(ICommandList* cmd) {
         _lastSubmittedFence++;
-        super::SubmitCommand(cmd);
+
         assert(cmd != nullptr);
         auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
+        _TransitResourceStatesBeforeSubmit(*vkCmd);
+        _MarkResourceStatesAfterSubmit(*vkCmd);
+        
         auto rawCmdBuf = vkCmd->GetHandle();
+
 
         VkTimelineSemaphoreSubmitInfo timelineInfo {};
         timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
@@ -954,8 +1065,6 @@ bool Contains(T&& container, U&& element) {
         VK_CHECK(VK_DEV_CALL(_dev, vkQueueSubmit(
             _q, 1, &submitInfo, nullptr
         )));
-
-        super::NotifySyncResources();
     }
 
     common::sp<ICommandList> VulkanCommandQueue::CreateCommandList(){
