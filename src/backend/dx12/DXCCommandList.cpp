@@ -887,12 +887,16 @@ namespace alloy::dxc
                 b.Transition.StateAfter = state;
                 b.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
                 b.Transition.pResource = r;
+                
+                // Update the resource state
+                _resState[r] = state;
             }
         }
 
-        _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+        if (!barriers.empty()) {
+            _cmdList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+        }
     }
-
 
     static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
         const D3D12_BARRIER_SYNC& sync,
@@ -1260,4 +1264,3 @@ namespace alloy::dxc
 
 
 } // namespace alloy
-

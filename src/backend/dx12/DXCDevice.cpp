@@ -7,7 +7,7 @@
 #include "alloy/backend/Backends.hpp"
 
 //standard library headers
-#include <codecvt>
+#include <algorithm>
 
 //backend specific headers
 #include "D3DCommon.hpp"
@@ -23,7 +23,7 @@
 
 
 #include <dxgidebug.h>
-#include <iostream>
+
 
 //Import DX12 agility SDK
 extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = AGILITY_SDK_VERSION_EXPORT; }
@@ -613,11 +613,13 @@ namespace alloy::dxc {
 
     void DXCCommandQueue::EncodeSignalEvent(IEvent* evt, uint64_t value) {
         auto dxcFence = PtrCast<DXCFence>(evt);
+        dxcFence->RegisterSyncPoint(this, value);
         _q->Signal(dxcFence->GetHandle(), value);
     }
 
     void DXCCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
         auto dxcFence = PtrCast<DXCFence>(evt);
+        dxcFence->SyncTimelineToThis(this, value);
         _q->Wait(dxcFence->GetHandle(), value);
     }
 
@@ -654,7 +656,9 @@ namespace alloy::dxc {
         auto waitResult = WaitForSingleObjectEx(_fenceEventHandle, timeoutMs, false);
         switch(waitResult){
             //The state of the specified object is signaled.
-            case WAIT_OBJECT_0: return true;
+            case WAIT_OBJECT_0: 
+                SyncTimelineToThis(_dev.get(), expectedValue);
+                return true;
             //The time-out interval elapsed, and the object's state is nonsignaled.
             case WAIT_TIMEOUT: return false;
             //Object not released before thread terminate
@@ -667,11 +671,54 @@ namespace alloy::dxc {
         return false;
     }
 
+    void DXCFence::SignalFromCPU(uint64_t signalValue) {
+        
+        RegisterSyncPoint(_dev.get(), signalValue);
+        _f->Signal(signalValue);
+    }
+
     DXCFence::~DXCFence() {
         CloseHandle(_fenceEventHandle);
         _f->Release();
     }
+
     
+    void DXCFence::RegisterSyncPoint(IDXCTimeline* timeline, uint64_t syncValue) {
+        _signalingTimelines[timeline] = syncValue;
+    }
 
+    void DXCFence::SyncTimelineToThis(IDXCTimeline* timeline, uint64_t syncValue) {
 
-}
+        struct _Kvpair {
+            IDXCTimeline* timeline;
+            uint64_t fenceValue;
+        };
+
+        std::vector<_Kvpair> timelinesSorted{};
+
+        for(auto& [k, v] : _signalingTimelines) {
+            if(k == timeline) {
+                //Same queue signal and wait may cause deadlocks.
+                //Put an assertion here for ease of debugging
+                assert(v >= syncValue);
+                continue;
+            }
+            timelinesSorted.push_back({k, v});
+        }
+
+        std::sort(timelinesSorted.begin(), timelinesSorted.end(),
+            [](const _Kvpair& a, const _Kvpair& b) {
+                return a.fenceValue < b.fenceValue;
+            }
+        );
+
+        IDXCTimeline::ResourceStates states {};
+        for(auto&[k, _] : timelinesSorted) {
+            states.SyncTo(k->GetCurrentState());
+        }
+
+        timeline->GetCurrentState().SyncTo(states);
+    }
+
+    
+} // namespace alloy::dxc
