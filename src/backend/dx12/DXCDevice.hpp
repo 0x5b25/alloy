@@ -77,7 +77,9 @@ namespace alloy::dxc{
             uint64_t allocatedCmdCnt;
             uint64_t lastSubmittedFence;
 
-        } _cmdPoolInUse;
+        };
+    
+        std::queue<CmdPoolInUse> _cmdPoolsInUse;
 
         void _RecycleTransitionCmdBufs();
 
@@ -115,6 +117,8 @@ namespace alloy::dxc{
         virtual ResourceStates& GetCurrentState() override {
             return _currentState;
         }
+
+        void PrepareTextureForPresent(DXCTexture* texture);
 
     };
 

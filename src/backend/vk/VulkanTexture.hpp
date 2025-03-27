@@ -31,9 +31,7 @@ namespace alloy::vk
             const ITexture::Description& desc
         ) : ITexture(desc)
           , _dev(dev)
-        {
-            
-        }
+        { }
 
     public:
 
@@ -83,6 +81,9 @@ namespace alloy::vk
             uint32_t mipLevel,
             uint32_t arrayLayer,
             SubresourceAspect aspect) override;
+
+            
+        virtual void SetDebugName(const std::string& name) override;
 
     public:
         void TransitionImageLayout(

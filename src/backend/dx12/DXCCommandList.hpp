@@ -4,6 +4,7 @@
 #include "alloy/CommandList.hpp"
 
 #include <vector>
+#include <functional>
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
@@ -30,8 +31,111 @@ namespace alloy::dxc
     class DXCDevice;
     class DXCBuffer;
     class DXCTexture;
-    class DXCCommandList;
-    //class VulkanPipeline;
+    class DXCCmdEncBase;
+
+    
+    class DXCCommandList: public ICommandList{
+        
+    public:
+
+        struct ResourceStates {
+            std::unordered_map<DXCBuffer*, D3D12_RESOURCE_STATES> buffers;
+            std::unordered_map<DXCTexture*, D3D12_RESOURCE_STATES> textures;
+
+            void SyncTo(const ResourceStates& other) {
+                for(auto& [k, v] : other.buffers)
+                    buffers.insert_or_assign(k, v);
+                for(auto& [k, v] : other.textures)
+                    textures.insert_or_assign(k, v);
+            }
+
+            void Clear() {
+                buffers.clear();
+                textures.clear();
+            }
+        };
+
+
+    protected:
+        common::sp<DXCDevice> _dev;
+        ID3D12CommandAllocator* _cmdAlloc;
+        ID3D12GraphicsCommandList* _cmdList;
+        
+        std::vector<DXCCmdEncBase*> _passes;
+        DXCCmdEncBase* _currentPass;
+
+        //std::vector<_RenderPassInfo> _rndPasses;
+
+        //Resources used
+        std::unordered_set<common::sp<RefCntBase>> _devRes;
+
+        //DX12 resource state decay rule:
+        //The following resources will decay when an 
+        //ExecuteCommandLists operation is completed on the GPU:
+        //  1. Resources being accessed on a Copy queue, or
+        //  2. Buffer resources on any queue type, or
+        //  3. Texture resources on any queue type that have the 
+        //       D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS flag set, or
+        //  4. Any resource implicitly promoted to a read-only state.
+        //only the texture states need explicit request and update.
+        decltype(ResourceStates::textures) _requestedStates, _finalStates;
+
+        //sp<VulkanPipelineBase> _currentPipeline;
+        //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
+
+        //renderpasses
+        //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
+
+    public:
+        DXCCommandList(
+            const common::sp<DXCDevice>& dev,
+            ID3D12CommandAllocator* pAllocator,
+            ID3D12GraphicsCommandList* pList
+        ) 
+            : _dev(dev)
+            , _cmdAlloc(pAllocator)
+            , _cmdList(pList)
+            , _currentPass(nullptr)
+        {}
+
+        virtual ~DXCCommandList() override;
+
+        
+        static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
+        ID3D12CommandList* GetHandle() const { return _cmdList; }
+        
+        virtual void Begin() override;
+        virtual void End() override;
+#if 0
+        virtual void ClearColorTarget(
+            std::uint32_t slot, 
+            float r, float g, float b, float a) override;
+
+        virtual void ClearDepthStencil(float depth, std::uint8_t stencil) override;
+#endif 
+        
+
+        ///#TODO: add load, store and clearcolor handling for more efficient operation
+        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
+        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual ITransferCommandEncoder& BeginTransferPass() override;
+        //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+        virtual void EndPass() override;
+
+        
+        virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
+
+        virtual void PushDebugGroup(const std::string& name) override;
+
+        virtual void PopDebugGroup() override;
+
+        virtual void InsertDebugMarker(const std::string& name) override;
+
+        const auto& GetRequestedResourceStates() const { return _requestedStates; }
+        const auto& GetFinalResourceStates() const { return _finalStates; }
+    };
+
 
     struct DXCCmdEncBase {
 
@@ -39,6 +143,8 @@ namespace alloy::dxc
         DXCCommandList* cmdList;
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
+        DXCCommandList::ResourceStates resStates;
+        std::vector<std::function<void()>> recordedCmds;
         
         DXCCmdEncBase(DXCDevice* dev,
                       DXCCommandList* cmdList) 
@@ -48,13 +154,20 @@ namespace alloy::dxc
 
         virtual ~DXCCmdEncBase() {}
 
-        virtual void EndPass() {}
+        //End commandpass will write commands into command list
+        virtual void EndPass();
 
         
         ID3D12GraphicsCommandList* GetCmdList() const;
 
-        void RegisterResourceUsage(
-            const std::span<ID3D12Resource* const>& resources, 
+        
+        void RegisterBufferUsage(
+            DXCBuffer* buffer,
+            D3D12_RESOURCE_STATES state
+        );
+
+        void RegisterTexUsage(
+            DXCTexture* tex,
             D3D12_RESOURCE_STATES state
         );
 
@@ -68,14 +181,11 @@ namespace alloy::dxc
 
         RenderPassAction _fb;
 
-
-        DXCRenderCmdEnc(DXCDevice* dev,
-                        DXCCommandList* cmdList,
-                        const RenderPassAction& act )
-            : DXCCmdEncBase{dev, cmdList}
-            , _currentPipeline(nullptr)
-            , _fb(act)
-        { }
+        DXCRenderCmdEnc(
+            DXCDevice *dev,
+            DXCCommandList *cmdList,
+            const RenderPassAction &act
+        );
 
         virtual ~DXCRenderCmdEnc() {}
 
@@ -224,103 +334,6 @@ namespace alloy::dxc
     };
 
 
-    class DXCCommandList: public ICommandList{
-
-    protected:
-        common::sp<DXCDevice> _dev;
-        ID3D12CommandAllocator* _cmdAlloc;
-        ID3D12GraphicsCommandList* _cmdList;
-        
-
-        //struct _ResSetHolder{
-        //    
-        //
-        //    common::sp<DXCResourceSet> resSet;
-        //
-        //
-        //    bool IsValid() const {return resSet != nullptr;}
-        //};
-        std::vector<DXCCmdEncBase*> _passes;
-        DXCCmdEncBase* _currentPass;
-
-        //struct _RenderPassInfo{
-        //    //Pipeline resources
-        //    sp<DXCFrameBufferBase> fb;
-        //    //sp<VulkanPipelineBase> pipeline;
-        //    //std::vector<std::optional<VkClearColorValue>> clearColorTargets;
-        //    //std::optional<VkClearDepthStencilValue> clearDSTarget;
-        //
-        //    //bool IsComputePass() const {
-        //    //    return pipeline->IsComputePipeline();
-        //    //}
-        //};
-        //renderpasses
-
-        //std::vector<_RenderPassInfo> _rndPasses;
-
-        //Resources used
-        std::unordered_set<common::sp<RefCntBase>> _devRes;
-
-        std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> _resState;
-
-        //sp<VulkanPipelineBase> _currentPipeline;
-        //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
-
-        //renderpasses
-        //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
-
-    public:
-        DXCCommandList(
-            const common::sp<DXCDevice>& dev,
-            ID3D12CommandAllocator* pAllocator,
-            ID3D12GraphicsCommandList* pList
-        ) 
-            : _dev(dev)
-            , _cmdAlloc(pAllocator)
-            , _cmdList(pList)
-            , _currentPass(nullptr)
-        {}
-
-        virtual ~DXCCommandList() override;
-
-        
-        static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
-        ID3D12CommandList* GetHandle() const { return _cmdList; }
-        
-        virtual void Begin() override;
-        virtual void End() override;
-#if 0
-        virtual void ClearColorTarget(
-            std::uint32_t slot, 
-            float r, float g, float b, float a) override;
-
-        virtual void ClearDepthStencil(float depth, std::uint8_t stencil) override;
-#endif 
-        
-
-        ///#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
-        virtual ITransferCommandEncoder& BeginTransferPass() override;
-        //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
-
-        virtual void EndPass() override;
-
-        
-        virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
-
-        virtual void PushDebugGroup(const std::string& name) override;
-
-        virtual void PopDebugGroup() override;
-
-        virtual void InsertDebugMarker(const std::string& name) override;
-
-    public:
-
-        void RegisterResourceUsage(
-            const std::span<ID3D12Resource* const>& resources, 
-            D3D12_RESOURCE_STATES state);
-    };
 
     class DXCCommandList6 : public DXCCommandList {
 

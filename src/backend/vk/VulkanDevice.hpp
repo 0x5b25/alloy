@@ -286,7 +286,7 @@ namespace alloy::vk
 
         //const VkSurfaceKHR& Surface() const {return _surface;}
 
-        const VkQueue& GraphicsQueue() const {return _gfxQ->GetHandle();}
+        const VkQueue GraphicsQueue() const {return _gfxQ->GetHandle();}
 
         const VmaAllocator& Allocator() const {return _allocator;}
 

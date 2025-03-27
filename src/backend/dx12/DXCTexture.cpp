@@ -22,6 +22,8 @@ namespace alloy::dxc {
     }
 
     DXCTexture::~DXCTexture() {
+        for(auto& timeline : timelines)
+            timeline->RemoveResource(this);
         if(_allocation) {
             //Resource is managed by D3D12MA allocation
             //We don't need ot manually release it, the
@@ -327,6 +329,11 @@ namespace alloy::dxc {
         const ITextureView::Description& desc
     ) {
         return common::sp(new DXCTextureView(tex, desc));
+    }
+
+    
+    void DXCTexture::SetDebugName(const std::string& name) {
+        GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
     }
     
 }
