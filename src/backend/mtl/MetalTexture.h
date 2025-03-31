@@ -65,6 +65,8 @@ class MetalDevice;
             uint32_t arrayLayer,
             SubresourceAspect aspect = SubresourceAspect::Color) override;
 
+        virtual void SetDebugName(const std::string& name) override;
+
     };
 
     class MetalTextureView : public ITextureView {

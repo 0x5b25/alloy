@@ -335,5 +335,18 @@ namespace alloy::dxc {
     void DXCTexture::SetDebugName(const std::string& name) {
         GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
     }
+
+    void DXCTexture::NotifyUsageOn(IDXCTimeline* timeline) {
+        //Resource is used on timeline, clear stale data on other
+        //timelines
+        for(auto t : timelines) {
+            if(t == timeline) {
+                continue;
+            }
+            t->RemoveResource(this);
+        }
+
+        timelines = {timeline};
+    }
     
 }

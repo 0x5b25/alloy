@@ -104,6 +104,8 @@ namespace alloy::dxc
             timelines.insert(timeline); 
         }
 
+        void NotifyUsageOn(IDXCTimeline* timeline);
+
     };
 
 

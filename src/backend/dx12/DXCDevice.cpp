@@ -693,7 +693,7 @@ namespace alloy::dxc {
             auto it = _currentState.textures.find(texture);
             if(it == _currentState.textures.end()) {
                 currState = cpuTimeline.textures[texture];
-                texture->RegisterTimeline(this);
+                texture->NotifyUsageOn(this);
             } else {
                 currState = it->second;
             }
@@ -895,6 +895,9 @@ namespace alloy::dxc {
         }
 
         timeline->GetCurrentState().SyncTo(states);
+        for(auto tex : states.textures) {
+            tex.first->RegisterTimeline(timeline);
+        }
     }
 
     

@@ -623,4 +623,17 @@ namespace alloy::vk {
         }
     }
 
+    void VulkanTexture::NotifyUsageOn(IVkTimeline* timeline) {
+        //Resource is used on timeline, clear stale data on other
+        //timelines
+        for(auto t : timelines) {
+            if(t == timeline) {
+                continue;
+            }
+            t->RemoveResource(this);
+        }
+
+        timelines = {timeline};
+    }
+
 }

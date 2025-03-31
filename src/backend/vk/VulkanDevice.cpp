@@ -642,6 +642,9 @@ bool Contains(T&& container, U&& element) {
         }
 
         timeline->GetCurrentState().SyncTo(states);
+        for(auto tex : states.textures) {
+            tex.first->RegisterTimeline(timeline);
+        }
     }
 
     common::sp<IEvent> VulkanFence::Make(const common::sp<VulkanDevice>& dev)
@@ -834,6 +837,8 @@ bool Contains(T&& container, U&& element) {
             if(container.completionFenceValue <= value) {
                 container.cmdPool->FreeBuffer(container.cmdBuf);
                 _transitionCmdBufs.pop_front();
+            } else {
+                break;
             }
         }
 
@@ -858,11 +863,11 @@ bool Contains(T&& container, U&& element) {
             auto it = _currentState.textures.find(texture);
             if(it == _currentState.textures.end()) {
                 currLayout = cpuTimeline.textures[texture];
-                texture->RegisterTimeline(this);
             } else {
                 auto& state = it->second;
             }
-
+            //Acquire resource on this timeline
+            texture->NotifyUsageOn(this);
             if(currLayout != stateReq.layout) {
 
                 auto& desc = texture->GetDesc();
@@ -955,6 +960,8 @@ bool Contains(T&& container, U&& element) {
         }
 
         if(currState != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+            tex->NotifyUsageOn(this);
+
             auto& texDesc = tex->GetDesc();
             VkImageMemoryBarrier barrier {};
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

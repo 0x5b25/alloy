@@ -101,6 +101,9 @@ namespace alloy::vk
             timelines.insert(timeline); 
         }
 
+        
+        void NotifyUsageOn(IVkTimeline* timeline);
+
     };
 
 

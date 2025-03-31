@@ -18,8 +18,8 @@ set(VLD_MISC_SRCS
     "src/common/Waitable.cpp"
     "src/utils/Allocators.cpp"
     "src/utils/Allocators.hpp"
-    "src/utils/ResourceStateTracker.cpp"
-    "src/utils/ResourceStateTracker.hpp"
+    #"src/utils/ResourceStateTracker.cpp"
+    #"src/utils/ResourceStateTracker.hpp"
 )
 
 
