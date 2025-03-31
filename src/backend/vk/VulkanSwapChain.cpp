@@ -324,7 +324,7 @@ namespace alloy::vk
                 auto dTgt = _dev->GetResourceFactory()
                     .CreateTexture(dsDesc);
                 dsTex = SPCast<VulkanTexture>(dTgt);
-                dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+                //dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
                 //_fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
             }
 

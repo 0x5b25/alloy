@@ -8,11 +8,11 @@
 #include "alloy/Texture.hpp"
 #include "alloy/Sampler.hpp"
 
-#include <vector>
-
+#include <unordered_set>
 namespace alloy::dxc
 {
     class DXCDevice;
+    class IDXCTimeline;
     
     class DXCTexture : public ITexture{
     public:
@@ -22,13 +22,7 @@ namespace alloy::dxc
         D3D12MA::Allocation* _allocation;
         ID3D12Resource* _res;
 
-        //std::vector<VkImageLayout> _imageLayouts;
-
-        //Layout tracking
-        //VkImageLayout _layout;
-        //VkAccessFlags _accessFlag;
-        //VkPipelineStageFlags _pipelineFlag;
-
+        std::unordered_set<IDXCTimeline*> timelines;
 
         DXCTexture(
             const common::sp<DXCDevice>& dev,
@@ -89,6 +83,7 @@ namespace alloy::dxc
             uint32_t arrayLayer,
             SubresourceAspect aspect) override;
 
+        virtual void SetDebugName(const std::string& name) override;
 
     public:
         //void TransitionImageLayout(
@@ -104,6 +99,12 @@ namespace alloy::dxc
         //
         //const VkImageLayout& GetLayout() const { return _layout; }
         //void SetLayout(VkImageLayout newLayout) { _layout = newLayout; }
+        
+        void RegisterTimeline(IDXCTimeline* timeline) { 
+            timelines.insert(timeline); 
+        }
+
+        void NotifyUsageOn(IDXCTimeline* timeline);
 
     };
 

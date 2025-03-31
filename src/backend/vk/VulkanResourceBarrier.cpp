@@ -11,8 +11,7 @@ namespace alloy::vk
 
     
 
-static VkPipelineStageFlags vk_stage_flags_from_d3d12_barrier(
-    const VulkanCommandList* list,
+VkPipelineStageFlags vk_stage_flags_from_d3d12_barrier(
     alloy::PipelineStages sync, 
     const alloy::ResourceAccesses& access)
 {
@@ -132,8 +131,7 @@ static VkPipelineStageFlags vk_stage_flags_from_d3d12_barrier(
     return stages;
 }
 
-static VkAccessFlags vk_access_flags_from_d3d12_barrier(
-    const VulkanCommandList* list,
+VkAccessFlags2 vk_access_flags_from_d3d12_barrier(
     const alloy::ResourceAccesses& access)
 {
     VkAccessFlags2 vk_access = 0;
@@ -153,10 +151,10 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
         vk_access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     if (access & alloy::ResourceAccess::UNORDERED_ACCESS)
         vk_access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    if (access & alloy::ResourceAccess::DEPTH_STENCIL_READ)
+    if (access & alloy::ResourceAccess::DepthStencilReadOnly)
         vk_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    if (access & alloy::ResourceAccess::DEPTH_STENCIL_WRITE)
-        vk_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    if (access & alloy::ResourceAccess::DepthStencilWritable)
+        vk_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
     if (access & alloy::ResourceAccess::SHADER_RESOURCE)
         vk_access |= VK_ACCESS_SHADER_READ_BIT;
     if (access & alloy::ResourceAccess::STREAM_OUTPUT)
@@ -165,7 +163,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                 VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT |
                 VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT;
     }
-    if (access & alloy::ResourceAccess::INDIRECT_ARGUMENT)
+    if (access & alloy::ResourceAccess::INDIRECT_ARGUMENT) /* PREDICATION is alias for EXECUTE_INDIRECT */
     {
         /* Add SHADER_READ_BIT here since we might read the indirect buffer in compute for
          * patching reasons. */
@@ -247,9 +245,9 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
             flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         if(accesses[alloy::ResourceAccess::UNORDERED_ACCESS])
             flags |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_WRITE])
+        if(accesses[alloy::ResourceAccess::DepthStencilWritable])
             flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        if(accesses[alloy::ResourceAccess::DEPTH_STENCIL_READ])
+        if(accesses[alloy::ResourceAccess::DepthStencilReadOnly])
             flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
         if(accesses[alloy::ResourceAccess::SHADER_RESOURCE])
             flags |= VK_ACCESS_SHADER_READ_BIT;
@@ -282,7 +280,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
         return flags;
     }
 #endif
-    VkImageLayout _GetTexLayout (const alloy::TextureLayout& layout) {
+    VkImageLayout AlToVkTexLayout (const alloy::TextureLayout& layout) {
             switch(layout) {
                 case alloy::TextureLayout::COMMON: return VK_IMAGE_LAYOUT_GENERAL;
                 case alloy::TextureLayout::PRESENT: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -305,11 +303,10 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
     
     template<typename T>
     static void _PopulateBarrierAccess(const alloy::MemoryBarrierDescription& desc,
-                                        VulkanCommandList* cmdList,
                                               T& barrier
     ) {
-        barrier.dstAccessMask = vk_access_flags_from_d3d12_barrier(cmdList, desc.accessAfter);
-        barrier.srcAccessMask = vk_access_flags_from_d3d12_barrier(cmdList, desc.accessBefore);
+        barrier.dstAccessMask = vk_access_flags_from_d3d12_barrier(desc.accessAfter);
+        barrier.srcAccessMask = vk_access_flags_from_d3d12_barrier(desc.accessBefore);
     }
     
     void BindBarrier(VulkanCommandList* cmdBuf, const std::vector<alloy::BarrierDescription>& barriers) {
@@ -324,8 +321,8 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
 
         for(auto& b : barriers) {
 
-            auto stagesBefore = vk_stage_flags_from_d3d12_barrier(cmdBuf, b.memBarrier.stagesBefore, b.memBarrier.accessBefore);
-            auto stagesAfter = vk_stage_flags_from_d3d12_barrier(cmdBuf, b.memBarrier.stagesAfter, b.memBarrier.accessAfter);
+            auto stagesBefore = vk_stage_flags_from_d3d12_barrier(b.memBarrier.stagesBefore, b.memBarrier.accessBefore);
+            auto stagesAfter = vk_stage_flags_from_d3d12_barrier(b.memBarrier.stagesAfter, b.memBarrier.accessAfter);
 
             BarriersInSyncStage *pCollection = nullptr;
             for(auto& s : stageCollections) {
@@ -352,7 +349,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                 if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
                     memBarriers.emplace_back(VK_STRUCTURE_TYPE_MEMORY_BARRIER);
                     auto& barrier = memBarriers.back();
-                    _PopulateBarrierAccess(desc.memBarrier, cmdBuf, barrier);
+                    _PopulateBarrierAccess(desc.memBarrier, barrier);
                 }
                 else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
                     bufBarriers.emplace_back(VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
@@ -360,7 +357,7 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
                     auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
 
                     auto thisBuf = common::PtrCast<VulkanBuffer>(barrierDesc.resource.get());
-                    _PopulateBarrierAccess(desc.memBarrier, cmdBuf, barrier);
+                    _PopulateBarrierAccess(desc.memBarrier, barrier);
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.buffer = thisBuf->GetHandle();
@@ -375,9 +372,9 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
 
                     auto thisTex = common::PtrCast<VulkanTexture>(texDesc.resource.get());
                     auto& vkTexResDesc = thisTex->GetDesc();
-                    _PopulateBarrierAccess(desc.memBarrier, cmdBuf, barrier);
-                    barrier.oldLayout = _GetTexLayout(texDesc.fromLayout);
-                    barrier.newLayout = _GetTexLayout(texDesc.toLayout);
+                    _PopulateBarrierAccess(desc.memBarrier, barrier);
+                    barrier.oldLayout = AlToVkTexLayout(texDesc.fromLayout);
+                    barrier.newLayout = AlToVkTexLayout(texDesc.toLayout);
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.image = thisTex->GetHandle();
@@ -401,6 +398,129 @@ static VkAccessFlags vk_access_flags_from_d3d12_barrier(
             VK_DEV_CALL(cmdBuf->GetDevice(),
                 vkCmdPipelineBarrier(
                     cmdBuf->GetHandle(),
+                    c.stagesBefore,
+                    c.stagesAfter,
+                    0 /*VkDependencyFlags*/,
+                    memBarriers.size(), memBarriers.data(),
+                    bufBarriers.size(), bufBarriers.data(),
+                    texBarrier.size(), texBarrier.data()));
+
+        }
+    }
+
+    
+    void InsertBarrier(
+        VulkanDevice* dev,
+        VkCommandBuffer cmdBuf,
+        const alloy::utils::BarrierActions& barriers
+    ) {
+        if(barriers.bufferBarrierActions.empty() && 
+           barriers.textureBarrierActions.empty())
+            return;
+        struct BarriersInSyncStage {
+            VkPipelineStageFlags stagesBefore;
+            VkPipelineStageFlags stagesAfter;
+            alloy::utils::BarrierActions barriers;
+        };
+
+        std::vector <BarriersInSyncStage> stageCollections;
+
+        auto _FindStageForAction = [&](auto action)->BarriersInSyncStage* {
+            VkPipelineStageFlags stagesBefore = VK_PIPELINE_STAGE_NONE_KHR;
+            if(action.before.stage != PipelineStage::None)
+                stagesBefore = vk_stage_flags_from_d3d12_barrier(action.before.stage, action.before.access);
+            VkPipelineStageFlags stagesAfter = VK_PIPELINE_STAGE_NONE_KHR;
+            if(action.after.stage != PipelineStage::None)
+                stagesAfter = vk_stage_flags_from_d3d12_barrier(action.after.stage, action.after.access);
+
+            BarriersInSyncStage *pCollection = nullptr;
+            for(auto& s : stageCollections) {
+                if(s.stagesBefore == stagesBefore &&
+                   s.stagesAfter == stagesAfter) {
+                    pCollection = &s;
+                    break;
+                }
+            }
+
+            if(pCollection == nullptr) {
+                pCollection = &stageCollections.emplace_back(stagesBefore, stagesAfter);
+            }
+
+            return pCollection;
+        };
+
+        for(auto& b : barriers.bufferBarrierActions) {
+            auto stage = _FindStageForAction(b);
+            stage->barriers.bufferBarrierActions.push_back(b);
+        }
+
+        
+        for(auto& b : barriers.textureBarrierActions) {
+            auto stage = _FindStageForAction(b);
+            stage->barriers.textureBarrierActions.push_back(b);
+        }
+
+        auto _GetAccessFlags = [](alloy::ResourceAccess access) -> VkAccessFlags2 {
+            if(access == ResourceAccess::None)
+                return VK_ACCESS_NONE;
+            return vk_access_flags_from_d3d12_barrier(access);
+        };
+
+        for(auto& c : stageCollections) {
+            std::vector<VkMemoryBarrier> memBarriers;
+            std::vector<VkBufferMemoryBarrier> bufBarriers;
+            std::vector<VkImageMemoryBarrier> texBarrier;
+
+            
+            for(auto& desc : c.barriers.bufferBarrierActions) {
+                bufBarriers.emplace_back(VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
+                auto& barrier = bufBarriers.back();
+
+                auto thisBuf = static_cast<VulkanBuffer*>(desc.buffer);
+                
+                barrier.srcAccessMask = _GetAccessFlags(desc.before.access);
+                barrier.dstAccessMask = _GetAccessFlags(desc.after.access);
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.buffer = thisBuf->GetHandle();
+                //TODO : Currently includes the whole buffer. Maybe add finer grain control later.
+                barrier.offset = 0;
+                barrier.size = thisBuf->GetDesc().sizeInBytes;
+            }
+
+            for(auto& desc : c.barriers.textureBarrierActions) {
+                texBarrier.emplace_back(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
+                auto& barrier = texBarrier.back();
+
+                auto thisTex =static_cast<VulkanTexture*>(desc.texture);
+                auto& vkTexResDesc = thisTex->GetDesc();
+
+                barrier.srcAccessMask = _GetAccessFlags(desc.before.access);
+                barrier.dstAccessMask = _GetAccessFlags(desc.after.access);
+                barrier.oldLayout = AlToVkTexLayout(desc.before.layout);
+                barrier.newLayout = AlToVkTexLayout(desc.after.layout);
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image = thisTex->GetHandle();
+                auto& aspectMask = barrier.subresourceRange.aspectMask;
+                if (vkTexResDesc.usage.depthStencil) {
+                    aspectMask = FormatHelpers::IsStencilFormat(vkTexResDesc.format)
+                        ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
+                        : VK_IMAGE_ASPECT_DEPTH_BIT;
+                }
+                else {
+                    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                }
+                barrier.subresourceRange.baseMipLevel = 0;
+                barrier.subresourceRange.levelCount = vkTexResDesc.mipLevels;
+                barrier.subresourceRange.baseArrayLayer = 0;
+                barrier.subresourceRange.layerCount = vkTexResDesc.arrayLayers;
+            }
+
+            
+            VK_DEV_CALL(dev,
+                vkCmdPipelineBarrier(
+                    cmdBuf,
                     c.stagesBefore,
                     c.stagesAfter,
                     0 /*VkDependencyFlags*/,

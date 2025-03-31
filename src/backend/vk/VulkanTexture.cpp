@@ -11,6 +11,8 @@
 namespace alloy::vk {
     
     VulkanTexture::~VulkanTexture() {
+        for(auto& timeline : timelines)
+            timeline->RemoveResource(this);
         if(IsOwnTexture()){
             vmaDestroyImage(_dev->Allocator(), _img, _allocation);
         }
@@ -165,9 +167,9 @@ namespace alloy::vk {
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = img;
         tex->_allocation = allocation;
-        tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED;
-        tex->_accessFlag = 0;
-        tex->_pipelineFlag = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        //tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+        //tex->_accessFlag = 0;
+        //tex->_pipelineFlag = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         //ClearIfRenderTarget();
         // If the image is going to be used as a render target, we need to clear the data before its first use.
         //if (desc.usage.renderTarget) {
@@ -182,8 +184,8 @@ namespace alloy::vk {
         //    dev->TransitionImageLayout(tex, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         //}
         //RefCount = new ResourceRefCount(RefCountedDispose);
-
-		
+        dev->RegisterTextureState(VK_IMAGE_LAYOUT_UNDEFINED, tex);
+		tex->RegisterTimeline(dev.get());
 
 		return common::sp<ITexture>(tex);
 	}
@@ -200,9 +202,6 @@ namespace alloy::vk {
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = (VkImage)nativeHandle;
         tex->_allocation = VK_NULL_HANDLE;
-        tex->_layout = layout;
-        tex->_accessFlag = accessFlag;
-        tex->_pipelineFlag = pipelineFlag;
         //Debug.Assert(width > 0 && height > 0);
         //    _gd = gd;
         //    MipLevels = mipLevels;
@@ -222,6 +221,8 @@ namespace alloy::vk {
 //
         //    ClearIfRenderTarget();
         //    RefCount = new ResourceRefCount(DisposeCore);
+        dev->RegisterTextureState(layout, tex);
+		tex->RegisterTimeline(dev.get());
         return common::sp(tex);
     }
 
@@ -389,6 +390,7 @@ namespace alloy::vk {
         VkAccessFlags accessFlag,
         VkPipelineStageFlags pipelineFlag
     ){
+#if 0
         /*VkImageLayout oldLayout = _imageLayouts[
            CalculateSubresource(description, baseMipLevel, baseArrayLayer)];
 #ifdef VLD_DEBUG
@@ -445,7 +447,7 @@ namespace alloy::vk {
         _layout = layout;
         _pipelineFlag = pipelineFlag;
         _accessFlag = accessFlag;
-
+#endif
     }
     
     VulkanTextureView::~VulkanTextureView() {
@@ -606,6 +608,32 @@ namespace alloy::vk {
         auto* sampler = new VulkanSampler(dev, desc);
         sampler->_sampler = rawSampler;
         return common::sp<VulkanSampler>(sampler);
+    }
+
+    void VulkanTexture::SetDebugName(const std::string& name) {
+        // Check for a valid function pointer
+        if (_dev->GetFeatures().commandListDebugMarkers)
+        {
+            VkDebugMarkerObjectNameInfoEXT nameInfo = {};
+            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+            nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+            nameInfo.object = (uint64_t)_img;
+            nameInfo.pObjectName = name.c_str();
+            _dev->GetFnTable().vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+        }
+    }
+
+    void VulkanTexture::NotifyUsageOn(IVkTimeline* timeline) {
+        //Resource is used on timeline, clear stale data on other
+        //timelines
+        for(auto t : timelines) {
+            if(t == timeline) {
+                continue;
+            }
+            t->RemoveResource(this);
+        }
+
+        timelines = {timeline};
     }
 
 }

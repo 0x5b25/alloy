@@ -42,6 +42,7 @@ const char* VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION = "VK_KHR_dedicated_alloc
 const char* VkDevExtNames::VK_KHR_DRIVER_PROPS = "VK_KHR_driver_properties";
 const char* VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE = "VK_EXT_depth_clip_enable";
 
+const char* VkDevExtNames::VK_KHR_SYNCHRONIZATION2 =  VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;// "VK_KHR_timeline_semaphore";
 const char* VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE =  VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME;// "VK_KHR_timeline_semaphore";
 const char* VkDevExtNames::VK_KHR_DYNAMIC_RENDERING = VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
 

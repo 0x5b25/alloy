@@ -312,6 +312,8 @@ class UniformApp : public AppBase {
         alloy::IBuffer::Description _vbDesc{};
         _vbDesc.sizeInBytes = 4 * sizeof(VertexData);
         _vbDesc.usage.vertexBuffer = 1;
+        _vbDesc.usage.indexBuffer = 1;
+        _vbDesc.usage.uniformBuffer = 1;
         //_vbDesc.usage.staging = 1;
         vertexBuffer = factory.CreateBuffer(_vbDesc);
         vertexBuffer->SetDebugName("Vertex Buffer");
@@ -367,7 +369,7 @@ class UniformApp : public AppBase {
 
         tex1 = factory.CreateTextureView(tex1Img);
         rt1 = factory.CreateRenderTarget(tex1);
-
+#if 0
         auto fence = dev->GetResourceFactory().CreateSyncEvent();
         uint64_t signalValue = 1;
 
@@ -402,6 +404,7 @@ class UniformApp : public AppBase {
         dev->GetGfxCommandQueue()->SubmitCommand(cmd.get());
         dev->GetGfxCommandQueue()->EncodeSignalEvent(fence.get(), signalValue);
         fence->WaitFromCPU(signalValue);
+#endif
     }
 
     void CreatePipeline() {
@@ -556,7 +559,7 @@ class UniformApp : public AppBase {
         opt.preferStandardClipSpaceYDirection = true;
 
         //dev = alloy::CreateVulkanGraphicsDevice(opt, swapChainSrc);
-        #if 1//defined( _WIN32 )
+        #if 0//defined( _WIN32 )
             alloy::Backend backend = alloy::Backend::DX12;
         #elif __APPLE__
             alloy::Backend backend = alloy::Backend::Metal;
@@ -602,16 +605,19 @@ class UniformApp : public AppBase {
     }
 
     virtual bool OnAppUpdate(float) override {
-        UniformBufferObject ubo{};
-        ubo.model = glm::rotate(
+        std::vector<uint32_t> ubo{};
+        ubo.resize(sizeof(UniformBufferObject) / 4);
+
+        auto pubo = (UniformBufferObject*)ubo.data();
+        pubo->model = glm::rotate(
             glm::mat4(1.0f),
             timeElapsedSec * glm::radians(90.0f),
             glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(
+        pubo->view = glm::lookAt(
             glm::vec3(2.0f, 2.0f, 2.0f),
             glm::vec3(0.0f, 0.0f, 0.0f),
             glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(
+        pubo->proj = glm::perspective(
             glm::radians(45.0f), 
             swapChain->GetWidth() / (float)swapChain->GetHeight(),
             0.1f, 10.0f);
@@ -661,7 +667,7 @@ class UniformApp : public AppBase {
                     //.barriers = { texBarrier, dsBarrier }
                 };
 
-                _commandList->Barrier({ texBarrier });
+                //_commandList->Barrier({ texBarrier });
             }
             alloy::RenderPassAction passAction{};
             auto& ctAct = passAction.colorTargetActions.emplace_back();
@@ -700,7 +706,7 @@ class UniformApp : public AppBase {
                     //.barriers = { texBarrier, dsBarrier }
                 };
 
-                _commandList->Barrier({ texBarrier });                
+                //_commandList->Barrier({ texBarrier });                
             }
         }
 
@@ -740,7 +746,7 @@ class UniformApp : public AppBase {
                     .stagesBefore = isInitSubmission ? alloy::PipelineStages{} : alloy::PipelineStage::All,
                     .stagesAfter = alloy::PipelineStage::DEPTH_STENCIL,
                     .accessBefore = isInitSubmission ? alloy::ResourceAccesses{} : alloy::ResourceAccess::COMMON,
-                    .accessAfter = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessAfter = alloy::ResourceAccess::DepthStencilWritable,
                 },
 
                 .resourceInfo = alloy::TextureBarrierResource {
@@ -752,7 +758,7 @@ class UniformApp : public AppBase {
                 //_isFirstSubmission = false;
             //}
             
-            _commandList->Barrier({ texBarrier, dsBarrier });
+            //_commandList->Barrier({ texBarrier, dsBarrier });
         }
         auto fbDesc = swapChain->GetBackBuffer()->GetDesc();
         
@@ -784,7 +790,7 @@ class UniformApp : public AppBase {
         pass.SetVertexBuffer(0, alloy::BufferRange::MakeByteBuffer(vertexBuffer) );
         pass.SetIndexBuffer(alloy::BufferRange::MakeByteBuffer(indexBuffer), alloy::IndexFormat::UInt32);
         pass.SetGraphicsResourceSet(shaderResources);
-        pass.SetPushConstants(0, sizeof(ubo) / 4, (uint32_t*)& ubo, 0);
+        pass.SetPushConstants(0, ubo, 0);
 
         pass.DrawIndexed(
             /*indexCount:    */4,
@@ -820,7 +826,7 @@ class UniformApp : public AppBase {
                 .memBarrier = {
                     .stagesBefore = alloy::PipelineStage::DEPTH_STENCIL,
                     .stagesAfter = alloy::PipelineStage::All,
-                    .accessBefore = alloy::ResourceAccess::DEPTH_STENCIL_WRITE,
+                    .accessBefore = alloy::ResourceAccess::DepthStencilWritable,
                     .accessAfter = alloy::ResourceAccess::COMMON,
                 },
 
@@ -831,7 +837,7 @@ class UniformApp : public AppBase {
                 }
             };
 
-            _commandList->Barrier({ texBarrier, dsBarrier });
+            //_commandList->Barrier({ texBarrier, dsBarrier });
         }
 
         _commandList->End();

@@ -13,6 +13,7 @@
 
 #include <deque>
 #include <map>
+#include <unordered_map>
 #include <thread>
 #include <mutex>
 
@@ -26,7 +27,10 @@ namespace alloy::vk
     //class _VkCtx;
     class VulkanAdapter;
     class VulkanBuffer;
+    class VulkanTexture;
     class VulkanDevice;
+    class VulkanFence;
+    class VulkanCommandList;
     //class VulkanResourceFactory;
     //Manage command pools, to achieve one command pool per thread
     
@@ -70,17 +74,87 @@ namespace alloy::vk
         void FreeBuffer(VkCommandBuffer buf);
     };
 
-    class VulkanCommandQueue : public ICommandQueue {
+    class IVkTimeline {
+    public:
+        struct BufferState{
+            VkPipelineStageFlags stage;
+            VkAccessFlags2 access;
+
+            bool operator==(const BufferState& other) const {
+                return stage == other.stage && access == other.access;
+            }
+        };
+
+        struct TextureState {
+            VkPipelineStageFlags stage;
+            VkAccessFlags2 access;
+            VkImageLayout layout;
+
+            bool operator==(const TextureState& other) const {
+                return stage == other.stage &&
+                       access == other.access && 
+                       layout == other.layout;
+            }
+        };
+
+        struct ResourceStates {
+            std::unordered_map<VulkanTexture*, VkImageLayout> textures;
+
+            void SyncTo(const ResourceStates& other) {
+                for(auto& [k, v] : other.textures)
+                    textures.insert_or_assign(k, v);
+            }
+
+            void Clear() {
+                textures.clear();
+            }
+        };
+
+        virtual void RemoveResource(VulkanBuffer* buffer) = 0;
+        virtual void RemoveResource(VulkanTexture* texture) = 0;
+
+        virtual ResourceStates& GetCurrentState() = 0;
+
+        //Notify that all resources are synced
+        // DX12 will sync all resources at submission end
+        // Vulkan will sync all resources at semaphore signal
+        //virtual void NotifySyncResources() = 0;
+    };
+
+    class VulkanCommandQueue : public ICommandQueue, public IVkTimeline {
+
 
         VulkanDevice* _dev;
         _CmdPoolMgr _cmdPoolMgr;
         VkQueue _q;
 
+        IVkTimeline::ResourceStates _currentState;
+
+        VkSemaphore  _submissionFence, _presentFence;
+        uint64_t _lastSubmittedFence = 0;
+        struct TransitionCmdBuf{
+            common::sp<_CmdPoolContainer> cmdPool;
+            VkCommandBuffer cmdBuf;
+            uint64_t completionFenceValue;
+        };
+        std::deque<TransitionCmdBuf> _transitionCmdBufs;
+
+        void _RecycleTransitionCmdBufs();
+    
+        //void _InsertBarriers(
+        //    const alloy::utils::BarrierActions& barriers);
+
+        void _TransitResourceStatesBeforeSubmit(
+            const VulkanCommandList& cmdList);
+
+        void _MarkResourceStatesAfterSubmit(
+            const VulkanCommandList& cmdList);
+
     public:
 
         VulkanCommandQueue(VulkanDevice* dev, std::uint32_t queueFamily, VkQueue q);
 
-        //virtual ~VulkanCommandQueue() override {
+        virtual ~VulkanCommandQueue() override;
         //    _q->Release();
         //}
 
@@ -94,19 +168,44 @@ namespace alloy::vk
 
         VkQueue GetHandle() const {return _q;}
 
+        /*ICommandQueue implementations*/
         virtual void EncodeSignalEvent(IEvent* evt, uint64_t value) override;
 
         virtual void EncodeWaitForEvent(IEvent* evt, uint64_t value) override;
 
         virtual void SubmitCommand(ICommandList* cmd) override;
 
-
-        
         virtual common::sp<ICommandList> CreateCommandList() override;
+        
+        /*IVkTimeline implementations*/
+        virtual void RemoveResource(VulkanBuffer* buffer) override {
+            //_CleanupSyncPoints();
+            //_currentState.buffers.erase(buffer);
+            //for(auto& pt : _syncPoints) {
+            //    pt.states.buffers.erase(buffer);
+            //}
+        }
+        
+        virtual void RemoveResource(VulkanTexture* texture) override {
+            //_CleanupSyncPoints();
+            _currentState.textures.erase(texture);
+            //for(auto& pt : _syncPoints) {
+            //    pt.states.textures.erase(texture);
+            //}
+        }
+
+        ResourceStates& GetCurrentState() override { return _currentState; }
+
+        //Transition texture to present layout if necessary.
+        //Will always signal the semaphore for present sync
+        VkSemaphore PrepareTextureForPresent(VulkanTexture* tex);
 
     };
 
-    class VulkanDevice : public IGraphicsDevice, public VulkanResourceFactory {
+    class VulkanDevice : public IGraphicsDevice
+                       , public VulkanResourceFactory
+                       , public IVkTimeline
+    {
 
     public:
         union Features {
@@ -130,6 +229,8 @@ namespace alloy::vk
         };
 
     private:
+
+        ResourceStates _currentState;
 
         common::sp<VulkanAdapter> _adp;
 
@@ -185,7 +286,7 @@ namespace alloy::vk
 
         //const VkSurfaceKHR& Surface() const {return _surface;}
 
-        const VkQueue& GraphicsQueue() const {return _gfxQ->GetHandle();}
+        const VkQueue GraphicsQueue() const {return _gfxQ->GetHandle();}
 
         const VmaAllocator& Allocator() const {return _allocator;}
 
@@ -194,8 +295,15 @@ namespace alloy::vk
 
         const Features& GetVkFeatures() const {return _features; }
 
-    private:
+    public:
+        ResourceStates& GetCurrentState() override { return _currentState; }
 
+        void RegisterTextureState(const VkImageLayout& request, VulkanTexture* texture) {
+            _currentState.textures[texture] = request;
+        }
+
+        void RemoveResource(VulkanBuffer* buffer) override {  }
+        void RemoveResource(VulkanTexture* texture) override { _currentState.textures.erase(texture); }
 
     public:
         //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
@@ -231,7 +339,7 @@ namespace alloy::vk
         ) 
             : IBuffer(desc)
             , _dev(dev)
-        {}
+        { }
 
     public:
 
@@ -273,6 +381,8 @@ namespace alloy::vk
         common::sp<VulkanDevice> _dev;
         VkSemaphore  _timelineSem;
 
+        //map for each timeline : last signaled value
+        std::unordered_map<IVkTimeline*, uint64_t> _signalingTimelines;
 
         VulkanFence(const common::sp<VulkanDevice>& dev) : _dev(dev) {}
 
@@ -292,6 +402,9 @@ namespace alloy::vk
         bool WaitFromCPU(uint64_t expectedValue) {
             return WaitFromCPU(expectedValue, (std::numeric_limits<std::uint32_t>::max)());
         }
+
+        void RegisterSyncPoint(IVkTimeline* timeline, uint64_t syncValue);
+        void SyncTimelineToThis(IVkTimeline* timeline, uint64_t syncValue);
 
     };
     

@@ -375,6 +375,7 @@ namespace alloy::vk
     std::vector<common::sp<IPhysicalAdapter>> VulkanContext::EnumerateAdapters() {
 
         const static std::vector<std::string> requiredExtensions = {
+            VkDevExtNames::VK_KHR_SYNCHRONIZATION2,
             VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE,
             VkDevExtNames::VK_KHR_DYNAMIC_RENDERING,
             VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,

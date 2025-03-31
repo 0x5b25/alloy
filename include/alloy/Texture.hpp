@@ -101,9 +101,10 @@ namespace alloy
 
     public:
         const Description& GetDesc() const {return description;}
-
         
         virtual void* GetNativeHandle() const = 0;
+
+        virtual void SetDebugName(const std::string& ) = 0;
 
         virtual void WriteSubresource(
             uint32_t mipLevel,

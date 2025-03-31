@@ -107,7 +107,7 @@ namespace alloy::dxc {
         bool _syncToVBlank, _newSyncToVBlank;
 
         //VkFence _imageAvailableFence;
-        std::uint32_t _currentImageIndex;
+        //std::uint32_t _currentImageIndex;
 
         DXCSwapChain(
             const common::sp<DXCDevice>& dev,
@@ -123,7 +123,8 @@ namespace alloy::dxc {
         void ReleaseFramebuffers();
         void CreateFramebuffers(std::uint32_t width, std::uint32_t height);
 
-        void SetImageIndex(std::uint32_t index) {_currentImageIndex = index; }
+        
+        //void SetImageIndex(std::uint32_t index) {_currentImageIndex = index; }
 
         //VkResult AcquireNextImage(VkSemaphore semaphore, VkFence fence);
 
@@ -142,6 +143,7 @@ namespace alloy::dxc {
         IDXGISwapChain3* GetHandle() const { return _sc; }
 
         std::uint32_t GetCurrentImageIdx() const { return _sc->GetCurrentBackBufferIndex(); }
+        DXCTextureView* GetCurrentColorTarget() const { return _fbs[GetCurrentImageIdx()].colorTgt.tex.get(); }
 
     public:
         common::sp<IFrameBuffer> GetBackBuffer() override;

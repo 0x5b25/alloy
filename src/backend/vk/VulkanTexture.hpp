@@ -7,10 +7,12 @@
 #include "alloy/Sampler.hpp"
 
 #include <vector>
+#include <unordered_set>
 
 namespace alloy::vk
 {
     class VulkanDevice;
+    class IVkTimeline;
     
     class VulkanTexture : public ITexture{
 
@@ -21,9 +23,7 @@ namespace alloy::vk
         //std::vector<VkImageLayout> _imageLayouts;
 
         //Layout tracking
-        VkImageLayout _layout;
-        VkAccessFlags _accessFlag;
-        VkPipelineStageFlags _pipelineFlag;
+        std::unordered_set<IVkTimeline*> timelines;
 
 
         VulkanTexture(
@@ -82,6 +82,9 @@ namespace alloy::vk
             uint32_t arrayLayer,
             SubresourceAspect aspect) override;
 
+            
+        virtual void SetDebugName(const std::string& name) override;
+
     public:
         void TransitionImageLayout(
             VkCommandBuffer cb,
@@ -94,8 +97,12 @@ namespace alloy::vk
             VkPipelineStageFlags pipelineFlag
         );
 
-        const VkImageLayout& GetLayout() const { return _layout; }
-        void SetLayout(VkImageLayout newLayout) { _layout = newLayout; }
+        void RegisterTimeline(IVkTimeline* timeline) { 
+            timelines.insert(timeline); 
+        }
+
+        
+        void NotifyUsageOn(IVkTimeline* timeline);
 
     };
 

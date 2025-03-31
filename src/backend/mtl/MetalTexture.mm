@@ -153,6 +153,13 @@ namespace alloy::mtl  {
         return {};
     }
 
+    void MetalTexture::SetDebugName(const std::string& name) {
+        @autoreleasepool {
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [_tex setLabel:nsSrc];
+        }
+    }
+
     
 
     common::sp<MetalSampler> MetalSampler::Make(const common::sp<MetalDevice> &dev,
