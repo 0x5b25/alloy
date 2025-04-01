@@ -979,7 +979,7 @@ namespace alloy::dxc
         //transitions
         //After the loop, resStates in each render pass will only contain
         //resources that need state transition
-        for(auto i = _passes.size() - 1; i > 0; i--) {
+        for(int i = _passes.size() - 1; i > 0; i--) {
             auto currPass = _passes[i];
             auto prevPass = _passes[i - 1];
 
