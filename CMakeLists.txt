@@ -210,9 +210,9 @@ function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
     endif()
 endfunction()
 
-#if(${ALLOY_BUILD_TESTS})
+if(${ALLOY_BUILD_TESTS})
     add_subdirectory("demo")
-#endif()
+endif()
 
 if(ALLOY_INSTALL_LIBS)
     message("Will install libraries to ${ALLOY_INSTALL_LIBS}")
