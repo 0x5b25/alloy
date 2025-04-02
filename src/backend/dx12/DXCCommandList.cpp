@@ -715,11 +715,11 @@ namespace alloy::dxc
         
         auto* dxcSource = PtrCast<DXCTexture>(source.get());
         resources.insert(source);
-        RegisterTexUsage(dxcSource, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterTexUsage(dxcSource, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
         
         auto* dxcDestination = PtrCast<DXCTexture>(destination.get());
         resources.insert(destination);
-        RegisterTexUsage(dxcDestination, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterTexUsage(dxcDestination, D3D12_RESOURCE_STATE_RESOLVE_DEST);
         
         //TODO:Implement full image layout tracking and transition systems
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
@@ -752,7 +752,7 @@ namespace alloy::dxc
         resources.insert(src);
         RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
 
         
 
@@ -809,7 +809,7 @@ namespace alloy::dxc
         resources.insert(src);
         RegisterTexUsage(srcImage, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterBufferUsage(dstBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterBufferUsage(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
 
         auto srcDesc = srcImage->GetDesc();
 
@@ -855,7 +855,7 @@ namespace alloy::dxc
         resources.insert(source);
         RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(destination);
-        RegisterBufferUsage(dstDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterBufferUsage(dstDxcBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
 
         recordedCmds.emplace_back([this, destination, source, sizeInBytes]() {
             auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
@@ -886,7 +886,7 @@ namespace alloy::dxc
         resources.insert(src);
         RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
