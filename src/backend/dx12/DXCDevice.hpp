@@ -108,6 +108,9 @@ namespace alloy::dxc{
         virtual void SubmitCommand(ICommandList* cmd) override;
         
         virtual common::sp<ICommandList> CreateCommandList() override;
+
+        
+        virtual void* GetNativeHandle() const override {return _q;}
     public:
         
         virtual void RemoveResource(DXCTexture* texture) override {
@@ -220,7 +223,9 @@ namespace alloy::dxc{
         DXCAutoFence _waitIdleFence;
 
         D3D12MA::Allocator* _alloc;
-        D3D12MA::Pool* _umaPool;
+
+        //Host accessable pools
+        D3D12MA::Pool* _sysMemPool, *_devLocalPool;
 
         alloy::dxc::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
@@ -284,7 +289,8 @@ namespace alloy::dxc{
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
         D3D12MA::Allocator* Allocator() const { return _alloc; }
-        D3D12MA::Pool* UMAPool() const {return _umaPool;}
+        D3D12MA::Pool* GetHostAccessablePool(bool preferDeviceLocal) const;
+        //D3D12MA::Pool* UMAPool() const {return _umaPool;}
 
         ID3D12CommandQueue* GetImplicitQueue() const {return _gfxQ->GetHandle(); } 
         //virtual void SubmitCommand(const CommandList* cmd) override;

@@ -302,11 +302,24 @@ namespace alloy::dxc {
         delete _gfxQ;
         delete _copyQ;
 
-        if (_umaPool) {
-            _umaPool->Release();
+        if (_sysMemPool) {
+            _sysMemPool->Release();
         }
+
+        if (_devLocalPool) {
+            _devLocalPool->Release();
+        }
+
         _alloc->Release();
         _dev->Release();
+    }
+
+
+    D3D12MA::Pool* DXCDevice::GetHostAccessablePool(bool preferDeviceLocal) const {
+        if (!preferDeviceLocal) return _sysMemPool;
+
+        return _devLocalPool ? _devLocalPool : _sysMemPool;
+
     }
 
     common::sp<IGraphicsDevice> DXCDevice::Make(
@@ -375,9 +388,11 @@ namespace alloy::dxc {
         dev->_dxcFeat = {};
         dev->_dxcFeat.ReadFromDevice(dev->_dev);
 
-        //Create CPU accessable VRAM heap for UMA type device
-        D3D12MA::Pool* pool = nullptr;
-        if (dev->_dxcFeat.SupportUMA()) {
+
+        D3D12MA::Pool* sysMemPool = nullptr, *devLocalPool = nullptr;
+
+        //Create sysmem heap
+        {
             D3D12MA::POOL_DESC poolDesc = {};
             poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
             // For CPU readback use D3D12_CPU_PAGE_PROPERTY_WRITE_BACK
@@ -387,12 +402,33 @@ namespace alloy::dxc {
             poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
 
-            HRESULT hr = allocator->CreatePool(&poolDesc, &pool);
+            HRESULT hr = allocator->CreatePool(&poolDesc, &sysMemPool);
             if (FAILED(hr)) {
 
             }
         }
-        dev->_umaPool = pool;
+
+        //Non-UMA device normally has a device local host visible memory
+        //Create a heap targeting that
+        if (!dev->_dxcFeat.SupportUMA()) {
+            D3D12MA::POOL_DESC poolDesc = {};
+            poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
+            // For CPU readback use D3D12_CPU_PAGE_PROPERTY_WRITE_BACK
+            // D3D12_CPU_PAGE_PROPERTY_WRITE_BACK?
+            poolDesc.HeapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE;
+            poolDesc.HeapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_L1;
+            // These flags are optional but recommended.
+            poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
+            poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
+
+            HRESULT hr = allocator->CreatePool(&poolDesc, &devLocalPool);
+            if (FAILED(hr)) {
+
+            }
+        }
+
+        dev->_sysMemPool = sysMemPool;
+        dev->_devLocalPool = devLocalPool;
 
         ////Fill driver and api info
         //{//Get device ID & driver version
@@ -535,27 +571,41 @@ namespace alloy::dxc {
         resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
+
+        D3D12MA::ALLOCATION_DESC allocationDesc = {};
+        //D3D12_RESOURCE_STATES resourceState;
+
         if(desc.usage.structuredBufferReadWrite) {
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         }
+        //else {
+        //    switch (desc.hostAccess)
+        //    {
+        //    case HostAccess::PreferRead:
+        //        allocationDesc.HeapType = D3D12_HEAP_TYPE_READBACK;
+        //        //resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
+        //        break;
+        //    case HostAccess::PreferWrite:
+        //        allocationDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
+        //        //resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+        //        break;
+        //    case HostAccess::None:
+        //    default:
+        //        allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+        //        //resourceState = D3D12_RESOURCE_STATE_COMMON;
+        //        break;
+        //    }
+        //}
 
-        D3D12MA::ALLOCATION_DESC allocationDesc = {};
-        D3D12_RESOURCE_STATES resourceState;
-
-        switch (desc.hostAccess)
-        {        
-        case HostAccess::PreferRead:
-            allocationDesc.HeapType = D3D12_HEAP_TYPE_READBACK;
-            resourceState = D3D12_RESOURCE_STATE_COPY_DEST;
+        switch (desc.hostAccess) {
+        case HostAccess::PreferSystemMemory:
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(false);
             break;
-        case HostAccess::PreferWrite:
-            allocationDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
-            resourceState = D3D12_RESOURCE_STATE_GENERIC_READ;
+        case HostAccess::PreferDeviceMemory:
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(true);
             break;
-        case HostAccess::None:
         default:
             allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
-            resourceState = D3D12_RESOURCE_STATE_COMMON;
             break;
         }
 
@@ -563,7 +613,7 @@ namespace alloy::dxc {
         HRESULT hr = dev->Allocator()->CreateResource(
             &allocationDesc,
             &resourceDesc,
-            resourceState,
+            D3D12_RESOURCE_STATE_COMMON,
             NULL,
             &allocation,
              IID_NULL, NULL);

@@ -22,23 +22,19 @@
 namespace alloy::dxc {
 
     class DXCDevice;
+    class DXCContext;
 
 
     class DXCAdapter : public IPhysicalAdapter {
         IDXGIAdapter1* _adp;
+        common::sp<DXCContext> _ctx;
 
         void PopulateAdpInfo();
 
     public:
-        DXCAdapter(IDXGIAdapter1* adp)
-            : _adp(adp)
-        {
-            PopulateAdpInfo();
-        }
+        DXCAdapter(IDXGIAdapter1* adp, common::sp<DXCContext>&& ctx);
 
-        virtual ~DXCAdapter() override {
-            _adp->Release();
-        }
+        virtual ~DXCAdapter() override;
 
         IDXGIAdapter1* GetHandle() const {return _adp;}
         virtual common::sp<IGraphicsDevice> RequestDevice(

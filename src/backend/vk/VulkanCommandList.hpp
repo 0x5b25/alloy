@@ -115,7 +115,9 @@ namespace alloy::vk
 
         
         virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;
-
+        void TransitionTextureToDefaultLayout(
+            const std::vector<common::sp<ITexture>>& textures
+        ) override;
         const ResourceStates& GetRequestedResourceStates() const {
             return _requestedStates;
         }

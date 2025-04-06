@@ -176,6 +176,8 @@ namespace alloy::vk
         virtual void SubmitCommand(ICommandList* cmd) override;
 
         virtual common::sp<ICommandList> CreateCommandList() override;
+
+        virtual void* GetNativeHandle() const override {return _q;}
         
         /*IVkTimeline implementations*/
         virtual void RemoveResource(VulkanBuffer* buffer) override {

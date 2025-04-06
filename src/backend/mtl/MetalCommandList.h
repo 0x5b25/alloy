@@ -533,6 +533,9 @@ public:
     //virtual void EndRenderPass() = 0;
 
     virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override {}
+    virtual void TransitionTextureToDefaultLayout(
+        const std::vector<common::sp<ITexture>>& textures
+    ) override {}
 
     // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
     // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order

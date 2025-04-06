@@ -32,6 +32,8 @@ namespace alloy{
         //command buffer are allocated from and submitted to the same queue.
         
         virtual common::sp<ICommandList> CreateCommandList() = 0;
+
+        virtual void* GetNativeHandle() const = 0;
     };
 
 }

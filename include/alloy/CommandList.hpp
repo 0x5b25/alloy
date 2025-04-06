@@ -380,6 +380,10 @@ namespace alloy
 
         virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) = 0;
 
+        virtual void TransitionTextureToDefaultLayout(
+            const std::vector<common::sp<ITexture>>& textures
+        ) = 0;
+
         // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
         // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order
         // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to

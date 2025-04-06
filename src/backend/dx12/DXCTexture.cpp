@@ -107,8 +107,9 @@ namespace alloy::dxc {
         //D3D12_HEAP_TYPE cpuAccessableLFB = (D3D12_HEAP_TYPE)0;
         //Make sure that we default to a invalid heap
         static_assert(D3D12_HEAP_TYPE_DEFAULT != (D3D12_HEAP_TYPE)0);
-
+#if 0
         if (desc.hostAccess != HostAccess::None) {
+
             if (dev->GetDevCaps().SupportUMA()) {
                 //allocationDesc.HeapType = D3D12_HEAP_TYPE_CUSTOM;
                 allocationDesc.CustomPool = dev->UMAPool();
@@ -165,6 +166,19 @@ namespace alloy::dxc {
             allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
 
         }
+#endif
+        switch (desc.hostAccess) {
+        case HostAccess::PreferSystemMemory:
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(false);
+            break;
+        case HostAccess::PreferDeviceMemory:
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(true);
+            break;
+        default:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+            break;
+        }
+
         resourceState = D3D12_RESOURCE_STATE_COMMON;
 
         D3D12MA::Allocation* allocation;
@@ -234,12 +248,14 @@ namespace alloy::dxc {
             .bottom = dstOrigin.y + writeSize.height,
             .back = dstOrigin.z + writeSize.depth,
         };
-
+        ThrowIfFailed(GetHandle()->Map(subResIdx, nullptr, nullptr));
         ThrowIfFailed(GetHandle()->WriteToSubresource(subResIdx, 
                                                       &dstBox,
                                                       src,
                                                       srcRowPitch,
                                                       srcDepthPitch ));
+
+        GetHandle()->Unmap(subResIdx, nullptr);
     }
 
     void DXCTexture::ReadSubresource(
@@ -262,11 +278,15 @@ namespace alloy::dxc {
             .back = srcOrigin.z + readSize.depth,
         };
 
+        GetHandle()->Map(subResIdx, nullptr, nullptr);
+
         ThrowIfFailed(GetHandle()->ReadFromSubresource(dst,
                                                        dstRowPitch,
                                                        dstDepthPitch,
                                                        subResIdx, 
                                                        &srcBox));
+
+        GetHandle()->Unmap(subResIdx, nullptr);
     }
 
     ITexture::SubresourceLayout DXCTexture::GetSubresourceLayout(

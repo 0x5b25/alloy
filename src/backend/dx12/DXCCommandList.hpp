@@ -126,6 +126,10 @@ namespace alloy::dxc
         
         virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
 
+        virtual void TransitionTextureToDefaultLayout(
+            const std::vector<common::sp<ITexture>>& textures
+        ) override;
+
         virtual void PushDebugGroup(const std::string& name) override;
 
         virtual void PopDebugGroup() override;

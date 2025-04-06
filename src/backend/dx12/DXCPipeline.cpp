@@ -197,8 +197,8 @@ namespace alloy::dxc
 
             auto& blendState = psoDesc.BlendState;
             // BOOL AlphaToCoverageEnable;
-            //BOOL IndependentBlendEnable;
-
+            //Enable support for different blend order for each render targets
+            blendState.IndependentBlendEnable = 1;
             auto attachmentsCount = desc.attachmentState.colorAttachments.size();
 
             assert(attachmentsCount <= 8);

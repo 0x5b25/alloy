@@ -44,6 +44,17 @@ namespace alloy::dxc {
         return DXCDevice::Make(common::ref_sp(this), options);
     }
 
+    DXCAdapter::DXCAdapter(IDXGIAdapter1* adp, common::sp<DXCContext>&& ctx)
+        : _adp(adp)
+        , _ctx(std::move(ctx))
+    {
+        PopulateAdpInfo();
+    }
+
+    DXCAdapter::~DXCAdapter() {
+        _adp->Release();
+    }
+
     
     void DXCAdapter::PopulateAdpInfo() {
         
@@ -252,7 +263,15 @@ namespace alloy::dxc {
                 debugController->Release();
             }
             else {
+                OutputDebugStringA("WARNING: Direct3D Debug Device is not available\n");
                 return nullptr;
+            }
+
+            IDXGIInfoQueue* dxgiInfoQueue;
+            if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiInfoQueue))))
+            {
+                dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
+                dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
             }
 #endif
         //}
@@ -273,6 +292,19 @@ namespace alloy::dxc {
        
     DXCContext::~DXCContext() {
         _factory->Release();
+
+        //Check for leak objects
+#ifndef NDEBUG
+        {
+            IDXGIDebug1* dxgiDebug;
+            if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+            {
+                dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL,
+                    DXGI_DEBUG_RLO_FLAGS(DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+            }
+        }
+#endif
+
     }
 
     common::sp<IGraphicsDevice> DXCContext::CreateDefaultDevice(
@@ -323,7 +355,7 @@ namespace alloy::dxc {
                 continue;
             }
 
-            auto dxcAdp = new DXCAdapter(adapter);
+            auto dxcAdp = new DXCAdapter(adapter, common::ref_sp(this));
             adapters.emplace_back(dxcAdp);
         }
 
@@ -335,7 +367,7 @@ namespace alloy::dxc {
                 auto status = _factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter));
                 if (SUCCEEDED(status)) {
                     
-                    auto dxcAdp = new DXCAdapter(adapter);
+                    auto dxcAdp = new DXCAdapter(adapter, common::ref_sp(this));
                     adapters.emplace_back(dxcAdp);
                 }
             //} else {

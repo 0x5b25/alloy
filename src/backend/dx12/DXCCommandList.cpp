@@ -338,14 +338,13 @@ namespace alloy::dxc
 
         RegisterBufferUsage(dxcBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
-        recordedCmds.emplace_back([index, buffer, &pipeDesc, this]() {
-            auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
-            auto pRes = dxcBuffer->GetHandle();
-            D3D12_VERTEX_BUFFER_VIEW view {};
-            view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
-            view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[index].stride;
-            view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
+        auto pRes = dxcBuffer->GetHandle();
+        D3D12_VERTEX_BUFFER_VIEW view{};
+        view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
+        view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[index].stride;
+        view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
+        recordedCmds.emplace_back([index, view, this]() {
             GetCmdList()->IASetVertexBuffers(index, 1, &view);
         });
     }
@@ -367,13 +366,13 @@ namespace alloy::dxc
 
         RegisterBufferUsage(dxcBuffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
-        recordedCmds.emplace_back([buffer, format, this]() {
-            auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
-            auto pRes = dxcBuffer->GetHandle();
-            D3D12_INDEX_BUFFER_VIEW view{};
-            view.Format = VdToD3DIndexFormat(format);
-            view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
-            view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
+        auto pRes = dxcBuffer->GetHandle();
+        D3D12_INDEX_BUFFER_VIEW view{};
+        view.Format = VdToD3DIndexFormat(format);
+        view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
+        view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
+
+        recordedCmds.emplace_back([view, this]() {
 
             GetCmdList()->IASetIndexBuffer(&view);
         });
@@ -971,6 +970,8 @@ namespace alloy::dxc
             D3D12_RESOURCE_STATES state1,
             D3D12_RESOURCE_STATES state2
         ) {
+            //Common state always come from explicit request
+            if(state2 == D3D12_RESOURCE_STATE_COMMON) return false;
             return !_HasWriteAccess(state1 | state2);
         };
 
@@ -1042,13 +1043,21 @@ namespace alloy::dxc
                     continue;
                 }
                 auto& prevState = it->second;
-                if((prevState == state) && (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
-                    //UAV barrier is needed on write-after-write scenario
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                    barrier.UAV.pResource = buffer->GetHandle();
+                if(prevState == state) {
+                    if (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                        //UAV barrier is needed on write-after-write scenario
+                        auto& barrier = barriers.emplace_back();
+                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                        barrier.UAV.pResource = buffer->GetHandle();
+                    } else {
+                        //DX12 seemingly don't have ways to handle
+                        //write-after-write hazards unless enhanced sync
+                        //is enabled
+                    }
+
                 } else {
                     //Transition barrier
+                    assert(prevState != state);
                     auto& barrier = barriers.emplace_back();
                     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
                     barrier.Transition.pResource = buffer->GetHandle();
@@ -1068,13 +1077,20 @@ namespace alloy::dxc
                     continue;
                 }
                 auto& prevState = it->second;
-                if((prevState == state) && (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS)) {
-                    //UAV barrier is needed on write-after-write scenario
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                    barrier.UAV.pResource = texture->GetHandle();
+                if (prevState == state) {
+                    if (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                        //UAV barrier is needed on write-after-write scenario
+                        auto& barrier = barriers.emplace_back();
+                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                        barrier.UAV.pResource = texture->GetHandle();
+                    } else {
+                        //DX12 seemingly don't have ways to handle
+                        //write-after-write hazards unless enhanced sync
+                        //is enabled
+                    }
                 } else {
                     //Transition barrier
+                    assert(prevState != state);
                     auto& barrier = barriers.emplace_back();
                     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
                     barrier.Transition.pResource = texture->GetHandle();
@@ -1394,6 +1410,22 @@ namespace alloy::dxc
 
         if(!barriers.empty())
             _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+
+    }
+
+    void DXCCommandList::TransitionTextureToDefaultLayout(
+        const std::vector<common::sp<ITexture>>& textures
+    ) {
+        CHK_RENDERPASS_ENDED();
+
+        auto dummyPass = new DXCCmdEncBase(_dev.get(), this);
+        _passes.emplace_back(dummyPass);
+
+        for(auto& t : textures) {
+            auto dxcTex = PtrCast<DXCTexture>(t.get());
+            dummyPass->resources.insert(t);
+            dummyPass->RegisterTexUsage(dxcTex, D3D12_RESOURCE_STATE_COMMON);
+        }
 
     }
 

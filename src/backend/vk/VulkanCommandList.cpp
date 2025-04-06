@@ -1320,6 +1320,33 @@ namespace alloy::vk{
 #endif
     }
 
+    void VulkanCommandList::TransitionTextureToDefaultLayout(
+        const std::vector<common::sp<ITexture>>& textures
+    ) {
+        CHK_RENDERPASS_ENDED();
+        
+        auto* dummyPass = new VkCmdEncBase(_dev.get(), _cmdBuf);
+        //Record render pass
+        _passes.push_back(dummyPass);
+        _currentPass = dummyPass;
+
+        for(auto& t : textures) {
+            auto vkTex = PtrCast<VulkanTexture>(t.get());
+            dummyPass->resources.insert(t);
+
+            TextureState state {};
+            state.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR;
+            state.access = VK_ACCESS_2_MEMORY_READ_BIT_KHR 
+                         | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR;
+            state.layout = VK_IMAGE_LAYOUT_GENERAL;
+
+            dummyPass->RegisterTexUsage(vkTex, state);
+        }
+
+
+        EndPass();
+    }
+
     VkRenderCmdEnc::VkRenderCmdEnc(VulkanDevice* dev,
                     VkCommandBuffer cmdList,
                     const RenderPassAction& fb )
