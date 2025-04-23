@@ -161,8 +161,7 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
 
 void MetalRenderCmdEnc::SetPushConstants(
     std::uint32_t pushConstantIndex,
-    std::uint32_t num32BitValuesToSet,
-    const uint32_t* pSrcData,
+    const std::span<uint32_t>& data,
     std::uint32_t destOffsetIn32BitValues
 ) {
     @autoreleasepool {
@@ -170,10 +169,10 @@ void MetalRenderCmdEnc::SetPushConstants(
         auto& pcs = layout->GetPushConstants();
         assert(pushConstantIndex < pcs.size());
         auto& pc = pcs[pushConstantIndex];
-        assert(pc.sizeInDwords >= destOffsetIn32BitValues + num32BitValuesToSet);
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + data.size());
         auto offset = pc.offsetInDwords * sizeof(uint32_t);
 
-        memcpy(&_drawResources.argBuffer[offset], pSrcData, num32BitValuesToSet * sizeof(uint32_t));
+        memcpy(&_drawResources.argBuffer[offset], data.data(), data.size() * sizeof(uint32_t));
     }
 }
 
@@ -385,8 +384,7 @@ void MetalComputeCmdEnc::SetComputeResourceSet(
 
 void MetalComputeCmdEnc::SetPushConstants(
     std::uint32_t pushConstantIndex,
-    std::uint32_t num32BitValuesToSet,
-    const uint32_t* pSrcData,
+    const std::span<uint32_t>& data,
     std::uint32_t destOffsetIn32BitValues
                                           ) {
     

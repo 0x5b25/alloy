@@ -81,10 +81,8 @@ namespace alloy::mtl {
         void* nativeHandle,
         const ITexture::Description& description
     ){
-        return nullptr;
-        //return VulkanTexture::WrapNative(_CreateNewDevHandle(), description,
-        //   VK_IMAGE_LAYOUT_GENERAL, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        //    nativeHandle);
+        //return nullptr;
+        return MetalTexture::WrapNative(_CreateNewDevHandle(), description, (id<MTLTexture>)nativeHandle);
     }
 
     common::sp<ITextureView> MetalResourceFactory::CreateTextureView(

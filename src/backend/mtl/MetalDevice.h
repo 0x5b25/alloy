@@ -68,6 +68,9 @@ namespace alloy::mtl
         virtual common::sp<ICommandList> CreateCommandList() override;
         void WaitForIdle();
 
+
+        virtual void* GetNativeHandle() const override  {return _cmdQ;}
+
       //virtual ICaptureScope *
       //CreateCaptureScope(const std::string &label) override {
       //  @autoreleasepool {

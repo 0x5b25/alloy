@@ -1,7 +1,18 @@
-PKG_NAME="Metal_Shader_Converter_2.0"
+#!/bin/bash
+
+if [ -z "$1" ]; then
+    echo "No argument supplied. Using default package path"
+    PKG_NAME="Metal_Shader_Converter_2.0.pkg"
+else
+    PKG_NAME=$1
+fi
+
+BASEDIR=$(dirname $0)
+
+echo "PKG_NAME=$PKG_NAME"
 PKG_DOWNLOAD_URL="https://download.developer.apple.com/Developer_Tools/Metal_shader_converter_beta/Metal_Shader_Converter_2.0.pkg"
-TMP_FOLDER="tmp"
-OUTPUT_FOLDER="bin"
+TMP_FOLDER="$BASEDIR/tmp"
+OUTPUT_FOLDER="$BASEDIR/bin"
 
 EXTRACT_PATH="$TMP_FOLDER/extracted"
 PAYLOAD_PATH="$EXTRACT_PATH/MetalShaderConverter.pkg/Payload/usr/local"
@@ -40,10 +51,10 @@ patch_and_sign()
 
 #extract the .pkg
 #pkgutil --expand-full $TMP_FOLDER/$PKG_NAME.pkg $TMP_FOLDER/extracted
-pkgutil --expand-full $PKG_NAME.pkg $TMP_FOLDER/extracted
+pkgutil --expand-full $PKG_NAME $TMP_FOLDER/extracted
 
 #build the patcher
-clang++ -std=c++20 -g MachOPatcher.cpp -o $TMP_FOLDER/patcher
+clang++ -std=c++20 -g $BASEDIR/MachOPatcher.cpp -o $TMP_FOLDER/patcher
 
 FRAMEWORK_MACOS_DST=$TMP_FOLDER/frameworks/macos/MetalShaderConverter.framework
 prep_framework_folder $FRAMEWORK_MACOS_DST
