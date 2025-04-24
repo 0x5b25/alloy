@@ -26,33 +26,32 @@ namespace alloy
 
     public:
 
-        struct Features{
-            union{
-                struct {
-                    std::uint32_t computeShader            : 1;
-                    std::uint32_t geometryShader           : 1;
-                    std::uint32_t tessellationShaders      : 1;
-                    std::uint32_t multipleViewports        : 1;
-                    std::uint32_t samplerLodBias           : 1;
-                    std::uint32_t drawBaseVertex           : 1;
-                    std::uint32_t drawBaseInstance         : 1;
-                    std::uint32_t drawIndirect             : 1;
-                    std::uint32_t drawIndirectBaseInstance : 1;
-                    std::uint32_t fillModeWireframe        : 1;
-                    std::uint32_t samplerAnisotropy        : 1;
-                    std::uint32_t depthClipDisable         : 1;
-                    std::uint32_t texture1D                : 1;
-                    std::uint32_t independentBlend         : 1;
-                    std::uint32_t structuredBuffer         : 1;
-                    std::uint32_t subsetTextureView        : 1;
-                    std::uint32_t commandListDebugMarkers  : 1;
-                    std::uint32_t bufferRangeBinding       : 1;
-                    std::uint32_t shaderFloat64            : 1;
+        struct F {
+            bool a, b, c, d, e;
+        };
 
-                    std::uint32_t reserved : 13;
-                };
-                std::uint32_t value;
-            };            
+        struct Features{
+            std::uint32_t computeShader            : 1;
+            std::uint32_t geometryShader           : 1;
+            std::uint32_t tessellationShaders      : 1;
+            std::uint32_t multipleViewports        : 1;
+            std::uint32_t samplerLodBias           : 1;
+            std::uint32_t drawBaseVertex           : 1;
+            std::uint32_t drawBaseInstance         : 1;
+            std::uint32_t drawIndirect             : 1;
+            std::uint32_t drawIndirectBaseInstance : 1;
+            std::uint32_t fillModeWireframe        : 1;
+            std::uint32_t samplerAnisotropy        : 1;
+            std::uint32_t depthClipDisable         : 1;
+            std::uint32_t texture1D                : 1;
+            std::uint32_t independentBlend         : 1;
+            std::uint32_t structuredBuffer         : 1;
+            std::uint32_t subsetTextureView        : 1;
+            std::uint32_t commandListDebugMarkers  : 1;
+            std::uint32_t bufferRangeBinding       : 1;
+            std::uint32_t shaderFloat64            : 1;
+
+            std::uint32_t reserved : 13;    
         };
 
         struct Options{

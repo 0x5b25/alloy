@@ -93,11 +93,11 @@ namespace alloy
         /// next 3 instances will be drawn with the next value, and so on.
         std::uint32_t instanceStepRate;
 
-        void SetElements(std::initializer_list<Element> elements){
+        void SetElements(std::initializer_list<Element> e){
             
-            this->elements = elements;
+            this->elements = e;
             unsigned computedStride = 0;
-            for (int i = 0; i < elements.size(); i++)
+            for (int i = 0; i < e.size(); i++)
             {
                 auto& thisElem = this->elements[i];
                 unsigned elementSize = alloy::FormatHelpers::GetSizeInBytes(thisElem.format);

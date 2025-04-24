@@ -21,8 +21,7 @@ namespace alloy
             std::uint32_t sizeInBytes;
             std::uint32_t structureByteStride;
         
-            union Usage {
-                struct {
+            struct Usage {
                     /// <summary>
                     /// Indicates that a <see cref="DeviceBuffer"/> can be used as the source of vertex data for drawing commands.
                     /// This flag enables the use of a Buffer in the <see cref="CommandList.SetVertexBuffer(uint, DeviceBuffer)"/> method.
@@ -69,9 +68,7 @@ namespace alloy
                     /// This flag cannot be combined with any other flag.
                     /// </summary>
                     //std::uint8_t staging : 1;
-                };
-
-                std::uint8_t value;
+                
             } usage;
 
             HostAccess hostAccess;

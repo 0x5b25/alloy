@@ -23,8 +23,7 @@ namespace alloy
             std::uint32_t arrayLayers;
             PixelFormat format;
 
-            union Usage{
-                struct {
+            struct Usage{
                     std::uint8_t sampled : 1;
                     std::uint8_t storage : 1;
                     std::uint8_t renderTarget : 1;
@@ -32,8 +31,8 @@ namespace alloy
                     std::uint8_t cubemap : 1;
                     std::uint8_t shareable : 1;
                     //std::uint8_t generateMipmaps : 1;
-                };
-                std::uint8_t value;
+                //};
+                //std::uint8_t value;
             } usage;
             //enum class UsageFlags: std::uint8_t{
             //    /// <summary>

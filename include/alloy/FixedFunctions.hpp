@@ -91,14 +91,8 @@ namespace alloy
             Maximum,
         };
 
-        union ColorWriteMask{
-            struct{
-                bool r : 1;
-                bool g : 1;
-                bool b : 1;
-                bool a : 1;
-            };
-            std::uint8_t value;
+        struct ColorWriteMask{
+            bool r, g, b, a;
 
             static constexpr ColorWriteMask All(){
                 ColorWriteMask mask = {1,1,1,1};
@@ -155,7 +149,7 @@ namespace alloy
                 res.sourceAlphaFactor = BlendFactor::One;
                 res.destinationAlphaFactor = BlendFactor::Zero;
                 res.alphaFunction = BlendFunction::Add;
-                res.colorWriteMask.value = 0xf;
+                res.colorWriteMask = ColorWriteMask::All();
                 return res;
             };
 
@@ -180,7 +174,7 @@ namespace alloy
                 res.sourceAlphaFactor = BlendFactor::SourceAlpha;
                 res.alphaFunction = BlendFunction::Add;
                 res.destinationAlphaFactor = BlendFactor::InverseSourceAlpha;
-                res.colorWriteMask.value = 0xf;
+                res.colorWriteMask = ColorWriteMask::All();
                 return res;
             };
 
@@ -205,7 +199,7 @@ namespace alloy
                 res.sourceAlphaFactor = BlendFactor::SourceAlpha;
                 res.alphaFunction = BlendFunction::Add;
                 res.destinationAlphaFactor = BlendFactor::One;
-                res.colorWriteMask.value = 0xf;
+                res.colorWriteMask = ColorWriteMask::All();
                 return res;
             };
 
@@ -230,7 +224,7 @@ namespace alloy
                 res.sourceAlphaFactor = BlendFactor::One;
                 res.alphaFunction = BlendFunction::Add;
                 res.destinationAlphaFactor = BlendFactor::Zero;
-                res.colorWriteMask.value = 0xf;
+                res.colorWriteMask = ColorWriteMask::All();
                 return res;
             };
             
