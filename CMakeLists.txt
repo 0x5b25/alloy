@@ -179,20 +179,24 @@ target_include_directories(Veldrid
         "${CMAKE_CURRENT_BINARY_DIR}"
     PRIVATE
         "src")
-
-
 target_compile_features(Veldrid PUBLIC cxx_std_20)
 
-function(link_with_veldrid TARGET)
 
-    target_link_libraries(${TARGET} PRIVATE Veldrid)
+if(${VLD_BACKEND_DXC})
 
-    if(${VLD_BACKEND_DXC})
+    function(link_with_veldrid TARGET)
+
+        target_link_libraries(${TARGET} PRIVATE Veldrid)
+
         agility_sdk_copy_binaries(${TARGET})
-    endif()
-
-endfunction()
-
+        
+    endfunction()
+    
+else()
+    function(link_with_veldrid TARGET)
+        target_link_libraries(${TARGET} PRIVATE Veldrid)
+    endfunction()
+endif()
 
 function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
 

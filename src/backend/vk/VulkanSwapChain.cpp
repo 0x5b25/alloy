@@ -5,6 +5,7 @@
 #include "alloy/common/Macros.h"
 
 #include <cassert>
+#include <algorithm>
 
 #include "VulkanContext.hpp"
 #include "VkTypeCvt.hpp"

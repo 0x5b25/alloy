@@ -52,18 +52,27 @@ target_include_directories(AgilitySDK INTERFACE "${AGILITY_SDK_INCLUDE_DIR}")
 target_compile_definitions(AgilitySDK INTERFACE AGILITY_SDK_VERSION_EXPORT=614)
 
 # Set paths to the DLLs
-set(AGILITY_Core_DLL "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/D3D12Core.dll" PARENT_SCOPE)
-set(AGILITY_DX12SDKLayers_DLL "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/d3d12SDKLayers.dll" PARENT_SCOPE)
+#set(AGILITY_Core_DLL "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/D3D12Core.dll" PARENT_SCOPE)
+#set(AGILITY_DX12SDKLayers_DLL "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/d3d12SDKLayers.dll" PARENT_SCOPE)
+
+set_target_properties(AgilitySDK
+    PROPERTIES
+        AGILITY_Core_DLL          "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/D3D12Core.dll"
+        AGILITY_DX12SDKLayers_DLL "${AGILITY_ROOT_DIR}/bin/${AGILITY_ARCH}/d3d12SDKLayers.dll"
+)
 
 # Function to copy DLLs to target directory
 function(agility_sdk_copy_binaries TARGET)
+
+    get_target_property(AGILITY_Core_DLL_PATH AgilitySDK AGILITY_Core_DLL)
+    get_target_property(AGILITY_DX12SDKLayers_DLL_PATH AgilitySDK AGILITY_DX12SDKLayers_DLL)
 
     add_custom_command(TARGET ${TARGET} POST_BUILD
         COMMAND echo "Copying DX12 agility SDK dlls to $<TARGET_FILE_DIR:${TARGET}>/D3D12 ..."
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TARGET}>/D3D12"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${AGILITY_Core_DLL}"
-            "${AGILITY_DX12SDKLayers_DLL}"
+            "${AGILITY_Core_DLL_PATH}"
+            "${AGILITY_DX12SDKLayers_DLL_PATH}"
             "$<TARGET_FILE_DIR:${TARGET}>/D3D12/"
     )
 endfunction()
@@ -71,12 +80,15 @@ endfunction()
 
 function(alloy_install_agility_sdk_binaries PREFIX_PATH COMP_NAME)
 
+    get_target_property(AGILITY_Core_DLL_PATH AgilitySDK AGILITY_Core_DLL)
+    get_target_property(AGILITY_DX12SDKLayers_DLL_PATH AgilitySDK AGILITY_DX12SDKLayers_DLL)
+
     if(COMP_NAME)
         message("Agility SDK install using component ${COMP_NAME} into ${PREFIX_PATH}")
         install(
             PROGRAMS
-                ${AGILITY_Core_DLL}
-                ${AGILITY_DX12SDKLayers_DLL}
+                ${AGILITY_Core_DLL_PATH}
+                ${AGILITY_DX12SDKLayers_DLL_PATH}
             DESTINATION
                 ${PREFIX_PATH}/D3D12
             COMPONENT
@@ -86,8 +98,8 @@ function(alloy_install_agility_sdk_binaries PREFIX_PATH COMP_NAME)
 
         install(
             PROGRAMS
-                ${AGILITY_Core_DLL}
-                ${AGILITY_DX12SDKLayers_DLL}
+                ${AGILITY_Core_DLL_PATH}
+                ${AGILITY_DX12SDKLayers_DLL_PATH}
             DESTINATION
                 ${PREFIX_PATH}/D3D12
             )
