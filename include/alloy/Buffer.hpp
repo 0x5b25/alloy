@@ -19,7 +19,7 @@ namespace alloy
         {
             
             std::uint32_t sizeInBytes;
-            std::uint32_t structureByteStride;
+            //std::uint32_t structureByteStride;
         
             struct Usage {
                     /// <summary>

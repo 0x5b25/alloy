@@ -410,7 +410,7 @@ namespace alloy::dxc {
 
         //Non-UMA device normally has a device local host visible memory
         //Create a heap targeting that
-        if (!dev->_dxcFeat.SupportUMA()) {
+        if (!dev->_dxcFeat.SupportUMA() && dev->_dxcFeat.SupportReBAR()) {
             D3D12MA::POOL_DESC poolDesc = {};
             poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
             // For CPU readback use D3D12_CPU_PAGE_PROPERTY_WRITE_BACK

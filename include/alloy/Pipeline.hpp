@@ -135,7 +135,7 @@ namespace alloy
             //std::vector<sp<Shader>> shaders;
             common::sp<IShader> vertexShader;
             common::sp<IShader> fragmentShader;
-            std::vector<SpecializationConstant> specializations;
+            //std::vector<SpecializationConstant> specializations;
 
         } shaderSet;
         
@@ -163,20 +163,20 @@ namespace alloy
         // An array of <see cref="ResourceLayout"/>, which controls the layout of shader resoruces in the <see cref="Pipeline"/>.
         common::sp<IResourceLayout> resourceLayout;
         
-        // The X dimension of the thread group size.
-        std::uint32_t threadGroupSizeX;
-        
-        // The Y dimension of the thread group size.
-        std::uint32_t threadGroupSizeY;
-
-        // The Z dimension of the thread group size.
-        std::uint32_t threadGroupSizeZ;
-        
-        // An array of <see cref="SpecializationConstant"/> used to override specialization constants in the created
-        // <see cref="Pipeline"/>. Each element in this array describes a single ID-value pair, which will be matched with the
-        // constants specified in the <see cref="Shader"/>.
-        
-        std::vector<SpecializationConstant*> specializations;
+        //// The X dimension of the thread group size.
+        //std::uint32_t threadGroupSizeX;
+        //
+        //// The Y dimension of the thread group size.
+        //std::uint32_t threadGroupSizeY;
+        //
+        //// The Z dimension of the thread group size.
+        //std::uint32_t threadGroupSizeZ;
+        //
+        //// An array of <see cref="SpecializationConstant"/> used to override specialization constants in the created
+        //// <see cref="Pipeline"/>. Each element in this array describes a single ID-value pair, which will be matched with the
+        //// constants specified in the <see cref="Shader"/>.
+        //
+        //std::vector<SpecializationConstant*> specializations;
 
     };
     

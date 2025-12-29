@@ -729,35 +729,35 @@ public:
 
         // Shader Stage
 
-        VkSpecializationInfo specializationInfo{};
-        auto& specDescs = desc.shaderSet.specializations;
-        if (!specDescs.empty())
-        {
-            unsigned specDataSize = 0;
-            for (auto& spec : specDescs) {
-                specDataSize += GetSpecializationConstantSize(spec.type);
-            }
-            std::vector<std::uint8_t> fullSpecData(specDataSize);
-            int specializationCount = specDescs.size();
-            std::vector<VkSpecializationMapEntry> mapEntries(specializationCount);
-            unsigned specOffset = 0;
-            for (int i = 0; i < specializationCount; i++)
-            {
-                auto data = specDescs[i].data;
-                auto srcData = (byte*)&data;
-                auto dataSize = GetSpecializationConstantSize(specDescs[i].type);
-                //Unsafe.CopyBlock(fullSpecData + specOffset, srcData, dataSize);
-                memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
-                mapEntries[i].constantID = specDescs[i].id;
-                mapEntries[i].offset = specOffset;
-                mapEntries[i].size = dataSize;
-                specOffset += dataSize;
-            }
-            specializationInfo.dataSize = specDataSize;
-            specializationInfo.pData = fullSpecData.data();
-            specializationInfo.mapEntryCount = specializationCount;
-            specializationInfo.pMapEntries = mapEntries.data();
-        }
+        //VkSpecializationInfo specializationInfo{};
+        //auto& specDescs = desc.shaderSet.specializations;
+        //if (!specDescs.empty())
+        //{
+        //    unsigned specDataSize = 0;
+        //    for (auto& spec : specDescs) {
+        //        specDataSize += GetSpecializationConstantSize(spec.type);
+        //    }
+        //    std::vector<std::uint8_t> fullSpecData(specDataSize);
+        //    int specializationCount = specDescs.size();
+        //    std::vector<VkSpecializationMapEntry> mapEntries(specializationCount);
+        //    unsigned specOffset = 0;
+        //    for (int i = 0; i < specializationCount; i++)
+        //    {
+        //        auto data = specDescs[i].data;
+        //        auto srcData = (byte*)&data;
+        //        auto dataSize = GetSpecializationConstantSize(specDescs[i].type);
+        //        //Unsafe.CopyBlock(fullSpecData + specOffset, srcData, dataSize);
+        //        memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
+        //        mapEntries[i].constantID = specDescs[i].id;
+        //        mapEntries[i].offset = specOffset;
+        //        mapEntries[i].size = dataSize;
+        //        specOffset += dataSize;
+        //    }
+        //    specializationInfo.dataSize = specDataSize;
+        //    specializationInfo.pData = fullSpecData.data();
+        //    specializationInfo.mapEntryCount = specializationCount;
+        //    specializationInfo.pMapEntries = mapEntries.data();
+        //}
 
         PipelineRemapper remapper {
             pBindInfo,
@@ -994,35 +994,35 @@ public:
 
         // Shader Stage
 
-        VkSpecializationInfo specializationInfo;
-        auto& specDescs = desc.specializations;
-        if (!specDescs.empty())
-        {
-            unsigned specDataSize = 0;
-            for(auto& spec : specDescs)
-            {
-                specDataSize += GetSpecializationConstantSize(spec->type);
-            }
-            std::vector<std::uint8_t> fullSpecData(specDataSize);
-            unsigned specializationCount = specDescs.size();
-            std::vector<VkSpecializationMapEntry> mapEntries(specializationCount);
-            unsigned specOffset = 0;
-            for (int i = 0; i < specializationCount; i++)
-            {
-                auto data = specDescs[i]->data;
-                byte* srcData = (byte*)&data;
-                unsigned dataSize = GetSpecializationConstantSize(specDescs[i]->type);
-                memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
-                mapEntries[i].constantID = specDescs[i]->id;
-                mapEntries[i].offset = specOffset;
-                mapEntries[i].size = dataSize;
-                specOffset += dataSize;
-            }
-            specializationInfo.dataSize = specDataSize;
-            specializationInfo.pData = fullSpecData.data();
-            specializationInfo.mapEntryCount = specializationCount;
-            specializationInfo.pMapEntries = mapEntries.data();
-        }
+        //VkSpecializationInfo specializationInfo;
+        //auto& specDescs = desc.specializations;
+        //if (!specDescs.empty())
+        //{
+        //    unsigned specDataSize = 0;
+        //    for(auto& spec : specDescs)
+        //    {
+        //        specDataSize += GetSpecializationConstantSize(spec->type);
+        //    }
+        //    std::vector<std::uint8_t> fullSpecData(specDataSize);
+        //    unsigned specializationCount = specDescs.size();
+        //    std::vector<VkSpecializationMapEntry> mapEntries(specializationCount);
+        //    unsigned specOffset = 0;
+        //    for (int i = 0; i < specializationCount; i++)
+        //    {
+        //        auto data = specDescs[i]->data;
+        //        byte* srcData = (byte*)&data;
+        //        unsigned dataSize = GetSpecializationConstantSize(specDescs[i]->type);
+        //        memcpy(fullSpecData.data() + specOffset, srcData, dataSize);
+        //        mapEntries[i].constantID = specDescs[i]->id;
+        //        mapEntries[i].offset = specOffset;
+        //        mapEntries[i].size = dataSize;
+        //        specOffset += dataSize;
+        //    }
+        //    specializationInfo.dataSize = specDataSize;
+        //    specializationInfo.pData = fullSpecData.data();
+        //    specializationInfo.mapEntryCount = specializationCount;
+        //    specializationInfo.pMapEntries = mapEntries.data();
+        //}
 
         PipelineRemapper remapper {
             pBindInfo,

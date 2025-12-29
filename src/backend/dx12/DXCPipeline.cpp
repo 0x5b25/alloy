@@ -715,8 +715,6 @@ namespace alloy::dxc
         const common::sp<DXCDevice>& dev,
         const ComputePipelineDescription& desc
     ) {
-        assert(false);
-
         
         // Describe and create the graphics pipeline state object (PSO).
         std::unordered_set<common::sp<RefCntBase>> refCnts;
