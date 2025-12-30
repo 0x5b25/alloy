@@ -121,7 +121,12 @@ endfunction(PrintBackendInfo)
 
 PrintBackendInfo()
 
-
+if(WIN32)
+    #target_compile_definitions(Veldrid PUBLIC NOMINMAX)
+    #add_definitions(-DNOMINMAX)
+    message("Disable defines of min and max in windows headers")
+    add_compile_definitions(NOMINMAX)
+endif()
 
 add_library(Veldrid STATIC
     ${VLD_MISC_HEADERS}
@@ -168,10 +173,6 @@ target_link_libraries(Veldrid
     #    spdlog
     )
 
-if(WIN32)
-    target_compile_definitions(Veldrid PUBLIC NOMINMAX)
-    #add_definitions(-DNOMINMAX)
-endif()
 
 target_include_directories(Veldrid 
     PUBLIC 

@@ -114,7 +114,7 @@ public:
                 }
             }
 
-            assert(false, __FUNCTION__": Failed to find vulkan bindings");
+            assert(false && __FUNCTION__": Failed to find vulkan bindings");
             return false;
         }
 
@@ -223,7 +223,7 @@ public:
                                       dxil_spv_vulkan_vertex_input& vkOut
         ) override {
             if(!_iaMappings) {
-                assert(false, "IA input isn't supported by this pipeline type!");
+                assert(false && "IA input isn't supported by this pipeline type!");
                 return false;
             }
             VertexInputSemantic d3dSemantic {};
@@ -236,7 +236,7 @@ public:
 
             auto findRes = _iaMappings->find(d3dSemantic);
             if(findRes == _iaMappings->end()) {
-                assert(false, "IA input element not found");
+                assert(false && "IA input element not found");
                 return false;
             }
             vkOut.location = findRes->second;
