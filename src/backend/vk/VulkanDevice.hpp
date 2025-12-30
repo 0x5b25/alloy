@@ -327,6 +327,7 @@ namespace alloy::vk
     class VulkanBuffer : public IBuffer{
 
     private:
+        std::string _debugName;
         common::sp<VulkanDevice> _dev;
 
         VkBuffer _buffer;
@@ -373,6 +374,13 @@ namespace alloy::vk
 	        	nameInfo.pObjectName = name.c_str();
                 _dev->GetFnTable().vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
 	        }
+
+            _debugName = name;
+        }
+
+        
+        virtual std::string GetDebugName() override {
+            return _debugName;
         }
 
     };

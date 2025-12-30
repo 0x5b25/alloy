@@ -385,6 +385,15 @@ namespace alloy::dxc{
             GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
         }
 
+        
+        virtual std::string GetDebugName() override {
+            uint32_t dataSize = 0;
+            GetHandle()->GetPrivateData( WKPDID_D3DDebugObjectName, &dataSize, nullptr );
+            std::string name(dataSize, '\0');
+            GetHandle()->GetPrivateData( WKPDID_D3DDebugObjectName, &dataSize, name.data() );
+            return name;
+        }
+
     };
 
 

@@ -93,6 +93,7 @@ namespace alloy
         virtual uint64_t GetNativeHandle() const {return 0;}
         
         virtual void SetDebugName(const std::string& ) = 0;
+        virtual std::string GetDebugName() = 0;
     };
 
 

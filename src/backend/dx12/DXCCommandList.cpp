@@ -119,7 +119,15 @@ namespace alloy::dxc
                 case _ResKind::StorageBuffer: {
                     auto* range = PtrCast<BufferRange>(elem.get());
                     auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
-                    bufRW.push_back(buffer);
+                    auto usage = buffer->GetDesc().usage;
+                    if(elemDesc.options.writable) {
+                        assert(usage.structuredBufferReadWrite != 0);
+                        bufRW.push_back(buffer);
+                    } else {
+                        assert(usage.structuredBufferReadOnly != 0 ||
+                               usage.structuredBufferReadWrite != 0);
+                        bufReadOnly.push_back(buffer);
+                    }
                     
                 } break;
                 default:
@@ -981,8 +989,8 @@ namespace alloy::dxc
         //After the loop, resStates in each render pass will only contain
         //resources that need state transition
         for(int i = _passes.size() - 1; i > 0; i--) {
-            auto currPass = _passes[i];
-            auto prevPass = _passes[i - 1];
+            auto* currPass = _passes[i];
+            auto* prevPass = _passes[i - 1];
 
             //Empty the current pass resource states
             auto requestedStates = std::move(currPass->resStates);
@@ -1027,6 +1035,30 @@ namespace alloy::dxc
         }
 
         ResourceStates currentStates {};
+
+        struct StatePerPass {
+            DXCBuffer* buffer;
+            std::vector<D3D12_RESOURCE_STATES> states;
+        };
+        std::unordered_map<std::string, StatePerPass> debugData{};
+
+        for(int i = 0; i < _passes.size(); i++) {
+            auto* pass = _passes[i];
+            auto& resStates = pass->resStates;
+            for(auto& [buffer, state] : resStates.buffers) {
+                auto name = buffer->GetDebugName();
+
+                if(!debugData.contains(name)) {
+                    StatePerPass entry { };
+                    entry.buffer = buffer;
+                    entry.states.resize(_passes.size(), (D3D12_RESOURCE_STATES)0xffff);
+                    debugData.insert({name, entry});
+                }
+
+                auto& entry = debugData[name];
+                entry.states[i] = state;
+            }
+        }
         
         for(auto pass : _passes) {
 
@@ -1036,13 +1068,15 @@ namespace alloy::dxc
             for(auto& [buffer, state] : resStates.buffers) {
                 
                 auto it = currentStates.buffers.find(buffer);
+                D3D12_RESOURCE_STATES prevState = D3D12_RESOURCE_STATE_COMMON;
                 if(it == currentStates.buffers.end()) {
                     //DX12 buffers are always in common state when submission begins.
                     //So it is always compatible on first use.
-                    currentStates.buffers.insert({buffer, D3D12_RESOURCE_STATE_COMMON});
-                    continue;
+                    //currentStates.buffers.insert({buffer, D3D12_RESOURCE_STATE_COMMON});
+                    //continue;
+                } else {
+                    prevState = it->second;
                 }
-                auto& prevState = it->second;
                 if(prevState == state) {
                     if (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
                         //UAV barrier is needed on write-after-write scenario
