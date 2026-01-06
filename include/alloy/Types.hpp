@@ -300,15 +300,17 @@ namespace alloy
         None,
 
         //Equivalent to DX12 READ_BACK heap, preferred system memory
-        //Typical usage: GPU write once, host read once
-        PreferRead,
+        //Typical usage: GPU write, host read
+        SystemMemoryPreferRead,
 
         //Equivalent to DX12 UPLOAD heap, preferred device local memory
-        //Typical usage: Host write once, GPU read once
-        PreferWrite,
+        //Typical usage: Host write, GPU read
+        SystemMemoryPreferWrite,
 
-        PreferSystemMemory = PreferRead,
-        PreferDeviceMemory = PreferWrite
+        //For resizable bar enabled devices, fast for CPU writes,
+        //normally use non-cached WRITE_COMBINED policy
+        //Typical usage: Host write, GPU read
+        PreferDeviceMemory
     };
 
     enum class SampleCount{

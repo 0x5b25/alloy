@@ -71,6 +71,7 @@ target_link_libraries(Veldrid
     #    DirectX-Headers
         d3d12.lib
         dxgi.lib
+        WinPixEventRuntime
     #    dxguid.lib
     #    common
     #    glm
@@ -95,5 +96,15 @@ function(alloy_install_dxc_runtime_libs PREFIX_PATH COMP_NAME)
         COMPONENT ${COMP_NAME})
 
     alloy_install_agility_sdk_binaries(${PREFIX_PATH} ${COMP_NAME})
+    alloy_install_pix_runtime_binaries(${PREFIX_PATH} ${COMP_NAME})
+
+endfunction()
+
+function(alloy_copy_dxc_runtime_libs TARGET)
+        
+    message("alloy: copying directx 12 runtime libraries to ${TARGET} binary path...")
+
+    agility_sdk_copy_binaries(${TARGET})
+    pix_runtime_copy_binaries(${TARGET})
 
 endfunction()

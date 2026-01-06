@@ -227,7 +227,7 @@ namespace alloy::dxc
                 auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
 
                 auto baseGPUAddr = rangedDXCBuffer->GetHandle()->GetGPUVirtualAddress();
-                auto byteCnt = range->GetShape().elementCount;
+                auto byteCnt = range->GetShape().GetSizeInBytes();
 
                 //DX12 requires CBVs have minimal alignment of 256Bytes
                 assert(byteCnt % 256 == 0);

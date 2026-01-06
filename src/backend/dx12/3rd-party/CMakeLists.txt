@@ -5,6 +5,7 @@
 project(dxc_third_party LANGUAGES C CXX)
 
 include(FetchAgilitySDK.cmake)
+include(FetchWinPix.cmake)
 
 # dx headers
 #add_subdirectory(DirectX-Headers)

@@ -389,7 +389,7 @@ namespace alloy
         // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to
         // <see cref="PopDebugGroup"/>.
         // <param name="name">The name of the group. This is an opaque identifier used for display by graphics debuggers.</param>
-        virtual void PushDebugGroup(const std::string& name) = 0;
+        virtual void PushDebugGroup(const std::string& name,const Color4f& color) = 0;
 
         // Pops the current debug group. This method must only be called after <see cref="PushDebugGroup(string)"/> has been
         // called on this instance.
@@ -398,7 +398,7 @@ namespace alloy
         // Inserts a debug marker into the CommandList at the current position. This is used by graphics debuggers to identify
         // points of interest in a command stream.
         // <param name="name">The name of the marker. This is an opaque identifier used for display by graphics debuggers.</param>
-        virtual void InsertDebugMarker(const std::string& name) = 0;
+        virtual void InsertDebugMarker(const std::string& name,const Color4f& color) = 0;
     };
 
 } // namespace alloy

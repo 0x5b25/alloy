@@ -168,14 +168,15 @@ namespace alloy::dxc {
         }
 #endif
         switch (desc.hostAccess) {
-        case HostAccess::PreferSystemMemory:
-            allocationDesc.CustomPool = dev->GetHostAccessablePool(false);
-            break;
+        case HostAccess::SystemMemoryPreferRead:
+        case HostAccess::SystemMemoryPreferWrite:
         case HostAccess::PreferDeviceMemory:
-            allocationDesc.CustomPool = dev->GetHostAccessablePool(true);
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(desc.hostAccess);
+            break;
+        case HostAccess::None:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             break;
         default:
-            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             break;
         }
 

@@ -183,21 +183,14 @@ target_include_directories(Veldrid
 target_compile_features(Veldrid PUBLIC cxx_std_20)
 
 
-if(${VLD_BACKEND_DXC})
-
-    function(link_with_veldrid TARGET)
-
-        target_link_libraries(${TARGET} PRIVATE Veldrid)
-
-        agility_sdk_copy_binaries(${TARGET})
-        
-    endfunction()
+function(link_with_veldrid TARGET)
+    target_link_libraries(${TARGET} PRIVATE Veldrid)
     
-else()
-    function(link_with_veldrid TARGET)
-        target_link_libraries(${TARGET} PRIVATE Veldrid)
-    endfunction()
-endif()
+    if(${VLD_BACKEND_DXC})
+        alloy_copy_dxc_runtime_libs(${TARGET})
+    #else()
+    endif()
+endfunction()
 
 function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
 

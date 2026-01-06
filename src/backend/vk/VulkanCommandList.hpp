@@ -107,11 +107,11 @@ namespace alloy::vk
         virtual void EndPass() override;
             
 
-        virtual void PushDebugGroup(const std::string& name) override;
+        virtual void PushDebugGroup(const std::string& name, const Color4f&) override;
 
         virtual void PopDebugGroup() override;
 
-        virtual void InsertDebugMarker(const std::string& name) override;
+        virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
 
         
         virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;

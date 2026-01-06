@@ -184,9 +184,13 @@ typedef struct VkPhysicalDeviceProperties {
 
     class IContext : public common::RefCntBase {
     public:
-        static common::sp<IContext> CreateDefault();
+        struct Options {
+            bool debug;
+        };
 
-        static common::sp<IContext> Create(Backend backend);
+        static common::sp<IContext> CreateDefault(const Options& options = {});
+
+        static common::sp<IContext> Create(Backend backend, const Options& options = {});
 
         virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) = 0;
         virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() = 0;

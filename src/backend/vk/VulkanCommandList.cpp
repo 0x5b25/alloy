@@ -1294,11 +1294,11 @@ namespace alloy::vk{
 #endif
     }
 
-    void VulkanCommandList::PushDebugGroup(const std::string& name) {};
+    void VulkanCommandList::PushDebugGroup(const std::string& name, const Color4f&) {};
 
     void VulkanCommandList::PopDebugGroup() {};
 
-    void VulkanCommandList::InsertDebugMarker(const std::string& name) {};
+    void VulkanCommandList::InsertDebugMarker(const std::string& name, const Color4f&) {};
 
     
     void VulkanCommandList::Barrier(const std::vector<alloy::BarrierDescription>& barriers) {
@@ -1346,7 +1346,7 @@ namespace alloy::vk{
 
         EndPass();
     }
-
+    
     VkRenderCmdEnc::VkRenderCmdEnc(VulkanDevice* dev,
                     VkCommandBuffer cmdList,
                     const RenderPassAction& fb )

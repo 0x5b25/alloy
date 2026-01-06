@@ -225,7 +225,7 @@ namespace alloy::dxc{
         D3D12MA::Allocator* _alloc;
 
         //Host accessable pools
-        D3D12MA::Pool* _sysMemPool, *_devLocalPool;
+        D3D12MA::Pool* _sysMemUploadPool,* _sysMemReadbackPool, *_devLocalPool;
 
         alloy::dxc::_DescriptorHeapMgr _rtvHeap, _dsvHeap;
 
@@ -289,7 +289,7 @@ namespace alloy::dxc{
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
         D3D12MA::Allocator* Allocator() const { return _alloc; }
-        D3D12MA::Pool* GetHostAccessablePool(bool preferDeviceLocal) const;
+        D3D12MA::Pool* GetHostAccessablePool(HostAccess access) const;
         //D3D12MA::Pool* UMAPool() const {return _umaPool;}
 
         ID3D12CommandQueue* GetImplicitQueue() const {return _gfxQ->GetHandle(); } 

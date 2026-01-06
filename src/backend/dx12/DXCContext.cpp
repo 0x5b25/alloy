@@ -8,8 +8,8 @@
 
 namespace alloy {
     
-    common::sp<IContext> CreateDX12Context() {
-        return alloy::dxc::DXCContext::Make();
+    common::sp<IContext> CreateDX12Context(const IContext::Options& opts) {
+        return alloy::dxc::DXCContext::Make(opts);
     }
 }
 
@@ -246,12 +246,12 @@ namespace alloy::dxc {
 
 
     
-    common::sp<DXCContext> DXCContext::Make() {
+    common::sp<DXCContext> DXCContext::Make(const IContext::Options& opts) {
         UINT dxgiFactoryFlags = 0;
         // Enable the debug layer (requires the Graphics Tools "optional feature").
         // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-        //if(options.debug){
-#ifndef NDEBUG
+        if(opts.debug){
+//#ifndef NDEBUG
             // Enable the debug layer.
             ID3D12Debug* debugController;
             if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
@@ -273,8 +273,8 @@ namespace alloy::dxc {
                 dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
                 dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
             }
-#endif
-        //}
+//#endif
+        }
         //Create DXGIFactory
         IDXGIFactory4* dxgiFactory;
         auto status = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&dxgiFactory));

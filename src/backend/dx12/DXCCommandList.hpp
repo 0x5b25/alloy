@@ -86,6 +86,9 @@ namespace alloy::dxc
         //renderpasses
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
 
+        void _EndCurrentActivePass();
+        void _BeginDummyPassIfNoActivePass();
+
     public:
         DXCCommandList(
             const common::sp<DXCDevice>& dev,
@@ -130,11 +133,11 @@ namespace alloy::dxc
             const std::vector<common::sp<ITexture>>& textures
         ) override;
 
-        virtual void PushDebugGroup(const std::string& name) override;
+        virtual void PushDebugGroup(const std::string& name, const Color4f&) override;
 
         virtual void PopDebugGroup() override;
 
-        virtual void InsertDebugMarker(const std::string& name) override;
+        virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
 
         const auto& GetRequestedResourceStates() const { return _requestedStates; }
         const auto& GetFinalResourceStates() const { return _finalStates; }
@@ -176,6 +179,14 @@ namespace alloy::dxc
         );
 
         void RegisterResourceSet(DXCResourceSet* d3drs);
+
+        //Color from high to low is a(ignored),r,g,b
+        void PushDebugGroup(const std::string& name, uint32_t color);
+
+        void PopDebugGroup();
+
+        //Color from high to low is a(ignored),r,g,b
+        void InsertDebugMarker(const std::string& name, uint32_t color);
     };
 
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
@@ -336,8 +347,6 @@ namespace alloy::dxc
         virtual void WaitForFence(const common::sp<IFence>&) override {}
         virtual void UpdateFence(const common::sp<IFence>&) override {}
     };
-
-
 
     class DXCCommandList6 : public DXCCommandList {
 

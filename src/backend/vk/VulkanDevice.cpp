@@ -483,13 +483,19 @@ bool Contains(T&& container, U&& element) {
 
         switch (desc.hostAccess)
         {        
-        case HostAccess::PreferRead:
-            //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
+        case HostAccess::SystemMemoryPreferWrite:
+            //Assume non-cached write combine
+            allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+            break;
+        case HostAccess::SystemMemoryPreferRead:
+            //Not necessarily coherent, flush/invalidate might be needed
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
             break;
-        case HostAccess::PreferWrite:
+        case HostAccess::PreferDeviceMemory:
             //allocInfo.usage = VMA_MEMORY_USAGE_GPU_TO_CPU;
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocInfo.preferredFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;

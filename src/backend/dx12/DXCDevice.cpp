@@ -302,8 +302,12 @@ namespace alloy::dxc {
         delete _gfxQ;
         delete _copyQ;
 
-        if (_sysMemPool) {
-            _sysMemPool->Release();
+        if (_sysMemUploadPool) {
+            _sysMemUploadPool->Release();
+        }
+
+        if (_sysMemReadbackPool) {
+            _sysMemReadbackPool->Release();
         }
 
         if (_devLocalPool) {
@@ -315,10 +319,17 @@ namespace alloy::dxc {
     }
 
 
-    D3D12MA::Pool* DXCDevice::GetHostAccessablePool(bool preferDeviceLocal) const {
-        if (!preferDeviceLocal) return _sysMemPool;
-
-        return _devLocalPool ? _devLocalPool : _sysMemPool;
+    D3D12MA::Pool* DXCDevice::GetHostAccessablePool(HostAccess access) const {
+        switch(access)
+        {
+            case HostAccess::SystemMemoryPreferWrite: return _sysMemUploadPool;
+            case HostAccess::SystemMemoryPreferRead: return _sysMemReadbackPool;
+            case HostAccess::PreferDeviceMemory:
+                return _devLocalPool ? _devLocalPool : _sysMemUploadPool;
+            default:
+                assert(false);
+                return nullptr;
+        }
 
     }
 
@@ -389,7 +400,9 @@ namespace alloy::dxc {
         dev->_dxcFeat.ReadFromDevice(dev->_dev);
 
 
-        D3D12MA::Pool* sysMemPool = nullptr, *devLocalPool = nullptr;
+        D3D12MA::Pool* sysMemUploadPool = nullptr,
+                     * sysMemReadbackPool = nullptr,
+                     * devLocalPool = nullptr;
 
         //Create sysmem heap
         {
@@ -402,7 +415,13 @@ namespace alloy::dxc {
             poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
 
-            HRESULT hr = allocator->CreatePool(&poolDesc, &sysMemPool);
+            HRESULT hr = allocator->CreatePool(&poolDesc, &sysMemUploadPool);
+            if (FAILED(hr)) {
+
+            }
+
+            poolDesc.HeapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+            hr = allocator->CreatePool(&poolDesc, &sysMemReadbackPool);
             if (FAILED(hr)) {
 
             }
@@ -420,14 +439,15 @@ namespace alloy::dxc {
             // These flags are optional but recommended.
             poolDesc.Flags = D3D12MA::POOL_FLAG_MSAA_TEXTURES_ALWAYS_COMMITTED;
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
-
+        
             HRESULT hr = allocator->CreatePool(&poolDesc, &devLocalPool);
             if (FAILED(hr)) {
-
+        
             }
         }
 
-        dev->_sysMemPool = sysMemPool;
+        dev->_sysMemUploadPool = sysMemUploadPool;
+        dev->_sysMemReadbackPool = sysMemReadbackPool;
         dev->_devLocalPool = devLocalPool;
 
         ////Fill driver and api info
@@ -598,14 +618,15 @@ namespace alloy::dxc {
         //}
 
         switch (desc.hostAccess) {
-        case HostAccess::PreferSystemMemory:
-            allocationDesc.CustomPool = dev->GetHostAccessablePool(false);
-            break;
+        case HostAccess::SystemMemoryPreferRead:
+        case HostAccess::SystemMemoryPreferWrite:
         case HostAccess::PreferDeviceMemory:
-            allocationDesc.CustomPool = dev->GetHostAccessablePool(true);
+            allocationDesc.CustomPool = dev->GetHostAccessablePool(desc.hostAccess);
+            break;
+        case HostAccess::None:
+            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             break;
         default:
-            allocationDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
             break;
         }
 

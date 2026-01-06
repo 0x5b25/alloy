@@ -13,6 +13,9 @@
 #include "DXCBindableResource.hpp"
 #include "d3d12.h"
 
+#define USE_PIX
+#include <WinPixEventRuntime/pix3.h>
+
 namespace alloy::dxc
 {
 
@@ -53,7 +56,7 @@ namespace alloy::dxc
     }
 
     #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentPass != nullptr))
-    #define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentPass == nullptr))
+    //#define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentPass == nullptr))
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
     
@@ -159,6 +162,34 @@ namespace alloy::dxc
                 RegisterTexUsage(tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             }
         }
+    }
+
+    //Sadly this can't be made constexpr due to std::floor can't be constexpr
+    static uint32_t Color4fToPixColor(const Color4f& c4f) {
+
+        uint8_t r = std::floor(c4f.r * 255);
+        uint8_t g = std::floor(c4f.g * 255);
+        uint8_t b = std::floor(c4f.b * 255);
+        
+        return PIX_COLOR(r, g, b);
+    }
+    
+    void DXCCmdEncBase::PushDebugGroup(const std::string& name, uint32_t color) {
+        recordedCmds.emplace_back([this, name, color]() {
+            PIXBeginEvent(GetCmdList(), color, name.c_str());
+        });
+    }
+
+    void DXCCmdEncBase::PopDebugGroup() {
+        recordedCmds.emplace_back([this]() {
+            PIXEndEvent(GetCmdList());
+        });
+    }
+
+    void DXCCmdEncBase::InsertDebugMarker(const std::string& name, uint32_t color) {
+        recordedCmds.emplace_back([this, name, color]() {
+            PIXSetMarker(GetCmdList(), color, name.c_str());
+        });
     }
 
     void DXCCmdEncBase::EndPass() {
@@ -860,9 +891,16 @@ namespace alloy::dxc
         auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject());
         
         resources.insert(source);
-        RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(destination);
-        RegisterBufferUsage(dstDxcBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
+        if(dstDxcBuffer != srcDxcBuffer) {
+            RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            RegisterBufferUsage(dstDxcBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
+        } else {
+            //If we're copying within the same buffer, use common state
+            //Remove this assert once figured out how to not use common state
+            assert(false);
+            RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COMMON);
+        }
 
         recordedCmds.emplace_back([this, destination, source, sizeInBytes]() {
             auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
@@ -891,9 +929,16 @@ namespace alloy::dxc
         auto dstDxcTexture = PtrCast<DXCTexture>(dst.get());
         
         resources.insert(src);
-        RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
+        if(dstDxcTexture != srcDxcTexture) {
+            RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
+        } else {
+            //If we're copying within the same buffer, use common state
+            //Remove this assert once figured out how to not use common state
+            assert(false);
+            RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COMMON);
+        }
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
@@ -933,6 +978,22 @@ namespace alloy::dxc
         _cmdList->Release();
         _cmdAlloc->Release();
     }
+
+    
+    void DXCCommandList::_EndCurrentActivePass() {
+        if(_currentPass)
+            _currentPass = nullptr;
+    }
+
+    void DXCCommandList::_BeginDummyPassIfNoActivePass() {
+        if(!_currentPass) {
+            //Begin a dummy pass for misc command recording
+            auto dummyPass = new DXCCmdEncBase(_dev.get(), this);
+            //auto* pNewEnc = new _DXCDummyPass(_dev.get(), this);
+            _passes.push_back(dummyPass);
+            _currentPass = dummyPass;
+        }
+    }
      
     void DXCCommandList::Begin(){
 
@@ -957,7 +1018,9 @@ namespace alloy::dxc
     }
     void DXCCommandList::End(){
 
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
+
 
         
         constexpr D3D12_RESOURCE_STATES RESOURCE_STATE_ALL_WRITE_BITS =
@@ -1036,30 +1099,10 @@ namespace alloy::dxc
 
         ResourceStates currentStates {};
 
-        struct StatePerPass {
-            DXCBuffer* buffer;
-            std::vector<D3D12_RESOURCE_STATES> states;
-        };
-        std::unordered_map<std::string, StatePerPass> debugData{};
-
-        for(int i = 0; i < _passes.size(); i++) {
-            auto* pass = _passes[i];
-            auto& resStates = pass->resStates;
-            for(auto& [buffer, state] : resStates.buffers) {
-                auto name = buffer->GetDebugName();
-
-                if(!debugData.contains(name)) {
-                    StatePerPass entry { };
-                    entry.buffer = buffer;
-                    entry.states.resize(_passes.size(), (D3D12_RESOURCE_STATES)0xffff);
-                    debugData.insert({name, entry});
-                }
-
-                auto& entry = debugData[name];
-                entry.states[i] = state;
-            }
-        }
-        
+        std::vector<std::vector<D3D12_RESOURCE_BARRIER>> barrierArgs;
+        barrierArgs.resize(_passes.size());
+        auto i = 0;
+   
         for(auto pass : _passes) {
 
             std::vector<D3D12_RESOURCE_BARRIER> barriers;
@@ -1139,6 +1182,9 @@ namespace alloy::dxc
 
             //Replay recorded commands
             pass->EndPass();
+
+            barrierArgs[i] = barriers;
+            ++i;
         }
 
         //Replay completed. Update final state
@@ -1149,7 +1195,8 @@ namespace alloy::dxc
 
 
     IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const RenderPassAction& actions) {
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         ////Record render pass
 
         //auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
@@ -1166,7 +1213,8 @@ namespace alloy::dxc
 
     IComputeCommandEncoder& DXCCommandList::BeginComputePass() {
         
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         ////Record render pass
 
         auto* pNewEnc = new DXCComputeCmdEnc(_dev.get(), this);
@@ -1177,7 +1225,8 @@ namespace alloy::dxc
     }
     ITransferCommandEncoder& DXCCommandList::BeginTransferPass() {
         
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         ////Record render pass
 
         auto* pNewEnc = new DXCTransferCmdEnc(_dev.get(), this);
@@ -1450,7 +1499,7 @@ namespace alloy::dxc
     void DXCCommandList::TransitionTextureToDefaultLayout(
         const std::vector<common::sp<ITexture>>& textures
     ) {
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
 
         auto dummyPass = new DXCCmdEncBase(_dev.get(), this);
         _passes.emplace_back(dummyPass);
@@ -1463,11 +1512,22 @@ namespace alloy::dxc
 
     }
 
-    void DXCCommandList::PushDebugGroup(const std::string& name) {};
+    void DXCCommandList::PushDebugGroup(const std::string& name, const Color4f& color) {
+        _BeginDummyPassIfNoActivePass();
+        auto pixColor = Color4fToPixColor(color);
+        _currentPass->PushDebugGroup(name, pixColor);
+    };
 
-    void DXCCommandList::PopDebugGroup() {};
+    void DXCCommandList::PopDebugGroup() {
+        _BeginDummyPassIfNoActivePass();
+        _currentPass->PopDebugGroup();
+    };
 
-    void DXCCommandList::InsertDebugMarker(const std::string& name) {};
+    void DXCCommandList::InsertDebugMarker(const std::string& name, const Color4f& color) {
+        _BeginDummyPassIfNoActivePass();
+        auto pixColor = Color4fToPixColor(color);
+        _currentPass->InsertDebugMarker(name, pixColor);
+    };
 
     static void _PopulateTextureBarrier(const alloy::TextureBarrierResource& desc,
                                               D3D12_TEXTURE_BARRIER& barrier

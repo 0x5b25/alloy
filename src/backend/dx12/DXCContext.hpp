@@ -48,7 +48,7 @@ namespace alloy::dxc {
         DXCContext(IDXGIFactory4* factory);
         virtual ~DXCContext() override;
 
-        static common::sp<DXCContext> Make();
+        static common::sp<DXCContext> Make(const IContext::Options& opts);
 
         virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) override;
         virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() override;

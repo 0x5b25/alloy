@@ -5,8 +5,8 @@
 namespace alloy
 {
     
-    common::sp<IContext> CreateVulkanContext() {
-        return alloy::vk::VulkanContext::Make();
+    common::sp<IContext> CreateVulkanContext(const IContext::Options& opts) {
+        return alloy::vk::VulkanContext::Make(opts);
     }
 
 } // namespace alloy
