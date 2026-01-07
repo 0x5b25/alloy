@@ -15,6 +15,7 @@
 #include "alloy/BindableResource.hpp"
 #include "alloy/SyncObjects.hpp"
 #include "alloy/SwapChain.hpp"
+#include "alloy/ExecuteIndirect.hpp"
 
 namespace alloy
 {
@@ -30,7 +31,8 @@ namespace alloy
         /*V(Shader)*/\
         V(ResourceSet)\
         V(ResourceLayout)\
-        V(SwapChain)
+        V(SwapChain)\
+        V(IndirectCommandLayout)
 
 
     class ResourceFactory{

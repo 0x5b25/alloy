@@ -231,6 +231,13 @@ namespace alloy::vk
 
         void RegisterResourceSet(VulkanResourceSet* rs);
 
+        void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                             uint32_t maxCommandCount,
+                             common::sp<BufferRange> argumentBuffer,
+                             common::sp<BufferRange> countBuffer) {
+                                assert(false);
+                             }
+
     };
 
     struct VkRenderCmdEnc : public IRenderCommandEncoder, public VkCmdEncBase {
@@ -282,6 +289,14 @@ namespace alloy::vk
             const common::sp<IBuffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) 
+        {
+            VkCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
+        }
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
 
@@ -332,6 +347,13 @@ namespace alloy::vk
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
 #endif
 
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) 
+        {
+            VkCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
+        }
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    

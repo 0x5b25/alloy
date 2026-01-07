@@ -11,6 +11,7 @@
 #include "DXCPipeline.hpp"
 #include "DXCFrameBuffer.hpp"
 #include "DXCBindableResource.hpp"
+#include "DXCExecuteIndirect.hpp"
 #include "d3d12.h"
 
 #define USE_PIX
@@ -190,6 +191,50 @@ namespace alloy::dxc
         recordedCmds.emplace_back([this, name, color]() {
             PIXSetMarker(GetCmdList(), color, name.c_str());
         });
+    }
+
+    void DXCCmdEncBase::ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) 
+    {
+        
+        resources.insert(commandLayout);
+
+        auto argOffset = argumentBuffer->GetShape().GetOffsetInBytes();
+        resources.insert(argumentBuffer);
+        auto dxcArgBuffer = PtrCast<DXCBuffer>(argumentBuffer->GetBufferObject());
+        auto d3dArgBuffer = dxcArgBuffer->GetHandle();
+        RegisterBufferUsage(dxcArgBuffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
+        uint32_t countOffset = 0;
+        alloy::dxc::DXCBuffer* dxcCountBuffer = nullptr;
+        ID3D12Resource* d3dCountBuffer = nullptr;
+        
+        if(countBuffer) {
+            countOffset = countBuffer->GetShape().GetOffsetInBytes();
+            resources.insert(countBuffer);
+            dxcCountBuffer = PtrCast<DXCBuffer>(countBuffer->GetBufferObject());
+            RegisterBufferUsage(dxcCountBuffer, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+            d3dCountBuffer = dxcCountBuffer->GetHandle();
+        }
+
+        auto dxcLayout = PtrCast<DXCIndirectCommandsLayout>(commandLayout.get());
+        auto d3dLayout = dxcLayout->GetHandle();
+
+        recordedCmds.emplace_back([this,
+            d3dLayout,
+            maxCommandCount,
+            d3dArgBuffer, argOffset, 
+            d3dCountBuffer, countOffset
+            ](){
+                GetCmdList()->ExecuteIndirect(d3dLayout, maxCommandCount, 
+                    d3dArgBuffer, argOffset,
+                    d3dCountBuffer, countOffset);
+            }
+        );
+
+        DXCCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
     }
 
     void DXCCmdEncBase::EndPass() {

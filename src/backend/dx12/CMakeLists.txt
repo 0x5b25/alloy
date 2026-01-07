@@ -48,6 +48,8 @@ set(VLD_BACKEND_DXC_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/DXCBindableResource.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCPipeline.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCPipeline.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCExecuteIndirect.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/DXCExecuteIndirect.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkCommon.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkCommon.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/D3DTypeCvt.cpp"

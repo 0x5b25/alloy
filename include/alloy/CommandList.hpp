@@ -25,7 +25,7 @@ namespace alloy
     class IComputePipeline;
     class IResourceLayout;
     class IResourceSet;
-
+    class IIndirectCommandLayout;
 
     class IRenderCommandEncoder {
     public:
@@ -152,6 +152,15 @@ namespace alloy
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) = 0;
         #endif
 
+        //Perform indirect draws/dispatches using the ExecuteIndirect method.
+        //countBuffer is optional. If countBuffer present, executed command count is
+        //  min(maxCommandCount, *countBuffer). If not present, executed command count
+        //  is exactly maxCommandCount,
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) = 0;
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
     };
@@ -190,6 +199,15 @@ namespace alloy
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
+
+        //Perform indirect draws/dispatches using the ExecuteIndirect method.
+        //countBuffer is optional. If countBuffer present, executed command count is
+        //  min(maxCommandCount, *countBuffer). If not present, executed command count
+        //  is exactly maxCommandCount,
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) = 0;
 
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;

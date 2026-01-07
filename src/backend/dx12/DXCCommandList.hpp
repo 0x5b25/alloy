@@ -187,6 +187,15 @@ namespace alloy::dxc
 
         //Color from high to low is a(ignored),r,g,b
         void InsertDebugMarker(const std::string& name, uint32_t color);
+
+        //Perform indirect draws/dispatches using the ExecuteIndirect method.
+        //countBuffer is optional. If countBuffer present, executed command count is
+        //  min(maxCommandCount, *countBuffer). If not present, executed command count
+        //  is exactly maxCommandCount,
+        void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                             uint32_t maxCommandCount,
+                             common::sp<BufferRange> argumentBuffer,
+                             common::sp<BufferRange> countBuffer);
     };
 
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
@@ -244,6 +253,19 @@ namespace alloy::dxc
             const common::sp<IBuffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
+
+        //Perform indirect draws/dispatches using the ExecuteIndirect method.
+        //countBuffer is optional. If countBuffer present, executed command count is
+        //  min(maxCommandCount, *countBuffer). If not present, executed command count
+        //  is exactly maxCommandCount,
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) 
+        {
+            DXCCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
+        }
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     
@@ -291,6 +313,13 @@ namespace alloy::dxc
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
 #endif
 
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                     uint32_t maxCommandCount,
+                                     common::sp<BufferRange> argumentBuffer,
+                                     common::sp<BufferRange> countBuffer) 
+        {
+            DXCCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
+        }
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
