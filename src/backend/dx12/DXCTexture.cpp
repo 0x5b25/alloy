@@ -9,6 +9,8 @@
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
 
+#include <format>
+
 namespace alloy::dxc {
 
     uint32_t DXCTexture::ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
@@ -64,12 +66,11 @@ namespace alloy::dxc {
         resourceDesc.Alignment = 0;
         resourceDesc.MipLevels = desc.mipLevels;
         resourceDesc.Format = VdToD3DPixelFormat(desc.format, desc.usage.depthStencil);
-        resourceDesc.SampleDesc.Count = 1;
+        //resourceDesc.SampleDesc.Count = 1;
 
         ///#TODO: enable high quality MSAA
         if ((desc.usage.depthStencil || desc.usage.renderTarget)
             && desc.type == ITexture::Description::Type::Texture2D) {
-            resourceDesc.SampleDesc.Count = (uint32_t)desc.sampleCount;
             switch(desc.sampleCount) {
                 default:
                 case SampleCount::x1 : resourceDesc.SampleDesc.Count = 1; break;
@@ -79,11 +80,28 @@ namespace alloy::dxc {
                 case SampleCount::x16: resourceDesc.SampleDesc.Count = 16; break;
                 case SampleCount::x32: resourceDesc.SampleDesc.Count = 32; break;
             }
+
+            //Query usable sample qualities
+            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
+                .Format = resourceDesc.Format,
+                .SampleCount = resourceDesc.SampleDesc.Count
+            };
+            dev->GetDevice()->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
+                , &queryData, sizeof(queryData)
+            );
+
+            if(queryData.NumQualityLevels == 0) {
+                std::string msg = std::format("Sample count {} is not supported for this format", resourceDesc.SampleDesc.Count);
+                throw std::invalid_argument(msg);
+            }
+
+            assert(queryData.NumQualityLevels != 0);
+            resourceDesc.SampleDesc.Quality = queryData.NumQualityLevels - 1;
         }
         else {
             resourceDesc.SampleDesc.Count = 1;
+            resourceDesc.SampleDesc.Quality = 0;
         }
-        resourceDesc.SampleDesc.Quality = 0;
         //Depth stencil textures can't use row_major
         //There are also tiled resource support that needs 64K_** layout
         //resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;

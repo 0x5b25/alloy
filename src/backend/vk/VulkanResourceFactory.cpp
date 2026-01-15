@@ -89,6 +89,12 @@ namespace alloy::vk
        return VulkanFence::Make(_CreateNewDevHandle());
     }
 
+    common::sp<IIndirectCommandLayout> VulkanResourceFactory::CreateIndirectCommandLayout(
+        const IIndirectCommandLayout::Description&
+    ) {
+        return nullptr;
+    }
+
 
 } // namespace alloy
 

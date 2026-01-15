@@ -180,6 +180,7 @@ namespace alloy::dxc{
         D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
         D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
         D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
+        D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21;
 
         float timestamp_period;
         bool support_a4b4g4r4;
@@ -190,6 +191,8 @@ namespace alloy::dxc{
         bool SupportMeshShader() const {return options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;}
         bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
         bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
+        bool SupportExecuteIndirect() const { return options21.ExecuteIndirectTier; }
+        bool SupportWorkGraph() const { return options21.WorkGraphsTier != D3D12_WORK_GRAPHS_TIER_NOT_SUPPORTED; }
     
         uint32_t ResourceBindingTier() const {
             switch(options.ResourceBindingTier) {

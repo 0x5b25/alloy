@@ -9,7 +9,7 @@ namespace alloy::dxc {
     class DXCDevice;
     class DXCResourceLayout;
 
-    class DXCIndirectCommandsLayout : public IIndirectCommandLayout {
+    class DXCIndirectCommandLayout : public IIndirectCommandLayout {
 
         common::sp<DXCDevice> _dev;
         common::sp<DXCResourceLayout> _resLayout;
@@ -18,7 +18,7 @@ namespace alloy::dxc {
 
     public:
 
-        virtual ~DXCIndirectCommandsLayout() override;
+        virtual ~DXCIndirectCommandLayout() override;
 
         static common::sp<IIndirectCommandLayout> Make(
             const common::sp<DXCDevice>& dev,

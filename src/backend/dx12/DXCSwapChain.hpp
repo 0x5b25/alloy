@@ -38,7 +38,6 @@ namespace alloy::dxc {
     struct BackBufferContainer {
         //DXCSwapChain* _sc;
         RenderTargetContainer colorTgt;
-        
         RenderTargetContainer dsTgt;
 
         //IFrameBuffer::Description fbDesc;

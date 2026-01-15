@@ -409,7 +409,25 @@ namespace alloy::dxc
                 case SampleCount::x16: msState.Count = 16; break;
                 case SampleCount::x32: msState.Count = 32; break;
             }
-            msState.Quality = 0;//TODO: Query quality support for device:
+
+            //Query usable sample qualities
+            if(desc.attachmentState.colorAttachments.empty()) {
+                msState.Quality = 0;
+            }
+            else {
+                auto& firstColorTarget = desc.attachmentState.colorAttachments.front();
+                D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
+                    .Format = VdToD3DPixelFormat(firstColorTarget.format),
+                    .SampleCount = msState.Count
+                }; 
+                dev->GetDevice()->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
+                    , &queryData, sizeof(queryData)
+                );
+
+                assert(queryData.NumQualityLevels != 0);
+                msState.Quality = queryData.NumQualityLevels - 1;
+            }
+            //TODO: Query quality support for device:
             //D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msLevels;
             //msLevels.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Replace with your render target format.
             //msLevels.SampleCount = 4; // Replace with your sample count.

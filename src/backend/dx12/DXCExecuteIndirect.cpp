@@ -7,13 +7,13 @@
 namespace alloy::dxc {
 
 
-    DXCIndirectCommandsLayout::~DXCIndirectCommandsLayout() {
+    DXCIndirectCommandLayout::~DXCIndirectCommandLayout() {
         if(_cmdSig) {
             _cmdSig->Release();
         }
     }
 
-    common::sp<IIndirectCommandLayout> DXCIndirectCommandsLayout::Make(
+    common::sp<IIndirectCommandLayout> DXCIndirectCommandLayout::Make(
         const common::sp<DXCDevice>& dev,
         const IIndirectCommandLayout::Description& desc
     ) {
@@ -77,7 +77,7 @@ namespace alloy::dxc {
         ));
 
         
-        auto rawCmdLayout = new DXCIndirectCommandsLayout();
+        auto rawCmdLayout = new DXCIndirectCommandLayout();
         rawCmdLayout->_dev = dev;
         rawCmdLayout->_resLayout = std::move(dxcLayout);
         rawCmdLayout->_cmdSig = d3dCmdSig;

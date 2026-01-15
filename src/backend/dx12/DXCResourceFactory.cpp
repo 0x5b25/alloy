@@ -10,6 +10,7 @@
 #include "DXCSwapChain.hpp"
 #include "DXCFrameBuffer.hpp"
 #include "DXCDevice.hpp"
+#include "DXCExecuteIndirect.hpp"
 
 namespace alloy::dxc
 {
@@ -31,7 +32,8 @@ namespace alloy::dxc
     /*V(Shader)*/\
     V(ResourceSet)\
     V(ResourceLayout)\
-    V(SwapChain)
+    V(SwapChain)\
+    V(IndirectCommandLayout)
 
     common::sp<DXCDevice> DXCResourceFactory::_CreateNewDevHandle(){
         //assert(_dev != nullptr);

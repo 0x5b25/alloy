@@ -219,7 +219,7 @@ namespace alloy::dxc
             d3dCountBuffer = dxcCountBuffer->GetHandle();
         }
 
-        auto dxcLayout = PtrCast<DXCIndirectCommandsLayout>(commandLayout.get());
+        auto dxcLayout = PtrCast<DXCIndirectCommandLayout>(commandLayout.get());
         auto d3dLayout = dxcLayout->GetHandle();
 
         recordedCmds.emplace_back([this,
@@ -231,10 +231,10 @@ namespace alloy::dxc
                 GetCmdList()->ExecuteIndirect(d3dLayout, maxCommandCount, 
                     d3dArgBuffer, argOffset,
                     d3dCountBuffer, countOffset);
+
             }
         );
 
-        DXCCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
     }
 
     void DXCCmdEncBase::EndPass() {
@@ -810,9 +810,9 @@ namespace alloy::dxc
 
         recordedCmds.emplace_back([this, dxcSource, dxcDestination]() {
             GetCmdList()->ResolveSubresource(
-                dxcSource->GetHandle(),
-                0,
                 dxcDestination->GetHandle(),
+                0,
+                dxcSource->GetHandle(),
                 0,
                 dxcDestination->GetHandle()->GetDesc().Format);
         });

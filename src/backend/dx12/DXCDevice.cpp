@@ -158,6 +158,8 @@ namespace alloy::dxc {
             options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = options19.MaxSamplerDescriptorHeapSize;
             options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
         }
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
+
         {
             D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
                 DXGI_FORMAT_A4B4G4R4_UNORM
