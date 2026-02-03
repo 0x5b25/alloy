@@ -151,7 +151,8 @@ namespace alloy::vk
                 {
                     auto& e = elements[s.elementIdInList[i]];
                     bindings[i].binding = i;
-                    bindings[i].descriptorCount = 1;
+                    bindings[i].descriptorCount = e.bindingCount;
+                    assert(false && "Re-check multi-element bindings");
                     VkDescriptorType descriptorType = VdToVkDescriptorType(e.kind, e.options);
                     bindings[i].descriptorType = descriptorType;
                     bindings[i].stageFlags = VdToVkShaderStages(e.stages);
@@ -164,25 +165,25 @@ namespace alloy::vk
                     switch (descriptorType)
                     {
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLER:
-                            drcs.samplerCount += 1;
+                            drcs.samplerCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                            drcs.sampledImageCount += 1;
+                            drcs.sampledImageCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                            drcs.storageImageCount += 1;
+                            drcs.storageImageCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                            drcs.uniformBufferCount += 1;
+                            drcs.uniformBufferCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                            drcs.uniformBufferDynamicCount += 1;
+                            drcs.uniformBufferDynamicCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-                            drcs.storageBufferCount += 1;
+                            drcs.storageBufferCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-                            drcs.storageBufferDynamicCount += 1;
+                            drcs.storageBufferDynamicCount += e.bindingCount;
                             break;
                     }
                 }

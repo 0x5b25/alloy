@@ -57,6 +57,7 @@ namespace alloy
         struct ShaderResourceDescription {
             uint32_t  bindingSlot;
             uint32_t  bindingSpace;
+            uint32_t  bindingCount;
             IBindableResource::ResourceKind kind;
             alloy::common::BitFlags<IShader::Stage> stages;
             struct Options {
