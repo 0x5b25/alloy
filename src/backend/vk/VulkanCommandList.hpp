@@ -354,6 +354,8 @@ namespace alloy::vk
         {
             VkCmdEncBase::ExecuteIndirect(commandLayout, maxCommandCount, argumentBuffer, countBuffer);
         }
+
+        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
@@ -406,17 +408,11 @@ namespace alloy::vk
             std::uint32_t dstBaseArrayLayer,
             const Size3D& copySize) override;
 
-        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-        
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
 
         virtual void WaitForFence(const common::sp<IFence>&) override {}
         virtual void UpdateFence(const common::sp<IFence>&) override {}
     };
-
-
-
-    
 
 } // namespace alloy
 

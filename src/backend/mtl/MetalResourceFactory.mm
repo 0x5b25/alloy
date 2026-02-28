@@ -105,6 +105,10 @@ namespace alloy::mtl {
         return MetalEvent::Make(_CreateNewDevHandle());
     }
 
+    common::sp<IIndirectCommandLayout> MetalResourceFactory::CreateIndirectCommandLayout(
+        const IIndirectCommandLayout::Description&
+    ) {
+        return nullptr;
+    }
+
 } // namespace alloy
-
-

@@ -209,6 +209,12 @@ namespace alloy
                                      common::sp<BufferRange> argumentBuffer,
                                      common::sp<BufferRange> countBuffer) = 0;
 
+        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
+        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> > 1).</param>
+        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> == 1).</param>
+        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) = 0;
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
@@ -353,14 +359,6 @@ namespace alloy
         }
         #endif
 
-        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
-        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> > 1).</param>
-        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) = 0;
-        
-
         // Generates mipmaps for the given <see cref="Texture"/>. The largest mipmap is used to generate all of the lower mipmap
         // levels contained in the Texture. The previous contents of all lower mipmap levels are overwritten by this operation.
         // The target Texture must have been created with <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.
@@ -368,8 +366,6 @@ namespace alloy
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) = 0;
 
-
-        
         virtual void WaitForFence(const common::sp<IFence>&) = 0;
         virtual void UpdateFence(const common::sp<IFence>&) = 0;
 

@@ -36,6 +36,8 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             
             if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
                 auto _metalLayer = [CAMetalLayer layer];
+                _metalLayer.framebufferOnly = false;
+
                 contentView.wantsLayer = true;
                 contentView.layer = _metalLayer;
             } else {
@@ -50,6 +52,8 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             
             if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
                 auto _metalLayer = [CAMetalLayer layer];
+                _metalLayer.framebufferOnly = false;
+
                 contentView.wantsLayer = true;
                 contentView.layer = _metalLayer;
             } else {
@@ -70,6 +74,7 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             //We need to insert the CAMetalLayer into UIView's sublayers
             if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
                 auto _metalLayer = [CAMetalLayer layer];
+                _metalLayer.framebufferOnly = false;
                 _metalLayer.frame = contentView.frame;
                 _metalLayer.opaque = true;
                 [contentView.layer addSublayer:_metalLayer];

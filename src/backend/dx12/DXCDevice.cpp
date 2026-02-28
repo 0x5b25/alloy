@@ -167,6 +167,24 @@ namespace alloy::dxc {
             support_a4b4g4r4 =
              SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
         }
+
+        //Query usable sample qualities
+        maxMSAASampleCount = 1;
+        for(uint32_t sampleCount : {32, 16, 8, 4, 2}) {
+            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
+                .Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
+                .SampleCount = sampleCount
+            };
+            dev->GetDevice()->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
+                , &queryData, sizeof(queryData)
+            );
+
+            if(queryData.NumQualityLevels != 0) {
+                maxMSAASampleCount = sampleCount;
+                break;
+            }
+        }
+
         D3D12_COMMAND_QUEUE_DESC queue_desc = {
            /*.Type =*/ D3D12_COMMAND_LIST_TYPE_DIRECT,
            /*.Priority =*/ D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,

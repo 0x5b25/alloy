@@ -50,10 +50,22 @@ namespace alloy::mtl  {
                 case SampleCount::x16:mtlDesc.sampleCount = 16; break;
                 case SampleCount::x32:mtlDesc.sampleCount = 32; break;
             }
-            
+
+            if(mtlDesc.sampleCount > 1) {
+                assert(mtlDesc.textureType == MTLTextureType2DArray);
+                mtlDesc.textureType = MTLTextureType2DMultisampleArray;
+            }
+
+            mtlDesc.hazardTrackingMode = MTLHazardTrackingModeTracked;
             switch(desc.hostAccess) {
-                case HostAccess::PreferSystemMemory:
+                case HostAccess::SystemMemoryPreferRead:
+                    mtlDesc.storageMode = MTLStorageModeShared;
+                    mtlDesc.cpuCacheMode = MTLCPUCacheModeDefaultCache;
+                    break;
+
+                case HostAccess::SystemMemoryPreferWrite:
                 case HostAccess::PreferDeviceMemory:
+                    mtlDesc.cpuCacheMode = MTLCPUCacheModeWriteCombined;
                     mtlDesc.storageMode = MTLStorageModeShared;
                     break;
                 case HostAccess::None:

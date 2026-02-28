@@ -184,6 +184,7 @@ namespace alloy::dxc{
 
         float timestamp_period;
         bool support_a4b4g4r4;
+        uint32_t maxMSAASampleCount; //Assume RGBA8 is the most used format
 
         void ReadFromDevice(ID3D12Device* pdev);
 
@@ -193,6 +194,7 @@ namespace alloy::dxc{
         bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
         bool SupportExecuteIndirect() const { return options21.ExecuteIndirectTier; }
         bool SupportWorkGraph() const { return options21.WorkGraphsTier != D3D12_WORK_GRAPHS_TIER_NOT_SUPPORTED; }
+        uint32_t GetMaxMSAASampleCount() const {return maxMSAASampleCount;}
     
         uint32_t ResourceBindingTier() const {
             switch(options.ResourceBindingTier) {

@@ -170,7 +170,7 @@ namespace alloy::mtl {
 
             pDescRange->BaseShaderRegister = elem.bindingSlot; // start index of the shader registers in the range
             pDescRange->RegisterSpace = elem.bindingSpace; // space 0. can usually be zero
-            pDescRange->NumDescriptors = 1; // we only have one constant buffer, so the range is only 1
+            pDescRange->NumDescriptors = elem.bindingCount;
             pDescRange->OffsetInDescriptorsFromTableStart = IRDescriptorRangeOffsetAppend;// this appends the range to the end of the root signature descriptor tables
         
         }
@@ -272,21 +272,27 @@ namespace alloy::mtl {
         
         //Calculate total buffer sizes
         std::uint32_t combinedResCnt = 0, samplerCnt = 0;
-        for(auto& elem : layoutDesc.shaderResources) {
-            switch (elem.kind)
-            {
-            case IBindableResource::ResourceKind::UniformBuffer :
-            case IBindableResource::ResourceKind::StorageBuffer :
-            case IBindableResource::ResourceKind::Texture : {
-                combinedResCnt++;
-            }break;
-            case IBindableResource::ResourceKind::Sampler : {
-                samplerCnt++;
-            }break;
-            }
+
+        for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
+            auto& elemDesc = layoutDesc.shaderResources[i];
+            //for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
+            
+            //for(auto& elem : layoutDesc.shaderResources) {
+                switch (elemDesc.kind)
+                {
+                case IBindableResource::ResourceKind::UniformBuffer :
+                case IBindableResource::ResourceKind::StorageBuffer :
+                case IBindableResource::ResourceKind::Texture : {
+                    combinedResCnt += elemDesc.bindingCount;
+                }break;
+                case IBindableResource::ResourceKind::Sampler : {
+                    samplerCnt += elemDesc.bindingCount;
+                }break;
+                }
+            //}
         }
         
-        auto combinedResHeapSize = combinedResCnt * sizeof(IRDescriptorTableEntry);
+        auto combinedResHeapSize =  combinedResCnt * sizeof(IRDescriptorTableEntry);
         auto samplerHeapSize = samplerCnt * sizeof(IRDescriptorTableEntry);
         
         uint64_t argBufferSize = combinedResHeapSize + samplerHeapSize;
@@ -333,50 +339,54 @@ namespace alloy::mtl {
             auto* pSamplerEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr + combinedResHeapSize);
             
             
-            for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
+            for(unsigned i = 0 ,resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
                 
                 auto& elemDesc = layoutDesc.shaderResources[i];
-                auto& elem = desc.boundResources[i];
+
+                for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
+                    auto& elem = desc.boundResources[resIdx++];
                 
-                switch (elemDesc.kind)
-                {
-                    case IBindableResource::ResourceKind::UniformBuffer :
-                    case IBindableResource::ResourceKind::StorageBuffer : {
-                        
-                        auto* range = PtrCast<BufferRange>(elem.get());
-                        auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
-                        
-                        auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
-                        auto byteCnt = range->GetShape().elementCount;
-                        
-                        //DX12 requires CBVs have minimal alignment of 256Bytes
-                        assert(byteCnt % 256 == 0);
-                        
-                        IRDescriptorTableSetBuffer(pCombinedResEntry,
-                                                   baseGPUAddr + range->GetShape().offsetInElements,
-                                                   0);
-                        pCombinedResEntry++;
-                    }break;
-                    case IBindableResource::ResourceKind::Texture : {
-                        auto* texView = PtrCast<ITextureView>(elem.get());
-                        auto* mtlTex = PtrCast<MetalTexture>(texView->GetTextureObject().get());
-                        auto& texDesc = mtlTex->GetDesc();
-                        auto& viewDesc = texView->GetDesc();
-                        auto format = AlToMtlPixelFormat(texDesc.format);
-                        
-                        IRDescriptorTableSetTexture(pCombinedResEntry, mtlTex->GetHandle(), 0, 0);
-                        pCombinedResEntry++;
-                    }break;
-                        
-                    case IBindableResource::ResourceKind::Sampler : {
-                        
-                        auto* sampler = PtrCast<MetalSampler>(elem.get());
-                        auto& desc = sampler->GetDesc();
-                        
-                        IRDescriptorTableSetSampler(pSamplerEntry, sampler->GetHandle(), 0);
-                        pSamplerEntry++;
-                        
-                    }break;
+                    switch (elemDesc.kind)
+                    {
+                        case IBindableResource::ResourceKind::UniformBuffer :
+                        case IBindableResource::ResourceKind::StorageBuffer : {
+
+                            auto* range = PtrCast<BufferRange>(elem.get());
+                            auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
+
+                            auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
+                            auto byteCnt = range->GetShape().GetSizeInBytes();
+
+                            //DX12 requires CBVs have minimal alignment of 256Bytes
+                            assert(elemDesc.kind != IBindableResource::ResourceKind::UniformBuffer || 
+                                    byteCnt % 256 == 0);
+
+                            IRDescriptorTableSetBuffer(pCombinedResEntry,
+                                                       baseGPUAddr + range->GetShape().offsetInElements,
+                                                       0);
+                            pCombinedResEntry++;
+                        }break;
+                        case IBindableResource::ResourceKind::Texture : {
+                            auto* texView = PtrCast<ITextureView>(elem.get());
+                            auto* mtlTex = PtrCast<MetalTexture>(texView->GetTextureObject().get());
+                            auto& texDesc = mtlTex->GetDesc();
+                            auto& viewDesc = texView->GetDesc();
+                            auto format = AlToMtlPixelFormat(texDesc.format);
+
+                            IRDescriptorTableSetTexture(pCombinedResEntry, mtlTex->GetHandle(), 0, 0);
+                            pCombinedResEntry++;
+                        }break;
+
+                        case IBindableResource::ResourceKind::Sampler : {
+
+                            auto* sampler = PtrCast<MetalSampler>(elem.get());
+                            auto& desc = sampler->GetDesc();
+
+                            IRDescriptorTableSetSampler(pSamplerEntry, sampler->GetHandle(), 0);
+                            pSamplerEntry++;
+
+                        }break;
+                    }
                 }
                 
             }

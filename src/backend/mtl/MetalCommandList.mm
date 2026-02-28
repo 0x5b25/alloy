@@ -14,29 +14,127 @@
 namespace alloy::mtl {
 
 
-MetalCommandList::MetalCommandList(const common::sp<MetalDevice>& dev,
-                                   id<MTLCommandBuffer> buffer)
-    : _dev(dev)
-    , _cmdBuf(buffer)
-    , _currEncoder(nullptr)
-{
-    
-}
-
-MetalCommandList::~MetalCommandList() {
-    assert(_currEncoder == nullptr);
-    @autoreleasepool {
-        //delete _currEncoder;
-        [_cmdBuf release];
-        //Clear all passes
-        for(auto* pass : _passes) {
-            delete pass;
-        }
-        
-        //auto refCnt = [_cmdBuf retainCount];
-    
+    MetalCommandList::MetalCommandList(const common::sp<MetalDevice>& dev,
+                                       id<MTLCommandBuffer> buffer)
+        : _dev(dev)
+        , _cmdBuf(buffer)
+        , _currEncoder(nullptr)
+    {
+        //Command buffer is created during queue creation time
+        //Each command queue has a fixed amount of command buffers during
+        //its lifetime
+        [_cmdBuf retain];
     }
-}
+
+    MetalCommandList::~MetalCommandList() {
+        assert(_currEncoder == nullptr);
+        @autoreleasepool {
+            //delete _currEncoder;
+            [_cmdBuf release];
+            //Clear all passes
+            for(auto* pass : _passes) {
+                delete pass;
+            }
+
+            //auto refCnt = [_cmdBuf retainCount];
+
+        }
+    }
+
+
+    void MetalCommandList::_BeginTempPass() {
+        auto thisEncoder = new BaseCmdEnc(this);
+        _passes.push_back(thisEncoder);
+        _currEncoder = thisEncoder;
+    }
+
+    void MetalCommandList::_EndPreviousPass() {
+        if(_currEncoder) {
+            EndPass();
+        }
+    }
+    
+
+    void MetalCommandList::PushDebugGroup(const std::string& name, const Color4f& color) {
+        if(!_currEncoder) {
+            _BeginTempPass();
+        }
+
+        _currEncoder->PushDebugGroup(name);
+    }
+
+    void MetalCommandList::PopDebugGroup() {
+         if(!_currEncoder) {
+            _BeginTempPass();
+        }
+
+        _currEncoder->PopDebugGroup();
+    }
+
+    BaseCmdEnc::BaseCmdEnc(MetalCommandList* cmdBuf)
+        : CmdEncoderImplBase(cmdBuf)
+    {
+        @autoreleasepool {
+            _mtlEnc
+                = [cmdBuf computeCommandEncoderWithDispatchType: MTLDispatchTypeSerial];
+        }
+    }
+
+    BaseCmdEnc::~BaseCmdEnc() {
+        @autoreleasepool {
+            [_mtlEnc release];
+        }
+    }
+
+
+    void BaseCmdEnc::PushDebugGroup(const std::string& label) {
+        @autoreleasepool {
+            [ _mtlEnc pushDebugGroup: [NSString stringWithUTF8String:label.c_str()] ];
+        }
+    }
+    void BaseCmdEnc::PopDebugGroup() {
+        @autoreleasepool {
+            [_mtlEnc popDebugGroup];
+        }
+    }
+
+    
+    void MetalRenderCmdEnc::PushDebugGroup(const std::string& label) {
+        @autoreleasepool {
+            [ _mtlEnc pushDebugGroup: [NSString stringWithUTF8String:label.c_str()] ];
+        }
+    }
+    void MetalRenderCmdEnc::PopDebugGroup() {
+        @autoreleasepool {
+            [_mtlEnc popDebugGroup];
+        }
+    }
+
+
+    void MetalComputeCmdEnc::PushDebugGroup(const std::string& label) {
+        @autoreleasepool {
+            [ _mtlEnc pushDebugGroup: [NSString stringWithUTF8String:label.c_str()] ];
+        }
+    }
+    void MetalComputeCmdEnc::PopDebugGroup() {
+        @autoreleasepool {
+            [_mtlEnc popDebugGroup];
+        }
+    }
+
+    
+    void MetalTransferCmdEnc::PushDebugGroup(const std::string& label) {
+        @autoreleasepool {
+            [ _mtlEnc pushDebugGroup: [NSString stringWithUTF8String:label.c_str()] ];
+        }
+    }
+    void MetalTransferCmdEnc::PopDebugGroup() {
+        @autoreleasepool {
+            [_mtlEnc popDebugGroup];
+        }
+    }
+
+    
 
 
 MetalRenderCmdEnc::MetalRenderCmdEnc(
@@ -75,21 +173,21 @@ MetalRenderCmdEnc::MetalRenderCmdEnc(
         //[_mtlEnc release];
     }
 
-void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
-    resources.insert(pipeline);
-    auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
-    _drawResources.boundPipeline = common::ref_sp(mtlPipeline);
-    mtlPipeline->BindToCmdBuf(_mtlEnc);
+    void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
+        resources.insert(pipeline);
+        auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
+        _drawResources.boundPipeline = common::ref_sp(mtlPipeline);
+        mtlPipeline->BindToCmdBuf(_mtlEnc);
 
-    auto layout = mtlPipeline->GetPipelineLayout();
-    
-    if(layout) {
-        auto argBufferSize = layout->GetRootSigSizeInBytes();
-        _drawResources.argBuffer.resize(argBufferSize);
-    } else {
-        _drawResources.argBuffer.clear();
+        auto layout = mtlPipeline->GetPipelineLayout();
+
+        if(layout) {
+            auto argBufferSize = layout->GetRootSigSizeInBytes();
+            _drawResources.argBuffer.resize(argBufferSize);
+        } else {
+            _drawResources.argBuffer.clear();
+        }
     }
-}
 
 
 void MetalRenderCmdEnc::SetVertexBuffer(std::uint32_t index, const common::sp<BufferRange>& buffer) {
@@ -371,6 +469,58 @@ void MetalRenderCmdEnc::DrawIndexed(
 }
 
 
+    void MetalRenderCmdEnc::ExecuteIndirect(
+        const common::sp<IIndirectCommandLayout>& commandLayout,
+        uint32_t maxCommandCount,
+        common::sp<BufferRange> argumentBuffer,
+        common::sp<BufferRange> countBuffer
+    ) {
+        assert(false);
+        //@autoreleasepool {
+        //1. Query layout and allocate intermediate arg buffer
+        //2. Record a dispatch to run command conversion shader
+        //3. UAV barrier?
+        //4. Record the execute indirect command
+        //    [_mtlEnc executeCommandsInBuffer:(nonnull id<MTLIndirectCommandBuffer>) 
+        //                      indirectBuffer:(nonnull id<MTLBuffer>) 
+        //                indirectBufferOffset:(NSUInteger)];
+        //}
+    }
+
+    void MetalComputeCmdEnc::ExecuteIndirect(
+        const common::sp<IIndirectCommandLayout>& commandLayout,
+        uint32_t maxCommandCount,
+        common::sp<BufferRange> argumentBuffer,
+        common::sp<BufferRange> countBuffer
+    ) {
+        assert(false);
+        //@autoreleasepool {
+        //    [_mtlEnc executeCommandsInBuffer:(nonnull id<MTLIndirectCommandBuffer>) 
+        //                      indirectBuffer:(nonnull id<MTLBuffer>) 
+        //                indirectBufferOffset:(NSUInteger)];
+        //}
+    }
+            
+    /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
+    /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
+    /// (<see cref="Texture.SampleCount"/> > 1).</param>
+    /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
+    /// (<see cref="Texture.SampleCount"/> == 1).</param>
+    void MetalComputeCmdEnc::ResolveTexture(
+        const common::sp<ITexture>& source,
+        const common::sp<ITexture>& destination
+    ) {
+        resources.insert(source);
+        resources.insert(destination);
+        auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
+        auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
+
+        auto& resolveShader = cmdBuf->GetDevice()->GetUtilShaders().resolveShader;
+
+        resolveShader.BindToCmdBuf(_mtlEnc, mtlTexSrc->GetHandle(), mtlTexDst->GetHandle());
+    }
+
+
 void MetalComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>&) {
     
 }
@@ -404,7 +554,8 @@ void MetalComputeCmdEnc::Dispatch(std::uint32_t groupCountX, std::uint32_t group
 
 IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction& action)
 {
-    assert(_currEncoder == nullptr);
+    //assert(_currEncoder == nullptr);
+    _EndPreviousPass();
 
     //RegisterObjInUse(renderPass);
 
@@ -508,7 +659,8 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
 
 
     IComputeCommandEncoder&  MetalCommandList::BeginComputePass(){
-        assert(_currEncoder == nullptr);
+        //assert(_currEncoder == nullptr);
+        _EndPreviousPass();
 
         @autoreleasepool {
             MTLComputePassDescriptor* pass = [MTLComputePassDescriptor computePassDescriptor];
@@ -528,7 +680,8 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
 
     ITransferCommandEncoder& MetalCommandList::BeginTransferPass(){
         
-        assert(_currEncoder == nullptr);
+        //assert(_currEncoder == nullptr);
+        _EndPreviousPass();
 
         @autoreleasepool {
             MTLBlitPassDescriptor* pass = [MTLBlitPassDescriptor blitPassDescriptor];
@@ -583,25 +736,27 @@ void MetalRenderCmdEnc::UpdateFenceAfterStages(const common::sp<IFence>& fence, 
 
 
 
-void MetalTransferCmdEnc::CopyBuffer(
-    const common::sp<BufferRange>& source,
-    const common::sp<BufferRange>& destination,
-    std::uint32_t sizeInBytes
-) {
-    assert(source->GetShape().GetSizeInBytes() >= sizeInBytes);
-    assert(destination->GetShape().GetSizeInBytes() >= sizeInBytes);
+    void MetalTransferCmdEnc::CopyBuffer(
+        const common::sp<BufferRange>& source,
+        const common::sp<BufferRange>& destination,
+        std::uint32_t sizeInBytes
+    ) {
+        assert(source->GetShape().GetSizeInBytes() >= sizeInBytes);
+        assert(destination->GetShape().GetSizeInBytes() >= sizeInBytes);
 
-    resources.insert(source);
-    resources.insert(destination);
-    auto srcBufferImpl = static_cast<MetalBuffer*>(source->GetBufferObject());
-    auto dstBufferImpl = static_cast<MetalBuffer*>(destination->GetBufferObject());
-    [_mtlEnc    copyFromBuffer:srcBufferImpl->GetHandle()
-                  sourceOffset:source->GetShape().GetOffsetInBytes() 
-                      toBuffer:dstBufferImpl->GetHandle()
-             destinationOffset:destination->GetShape().GetOffsetInBytes()
-                          size:sizeInBytes
-    ];
-}
+        resources.insert(source);
+        resources.insert(destination);
+        auto srcBufferImpl = static_cast<MetalBuffer*>(source->GetBufferObject());
+        auto dstBufferImpl = static_cast<MetalBuffer*>(destination->GetBufferObject());
+        @autoreleasepool {
+            [_mtlEnc    copyFromBuffer:srcBufferImpl->GetHandle()
+                          sourceOffset:source->GetShape().GetOffsetInBytes() 
+                              toBuffer:dstBufferImpl->GetHandle()
+                     destinationOffset:destination->GetShape().GetOffsetInBytes()
+                                  size:sizeInBytes
+            ];
+        }
+    }
 
 
                 
@@ -623,17 +778,18 @@ void MetalTransferCmdEnc::CopyBuffer(
 
         auto mtlBufSrc = static_cast<MetalBuffer*>(source->GetBufferObject());
         auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
-
-        [_mtlEnc   copyFromBuffer:(id<MTLBuffer>)mtlBufSrc->GetHandle() 
-                        sourceOffset:(NSUInteger)source->GetShape().GetOffsetInBytes() 
-                sourceBytesPerRow:(NSUInteger)sourceBytesPerRow 
-                sourceBytesPerImage:(NSUInteger)sourceBytesPerImage 
-                        sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)  
-                        toTexture:(id<MTLTexture>)mtlTexDst->GetHandle() 
-                    destinationSlice:(NSUInteger)dstBaseArrayLayer 
-                    destinationLevel:(NSUInteger)dstMipLevel 
-                destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
-        ];
+        @autoreleasepool {
+            [_mtlEnc   copyFromBuffer:(id<MTLBuffer>)mtlBufSrc->GetHandle() 
+                            sourceOffset:(NSUInteger)source->GetShape().GetOffsetInBytes() 
+                    sourceBytesPerRow:(NSUInteger)sourceBytesPerRow 
+                    sourceBytesPerImage:(NSUInteger)sourceBytesPerImage 
+                            sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)  
+                            toTexture:(id<MTLTexture>)mtlTexDst->GetHandle() 
+                        destinationSlice:(NSUInteger)dstBaseArrayLayer 
+                        destinationLevel:(NSUInteger)dstMipLevel 
+                    destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
+            ];
+        }
     }
 
     void MetalTransferCmdEnc::CopyTextureToBuffer(
@@ -652,17 +808,18 @@ void MetalTransferCmdEnc::CopyBuffer(
 
         auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
         auto mtlBufDst = static_cast<MetalBuffer*>(destination->GetBufferObject());
-
-        [_mtlEnc    copyFromTexture:(id<MTLTexture>)mtlTexSrc->GetHandle() 
-                        sourceSlice:(NSUInteger)srcBaseArrayLayer 
-                        sourceLevel:(NSUInteger)srcMipLevel 
-                       sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)  
-                         sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)   
-                           toBuffer:(id<MTLBuffer>)mtlBufDst->GetHandle() 
-                  destinationOffset:(NSUInteger)destination->GetShape().GetOffsetInBytes() 
-             destinationBytesPerRow:(NSUInteger)dstBytesPerRow 
-           destinationBytesPerImage:(NSUInteger)dstBytesPerImage
-        ];
+        @autoreleasepool {
+            [_mtlEnc    copyFromTexture:(id<MTLTexture>)mtlTexSrc->GetHandle() 
+                            sourceSlice:(NSUInteger)srcBaseArrayLayer 
+                            sourceLevel:(NSUInteger)srcMipLevel 
+                           sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)  
+                             sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)   
+                               toBuffer:(id<MTLBuffer>)mtlBufDst->GetHandle() 
+                      destinationOffset:(NSUInteger)destination->GetShape().GetOffsetInBytes() 
+                 destinationBytesPerRow:(NSUInteger)dstBytesPerRow 
+               destinationBytesPerImage:(NSUInteger)dstBytesPerImage
+            ];
+        }
     }
         /// Copies a region from one <see cref="Texture"/> into another.
         /// <param name="source">The source <see cref="Texture"/> from which data is copied.</param>
@@ -698,17 +855,18 @@ void MetalTransferCmdEnc::CopyBuffer(
 
         auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
         auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
-
-        [_mtlEnc copyFromTexture:mtlTexSrc->GetHandle() 
-                     sourceSlice:(NSUInteger)srcBaseArrayLayer 
-                     sourceLevel:(NSUInteger)srcMipLevel 
-                    sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z) 
-                      sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth) 
-                       toTexture:mtlTexDst->GetHandle()
-                destinationSlice:(NSUInteger)dstBaseArrayLayer 
-                destinationLevel:(NSUInteger)dstMipLevel 
-               destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
-        ];
+        @autoreleasepool {
+            [_mtlEnc copyFromTexture:mtlTexSrc->GetHandle() 
+                         sourceSlice:(NSUInteger)srcBaseArrayLayer 
+                         sourceLevel:(NSUInteger)srcMipLevel 
+                        sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z) 
+                          sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth) 
+                           toTexture:mtlTexDst->GetHandle()
+                    destinationSlice:(NSUInteger)dstBaseArrayLayer 
+                    destinationLevel:(NSUInteger)dstMipLevel 
+                   destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
+            ];
+        }
 
     }
 
@@ -783,6 +941,7 @@ void MetalTransferCmdEnc::CopyBuffer(
                 1);
         }*/
 
+
         // Generates mipmaps for the given <see cref="Texture"/>. The largest mipmap is used to generate all of the lower mipmap
         // levels contained in the Texture. The previous contents of all lower mipmap levels are overwritten by this operation.
         // The target Texture must have been created with <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.
@@ -791,17 +950,9 @@ void MetalTransferCmdEnc::CopyBuffer(
     void MetalTransferCmdEnc::GenerateMipmaps(const common::sp<ITexture>& texture) {
         resources.insert(texture);
         auto texImpl = static_cast<MetalTexture*>(texture.get());
-
-        [_mtlEnc generateMipmapsForTexture:texImpl->GetHandle()];
+        @autoreleasepool {
+            [_mtlEnc generateMipmapsForTexture:texImpl->GetHandle()];
+        }
     }
-    
-        
-        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
-        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> > 1).</param>
-        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        void MetalTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) 
-        {}
 
 } // namespace alloy::mtl

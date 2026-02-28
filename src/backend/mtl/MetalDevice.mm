@@ -19,8 +19,8 @@
 #include <chrono>
 
 namespace alloy {
-    common::sp<IContext> CreateMetalContext() {
-        return alloy::mtl::MetalContext::Make();
+    common::sp<IContext> CreateMetalContext(const IContext::Options& opts) {
+        return alloy::mtl::MetalContext::Make(opts);
     }
 }
 
@@ -28,6 +28,8 @@ namespace alloy::mtl
 {
     
     class _MTLFeatures{
+
+        id<MTLDevice> _dev;
         
         MTLGPUFamily _arch;
         
@@ -186,7 +188,9 @@ namespace alloy::mtl
         }
         
     public:
-        _MTLFeatures(id<MTLDevice> dev){
+        _MTLFeatures(id<MTLDevice> dev)
+            : _dev(dev)
+        {
             //Detect GPU architectures
                         
             if(@available(iOS 13, macOS 10.15, *)){
@@ -249,6 +253,15 @@ namespace alloy::mtl
             uint32_t major = _arch / 1000;
             uint32_t minor = _arch % 1000;
             return GraphicsApiVersion{Backend::Metal, major, minor, 0, 0};
+        }
+
+        uint32_t GetMaxMSAASampleCount() {
+            for(uint32_t sampleCount : {32, 16, 8, 4, 2}) {
+                if([_dev supportsTextureSampleCount:sampleCount]) {
+                    return sampleCount;
+                }
+            }
+            return 1;
         }
 
     };
@@ -413,6 +426,8 @@ namespace alloy::mtl
 
         info.limits.pointSizeRange[0] = 0.f;
         info.limits.pointSizeRange[1] = 511.f;
+
+        info.limits.maxMSAASampleCount = feat.GetMaxMSAASampleCount();
     }
 
 
@@ -423,13 +438,16 @@ namespace alloy::mtl
     }
 
     MetalDevice::~MetalDevice(){
+        delete _utilShaders;
         delete _gfxQ;
         delete _copyQ;
     }
 
 
-    common::sp<MetalContext> MetalContext::Make() {
-        return common::sp(new MetalContext());
+    common::sp<MetalContext> MetalContext::Make(const alloy::IContext::Options& opts) {
+        auto ctx = common::sp(new MetalContext());
+        ctx->_debug = opts.debug;
+        return ctx;
     }
 
     common::sp<IGraphicsDevice> MetalContext::CreateDefaultDevice(const IGraphicsDevice::Options& options) {
@@ -443,7 +461,7 @@ namespace alloy::mtl
     std::vector<common::sp<IPhysicalAdapter>> MetalContext::EnumerateAdapters() {
         std::vector<common::sp<IPhysicalAdapter>> adps;
         @autoreleasepool {
-            NSArray<id<MTLDevice>>* devices = MTLCopyAllDevices();
+            NSArray<id<MTLDevice>>* devices = [MTLCopyAllDevices() autorelease];
 
             for(int i = 0; i < [devices count]; i++) {
                 auto dev = devices[i];
@@ -458,8 +476,6 @@ namespace alloy::mtl
                 auto mtlAdp = new MetalAdapter(dev);
                 adps.emplace_back(mtlAdp);
             }
-
-            [devices release];
         }
 
         return adps;
@@ -556,9 +572,11 @@ namespace alloy::mtl
             //    //SwapchainDescription desc = swapchainDesc.Value;
             //    container = CreateSurface(_device, swapChainSource);
             //}
+            auto utilShaders = new MtlUtilShaderLib(adp->GetHandle());
             
             auto mtlDev = new MetalDevice();
             mtlDev->_adp = adp;
+            mtlDev->_utilShaders = utilShaders;
             //mtlDev->_cmdQueue = [adp->GetHandle() newCommandQueue];
             //_device->newCommandQueue();
             mtlDev->_info.apiVersion = MetalFeatures;
@@ -602,7 +620,7 @@ namespace alloy::mtl
         
         @autoreleasepool {
             auto dev = common::ref_sp(&_dev);
-            auto cmdBuf = [[_cmdQ commandBuffer] retain];
+            auto cmdBuf = [_cmdQ commandBuffer];
             //[_cmdBuf retain];
             
             auto impl = new MetalCommandList(dev, cmdBuf);
@@ -635,7 +653,7 @@ namespace alloy::mtl
         auto mtlEvt = common::PtrCast<MetalEvent>(fence);
     
         @autoreleasepool {
-            auto dummyCmdBuf = [_cmdQ commandBuffer] ;
+            auto dummyCmdBuf = [_cmdQ commandBuffer];
             [dummyCmdBuf encodeWaitForEvent:mtlEvt->GetHandle() value:value];
             [dummyCmdBuf commit];
         }
@@ -659,10 +677,9 @@ namespace alloy::mtl
 
 void MetalCmdQ::WaitForIdle() {
     @autoreleasepool {
-        auto dummyCmdBuf = [[_cmdQ commandBuffer] retain];
+        auto dummyCmdBuf = [_cmdQ commandBuffer];
         [dummyCmdBuf commit];
         [dummyCmdBuf waitUntilCompleted];
-        [dummyCmdBuf release];
     }
 }
 
@@ -688,12 +705,13 @@ MetalBuffer::~MetalBuffer() {
             MTLResourceOptions mtlDesc{};
             
             switch(desc.hostAccess) {
-                case alloy::HostAccess::PreferRead:
+                case alloy::HostAccess::SystemMemoryPreferRead:
                     mtlDesc |= MTLResourceStorageModeShared
                              | MTLResourceCPUCacheModeDefaultCache;
                     break;
-                    
-                case alloy::HostAccess::PreferWrite:
+                
+                case alloy::HostAccess::PreferDeviceMemory:
+                case alloy::HostAccess::SystemMemoryPreferWrite:
                     mtlDesc |= MTLResourceStorageModeShared
                              | MTLResourceCPUCacheModeWriteCombined;
                     break;
@@ -728,15 +746,25 @@ MetalBuffer::~MetalBuffer() {
 
     void MetalBuffer::SetDebugName(const std::string& name) {
         @autoreleasepool {
-            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            auto nsSrc = [[NSString stringWithUTF8String:name.c_str()] autorelease];
             [_mtlBuffer setLabel:nsSrc];
+        }
+    }
+
+    
+    std::string MetalBuffer::GetDebugName() {
+        @autoreleasepool {
+            std::string bar = [[_mtlBuffer label] UTF8String];
+            return bar;
         }
     }
 
 
     MetalEvent::~MetalEvent() {
         //[_listener release];
-        [_mtlEvt release];
+        @autoreleasepool {
+            [_mtlEvt release];
+        }
     }
 
 

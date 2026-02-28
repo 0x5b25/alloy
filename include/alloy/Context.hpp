@@ -139,6 +139,7 @@ namespace alloy {
             float                 lineWidthRange[2];
             float                 pointSizeGranularity;
             float                 lineWidthGranularity;
+            uint32_t              maxMSAASampleCount;
         } limits;
 
         struct Capabilities {

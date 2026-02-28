@@ -4,7 +4,7 @@
 
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/3rd-party")
-
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/shaders")
 
 #add_executable(VulkanTest 
 #    main.cpp
@@ -50,6 +50,8 @@ set(VLD_BACKEND_MTL_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MtlSurfaceUtil.h"
 
+    "${CMAKE_CURRENT_LIST_DIR}/MtlUtilShaderLib.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MtlUtilShaderLib.h"
 
     "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MtlTypeCvt.h"
@@ -81,6 +83,7 @@ target_link_libraries(Veldrid
         "-framework Metal"
         "-framework QuartzCore"
         "-framework IOKit"
+    PUBLIC
         MetalShaderConverter
     #    metal_shader_converter_impl
     #    common
@@ -102,3 +105,12 @@ function(alloy_install_metal_runtime_libs PREFIX_PATH COMP_NAME)
     #message("alloy: installing metal runtime libraries to ${PREFIX_PATH}...")
     alloy_install_metal_shader_converter(${PREFIX_PATH} ${COMP_NAME})
 endfunction()
+
+function(alloy_copy_metal_runtime_libs TARGET)
+        
+    message("alloy: copying metal runtime libraries to ${TARGET} binary path...")
+    metal_shader_converter_copy_binaries(${TARGET})
+
+endfunction()
+
+

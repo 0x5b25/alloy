@@ -826,7 +826,7 @@ namespace alloy::vk{
     };
 #endif
 
-    void VkTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination)
+    void VkComputeCmdEnc::ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination)
     {
         VulkanTexture* vkSource = PtrCast<VulkanTexture>(source.get());
         resources.insert(source);

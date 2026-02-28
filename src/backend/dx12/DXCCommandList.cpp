@@ -793,7 +793,7 @@ namespace alloy::dxc
     //    return ((arrayLayer * mipLevelCount) + mipLevel);
     //};
 
-    void DXCTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source,
+    void DXCComputeCmdEnc::ResolveTexture(const common::sp<ITexture>& source,
                                            const common::sp<ITexture>& destination) {
         
         auto* dxcSource = PtrCast<DXCTexture>(source.get());

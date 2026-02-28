@@ -11,6 +11,7 @@
 #include "alloy/CommandQueue.hpp"
 
 #include "MetalResourceFactory.h"
+#include "MtlUtilShaderLib.h"
 
 namespace alloy::mtl
 {
@@ -35,9 +36,9 @@ namespace alloy::mtl
     };
 
     class MetalContext : public alloy::IContext {
-
+        bool _debug;
     public:
-        static common::sp<MetalContext> Make();
+        static common::sp<MetalContext> Make(const alloy::IContext::Options& opts);
 
         virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) override;
         virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() override;
@@ -92,6 +93,8 @@ namespace alloy::mtl
         
         MetalCmdQ* _gfxQ, * _copyQ;
 
+        MtlUtilShaderLib* _utilShaders;
+
         MetalDevice() = default;
 
     public:
@@ -104,6 +107,8 @@ namespace alloy::mtl
         );
 
         id<MTLDevice> GetHandle() const { return _adp->GetHandle(); }
+
+        MtlUtilShaderLib& GetUtilShaders() const { return *_utilShaders; }
         
         virtual const Features& GetFeatures() const override { return _features; }
         virtual IPhysicalAdapter& GetAdapter() const override {return *_adp.get();}
@@ -149,7 +154,7 @@ namespace alloy::mtl
         
         
         virtual void SetDebugName(const std::string& ) override;
-
+        virtual std::string GetDebugName() override;
     };
 
     class MetalFence : public alloy::IFence {

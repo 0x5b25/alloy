@@ -316,5 +316,31 @@ namespace alloy
     enum class SampleCount{
         x1, x2, x4, x8, x16, x32,
     };
+
+    inline uint32_t SampleCountToUint(SampleCount count) {
+        switch(count) {
+
+        case SampleCount::x1:  return 1;
+        case SampleCount::x2:  return 2;
+        case SampleCount::x4:  return 4;
+        case SampleCount::x8:  return 8;
+        case SampleCount::x16: return 16;
+        case SampleCount::x32: return 32;
+        default: return 0;
+        }
+    }
+
+    inline SampleCount UintToSampleCount(uint32_t count) {
+        switch(count) {
+
+        default:
+        case 1 :  return SampleCount::x1;
+        case 2 :  return SampleCount::x2;
+        case 4 :  return SampleCount::x4;
+        case 8 :  return SampleCount::x8;
+        case 16 : return SampleCount::x16;
+        case 32 : return SampleCount::x32;
+        }
+    }
 } // namespace alloy
 

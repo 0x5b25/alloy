@@ -27,9 +27,9 @@ protected:
 
     //T* _Self() const {return static_cast<T*>(this);}
 
-    MetalCommandList* _cmdBuf;
+    MetalCommandList* cmdBuf;
 
-    CmdEncoderImplBase(MetalCommandList* cmdBuf) : _cmdBuf(cmdBuf){}
+    CmdEncoderImplBase(MetalCommandList* cmdBuf) : cmdBuf(cmdBuf) {}
     
 
     //virtual id<MTLCommandEncoder> GetHandle() = 0;
@@ -42,36 +42,37 @@ public:
   //void RegisterObjInUse(const common::sp<common::RefCntBase> &obj);
   // void WaitForFence(const common::sp<IFence>& fence);
   // void UpdateFence(const common::sp<IFence>& fence);
+
+
+    virtual void PushDebugGroup(const std::string& label) = 0;
+    virtual void PopDebugGroup() = 0;
 };
 
-/*
-class BaseCommandEncoderImpl : public CmdEncoderImplBase, public IBaseCommandEncoder {
+class BaseCmdEnc : public CmdEncoderImplBase {
     using Super = CmdEncoderImplBase;
 
     id<MTLCommandEncoder> _mtlEnc;
 
 public:
-    virtual id<MTLCommandEncoder> GetHandle() override {return _mtlEnc;}
 
-    BaseCommandEncoderImpl(MetalCommandList* cmdBuf) : CmdEncoderImplBase(cmdBuf) {}
+    BaseCmdEnc(MetalCommandList* cmdBuf);
     
-    virtual ~BaseCommandEncoderImpl() override;
+    virtual ~BaseCmdEnc() override;
     
     
-    virtual void EndEncoding() override {
+    virtual void EndPass() override {
         assert(_mtlEnc != nullptr);
         [_mtlEnc endEncoding];
         [_mtlEnc release];
         _mtlEnc = nullptr;
     }
-    
-    
-    
-    virtual void PushDebugGroup(const std::string& label) override;
-    virtual void PopDebugGropu() override;
 
+
+    virtual void PushDebugGroup(const std::string& label) override;
+    virtual void PopDebugGroup() override;
+    
 };
-*/
+
 
 class MetalRenderCmdEnc : public IRenderCommandEncoder, public CmdEncoderImplBase {
     
@@ -247,10 +248,17 @@ public:
     //virtual void DrawIndexedIndirect(
     //    const common::sp<BufferRange>& indirectBuffer,
     //    std::uint32_t drawCount, std::uint32_t stride) = 0;
+    virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                uint32_t maxCommandCount,
+                                common::sp<BufferRange> argumentBuffer,
+                                common::sp<BufferRange> countBuffer) override;
 
 
     virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override;
     virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override;
+
+    virtual void PushDebugGroup(const std::string& label) override;
+    virtual void PopDebugGroup() override;
 
 };
 
@@ -270,7 +278,14 @@ public:
         
         virtual ~MetalComputeCmdEnc() {}
         
-        virtual void EndPass() override {}
+        virtual void EndPass() override {
+            assert(_mtlEnc != nullptr);
+            @autoreleasepool {
+                [_mtlEnc endEncoding];
+                [_mtlEnc release];
+            }
+            _mtlEnc = nullptr;
+        }
         
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
@@ -304,10 +319,24 @@ public:
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
 
+        virtual void ExecuteIndirect(const common::sp<IIndirectCommandLayout>& commandLayout,
+                                uint32_t maxCommandCount,
+                                common::sp<BufferRange> argumentBuffer,
+                                common::sp<BufferRange> countBuffer) override;
+
+
+        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
+        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> > 1).</param>
+        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
+        /// (<see cref="Texture.SampleCount"/> == 1).</param>
+        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
 
+        virtual void PushDebugGroup(const std::string& label) override;
+        virtual void PopDebugGroup() override;
     };
 
 
@@ -477,17 +506,11 @@ public:
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
     
-        
-        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
-        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> > 1).</param>
-        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-        
-        
         virtual void WaitForFence(const common::sp<IFence>&) override {}
         virtual void UpdateFence(const common::sp<IFence>&) override {}
+
+        virtual void PushDebugGroup(const std::string& label) override;
+        virtual void PopDebugGroup() override;
 
     };
 
@@ -502,6 +525,9 @@ class MetalCommandList : public ICommandList{
     
     std::vector<CmdEncoderImplBase*> _passes;
     std::unordered_set<common::sp<common::RefCntBase>> _objsInUse;
+
+    void _BeginTempPass();
+    void _EndPreviousPass();
     
 public:
     MetalCommandList(const common::sp<MetalDevice>&,
@@ -509,6 +535,7 @@ public:
     
     virtual ~MetalCommandList() override;
 
+    MetalDevice* GetDevice() const { return _dev.get(); }
 
     void RegisterObjInUse(const common::sp<common::RefCntBase>& obj) {_objsInUse.emplace(obj);}
     
@@ -540,16 +567,16 @@ public:
     // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to
     // <see cref="PopDebugGroup"/>.
     // <param name="name">The name of the group. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void PushDebugGroup(const std::string& name) override {}
+    virtual void PushDebugGroup(const std::string& name, const Color4f& color) override;
 
     // Pops the current debug group. This method must only be called after <see cref="PushDebugGroup(string)"/> has been
     // called on this instance.
-    virtual void PopDebugGroup() override {}
+    virtual void PopDebugGroup() override;
 
     // Inserts a debug marker into the CommandList at the current position. This is used by graphics debuggers to identify
     // points of interest in a command stream.
     // <param name="name">The name of the marker. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void InsertDebugMarker(const std::string& name) override {}
+    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override {}
 
     //virtual void EncodeWaitForEvent(const common::sp<IEvent>& event, uint64_t expectedValue) override;
     //virtual void EncodeSignalEvent(const common::sp<IEvent>& event, uint64_t value) override;
