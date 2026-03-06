@@ -68,7 +68,12 @@ struct VkDevExtNames {
 
     constexpr static auto VK_KHR_SYNCHRONIZATION2 =  "VK_KHR_synchronization2";// "VK_KHR_timeline_semaphore";
     constexpr static auto VK_KHR_TIMELINE_SEMAPHORE =  "VK_KHR_timeline_semaphore";// "VK_KHR_timeline_semaphore";
+    
     constexpr static auto VK_KHR_DYNAMIC_RENDERING = "VK_KHR_dynamic_rendering";
+    //Following extension is required by VK_KHR_dynamic_rendering
+    constexpr static auto VK_KHR_DEPTH_STENCIL_RESOLVE = "VK_KHR_depth_stencil_resolve";
+    //Following extension is required by VK_KHR_depth_stencil_resolve
+    constexpr static auto VK_KHR_CREATE_RENDERPASS2 = "VK_KHR_create_renderpass2";
 
 };
 

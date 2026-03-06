@@ -90,7 +90,7 @@ namespace alloy::dxc {
         swapChainDesc.BufferCount = backBufferCnt; 
         swapChainDesc.Width = desc.initialWidth;
         swapChainDesc.Height = desc.initialHeight;
-        swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; ///#TODO: add format support
+        swapChainDesc.Format = GetDesiredPixelFormat(desc.colorSrgb); ///#TODO: add format support
         swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         swapChainDesc.SampleDesc.Count = 1;
@@ -230,7 +230,7 @@ namespace alloy::dxc {
         std::uint32_t height
     ) {
         ReleaseFramebuffers();
-        _sc->ResizeBuffers(0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+        _sc->ResizeBuffers(0, width, height, GetDesiredPixelFormat(_srgbColorSpace), 0);
         CreateFramebuffers(width, height);
     }
 
@@ -298,13 +298,15 @@ namespace alloy::dxc {
         texDesc.arrayLayers = 1;
         texDesc.usage.renderTarget = true;
         texDesc.sampleCount = SampleCount::x1;
-        texDesc.format = D3DToVdPixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM);///#TODO: add format support
+        //texDesc.format = D3DToVdPixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM);///#TODO: add format support
             
         for (uint32_t n = 0; n < _fbCnt; n++)
         {
             ID3D12Resource* pTex;
             ThrowIfFailed(_sc->GetBuffer(n, IID_PPV_ARGS(&pTex)));
             dxcDev->GetDevice()->CreateRenderTargetView(pTex, nullptr, rtvHandle);
+
+            texDesc.format = D3DToVdPixelFormat(pTex->GetDesc().Format);
 
             auto vldTex = DXCTexture::WrapNative(dxcDev, texDesc, pTex);
 

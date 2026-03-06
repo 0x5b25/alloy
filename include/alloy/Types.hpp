@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 
 namespace alloy
 {
@@ -299,11 +300,11 @@ namespace alloy
     enum class HostAccess{
         None,
 
-        //Equivalent to DX12 READ_BACK heap, preferred system memory
+        //Equivalent to DX12 READ_BACK heap, prefer cached system memory
         //Typical usage: GPU write, host read
         SystemMemoryPreferRead,
 
-        //Equivalent to DX12 UPLOAD heap, preferred device local memory
+        //Equivalent to DX12 UPLOAD heap, prefer uncached writecombine system memory
         //Typical usage: Host write, GPU read
         SystemMemoryPreferWrite,
 
@@ -316,5 +317,19 @@ namespace alloy
     enum class SampleCount{
         x1, x2, x4, x8, x16, x32,
     };
+
+#define ALLOY_SAMPLECNT_COMARISON_OPERATOR(op)               \
+    inline bool operator##op(SampleCount a, SampleCount b) { \
+        using T = std::underlying_type<SampleCount>::type;   \
+        return T(a) op T(b);                                 \
+    }                                                        \
+
+    ALLOY_SAMPLECNT_COMARISON_OPERATOR(>)
+    ALLOY_SAMPLECNT_COMARISON_OPERATOR(>=)
+    ALLOY_SAMPLECNT_COMARISON_OPERATOR(<)
+    ALLOY_SAMPLECNT_COMARISON_OPERATOR(<=)
+
+#undef ALLOY_SAMPLECNT_COMARISON_OPERATOR
+
 } // namespace alloy
 

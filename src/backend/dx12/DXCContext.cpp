@@ -242,6 +242,13 @@ namespace alloy::dxc {
         
         //max_buffer_size: i32::MAX as u64,
         //max_non_sampler_bindings: 1_000_000,
+        
+        if     (caps.maxMSAASampleCount >= 32) info.limits.maxMSAASampleCount = SampleCount::x32;
+        else if(caps.maxMSAASampleCount >= 16) info.limits.maxMSAASampleCount = SampleCount::x16;
+        else if(caps.maxMSAASampleCount >= 8)  info.limits.maxMSAASampleCount = SampleCount::x8;
+        else if(caps.maxMSAASampleCount >= 4)  info.limits.maxMSAASampleCount = SampleCount::x4;
+        else if(caps.maxMSAASampleCount >= 2)  info.limits.maxMSAASampleCount = SampleCount::x2;
+        else                                   info.limits.maxMSAASampleCount = SampleCount::x1;
     }
 
 

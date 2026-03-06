@@ -33,14 +33,19 @@ namespace alloy::dxc
     class DXCTexture;
     class DXCCmdEncBase;
 
+    constexpr auto DXC_RESOURCE_STATE_ANY = (D3D12_RESOURCE_STATES)-1;
     
     class DXCCommandList: public ICommandList{
         
     public:
 
         struct ResourceStates {
-            std::unordered_map<DXCBuffer*, D3D12_RESOURCE_STATES> buffers;
-            std::unordered_map<DXCTexture*, D3D12_RESOURCE_STATES> textures;
+            struct StatePair {
+                D3D12_RESOURCE_STATES initial, final;
+            };
+
+            std::unordered_map<DXCBuffer*, StatePair> buffers;
+            std::unordered_map<DXCTexture*, StatePair> textures;
 
             void SyncTo(const ResourceStates& other) {
                 for(auto& [k, v] : other.buffers)
@@ -59,7 +64,7 @@ namespace alloy::dxc
     protected:
         common::sp<DXCDevice> _dev;
         ID3D12CommandAllocator* _cmdAlloc;
-        ID3D12GraphicsCommandList* _cmdList;
+        ID3D12GraphicsCommandList1* _cmdList;
         
         std::vector<DXCCmdEncBase*> _passes;
         DXCCmdEncBase* _currentPass;
@@ -78,7 +83,8 @@ namespace alloy::dxc
         //       D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS flag set, or
         //  4. Any resource implicitly promoted to a read-only state.
         //only the texture states need explicit request and update.
-        decltype(ResourceStates::textures) _requestedStates, _finalStates;
+        //decltype(ResourceStates::textures) _requestedStates, _finalStates;
+        decltype(ResourceStates::textures) _statePairs;
 
         //sp<VulkanPipelineBase> _currentPipeline;
         //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
@@ -93,7 +99,7 @@ namespace alloy::dxc
         DXCCommandList(
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
-            ID3D12GraphicsCommandList* pList
+            ID3D12GraphicsCommandList1* pList
         ) 
             : _dev(dev)
             , _cmdAlloc(pAllocator)
@@ -105,7 +111,7 @@ namespace alloy::dxc
 
         
         static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
-        ID3D12CommandList* GetHandle() const { return _cmdList; }
+        ID3D12GraphicsCommandList1* GetHandle() const { return _cmdList; }
         
         virtual void Begin() override;
         virtual void End() override;
@@ -139,8 +145,8 @@ namespace alloy::dxc
 
         virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
 
-        const auto& GetRequestedResourceStates() const { return _requestedStates; }
-        const auto& GetFinalResourceStates() const { return _finalStates; }
+        //const auto& GetRequestedResourceStates() const { return _requestedStates; }
+        const auto& GetResourceStates() const { return _statePairs; }
     };
 
 
@@ -150,6 +156,17 @@ namespace alloy::dxc
         DXCCommandList* cmdList;
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
+
+        //Resource states will be gathered during CommandList::End():
+        //    1. Scan passes back-to-front. Compatible states will be
+        //        push forward and merged with previous pass. Non-compatible
+        //        ones will be left unchanged
+        //    2. Playback passes front-to-back. Passes with resource states
+        //        are treated as "explicit resource transition needed" and
+        //        barriers are inserted before replay
+        //    3. During replay, resource states will be populated with current
+        //        states within command list to enable explicit resource transition
+        //        during command playback, namely Get(Buffer|Tex)State
         DXCCommandList::ResourceStates resStates;
         std::vector<std::function<void()>> recordedCmds;
         
@@ -165,9 +182,9 @@ namespace alloy::dxc
         virtual void EndPass();
 
         
-        ID3D12GraphicsCommandList* GetCmdList() const;
+        ID3D12GraphicsCommandList1* GetCmdList() const;
 
-        
+        //Claim expected resource states
         void RegisterBufferUsage(
             DXCBuffer* buffer,
             D3D12_RESOURCE_STATES state
@@ -178,7 +195,27 @@ namespace alloy::dxc
             D3D12_RESOURCE_STATES state
         );
 
+        //Update current resource states.
+        // Indicates explicit state transition
+        // is performed by this operation
+        void RegisterBufferStateChange(
+            DXCBuffer* buffer,
+            D3D12_RESOURCE_STATES state
+        );
+
+        void RegisterTexStateChange(
+            DXCTexture* tex,
+            D3D12_RESOURCE_STATES state
+        );
+
         void RegisterResourceSet(DXCResourceSet* d3drs);
+
+        D3D12_RESOURCE_STATES GetBufferState(DXCBuffer* tex) const;
+        D3D12_RESOURCE_STATES GetTexState(DXCTexture* tex) const;
+
+        //return old states
+        D3D12_RESOURCE_STATES SetBufferState(DXCBuffer* tex, D3D12_RESOURCE_STATES newState);
+        D3D12_RESOURCE_STATES SetTexState(DXCTexture* tex, D3D12_RESOURCE_STATES newState);
 
         //Color from high to low is a(ignored),r,g,b
         void PushDebugGroup(const std::string& name, uint32_t color);
@@ -203,6 +240,8 @@ namespace alloy::dxc
         );
 
         virtual ~DXCRenderCmdEnc() {}
+
+        virtual void EndPass() override;
 
         virtual void SetPipeline(const common::sp<IGfxPipeline>&) override;
 
@@ -340,7 +379,7 @@ namespace alloy::dxc
             std::uint32_t dstBaseArrayLayer,
             const Size3D& copySize) override;
 
-        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
+        //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
         
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
 

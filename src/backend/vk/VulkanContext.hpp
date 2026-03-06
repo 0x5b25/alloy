@@ -275,7 +275,7 @@ namespace alloy::vk
         }
 
         static common::sp<VulkanContext> Make(const IContext::Options& opts) {
-            assert(false);//figure out a way to set debug extensions
+            //assert(false);//figure out a way to set debug extensions
             if(!VolkCtx::Ref()) return nullptr;
             return common::sp{ new VulkanContext() };
         }

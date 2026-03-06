@@ -205,7 +205,10 @@ bool Contains(T&& container, U&& element) {
             throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
         }
 
-        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING)) {
+        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING) ||
+           !_AddExtIfPresent(VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE) ||
+           !_AddExtIfPresent(VkDevExtNames::VK_KHR_CREATE_RENDERPASS2)
+        ) {
             throw std::exception("VkDevice creation failed. dynamic rendering not supported");
         }
 

@@ -60,6 +60,9 @@ namespace alloy::dxc {
                     continue;
                 }
 
+                //Mark occupied
+                pool.bitmap.Set(slotIdx);
+
                 //Try to allocate from current pool.
                 result.handle = pool.heap->GetCPUDescriptorHandleForHeapStart();
                 result.handle.ptr += _incrSize * slotIdx;

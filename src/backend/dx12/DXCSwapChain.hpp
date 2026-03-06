@@ -105,6 +105,7 @@ namespace alloy::dxc {
         //VkExtent2D _scExtent;
         //VkSurfaceFormatKHR _surfaceFormat;
         bool _syncToVBlank, _newSyncToVBlank;
+        bool _srgbColorSpace;
 
         //VkFence _imageAvailableFence;
         //std::uint32_t _currentImageIndex;
@@ -113,7 +114,8 @@ namespace alloy::dxc {
             const common::sp<DXCDevice>& dev,
             const Description& desc
         ) : ISwapChain(desc)
-          , _dev(dev)    
+          , _dev(dev)
+          , _srgbColorSpace(desc.colorSrgb)
         {
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
         }
@@ -123,6 +125,11 @@ namespace alloy::dxc {
         void ReleaseFramebuffers();
         void CreateFramebuffers(std::uint32_t width, std::uint32_t height);
 
+        static DXGI_FORMAT GetDesiredPixelFormat(bool srgb) {
+            return srgb? DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+                       : DXGI_FORMAT_B8G8R8A8_UNORM
+                       ;
+        }
         
         //void SetImageIndex(std::uint32_t index) {_currentImageIndex = index; }
 

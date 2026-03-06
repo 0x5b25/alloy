@@ -409,62 +409,97 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
     //RegisterObjInUse(renderPass);
 
     @autoreleasepool{
-        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        MTLRenderPassDescriptor* pass = [[MTLRenderPassDescriptor renderPassDescriptor] autorelease];
 
         for(unsigned i = 0; i < action.colorTargetActions.size(); i++) {
-            const auto& colorTgt = action.colorTargetActions[i];
+            const auto& ctAct = action.colorTargetActions[i];
 
             auto* mtlColorTgt = pass.colorAttachments[i];
 
-            mtlColorTgt.clearColor = MTLClearColorMake(colorTgt.clearColor.r, 
-                                                     colorTgt.clearColor.g,
-                                                      colorTgt.clearColor.b,
-                                                     colorTgt.clearColor.a);
-            switch(colorTgt.storeAction) {
-            case StoreAction::DontCare: mtlColorTgt.storeAction = MTLStoreActionDontCare; break;
-            case StoreAction::Store: mtlColorTgt.storeAction = MTLStoreActionStore; break;
-            case StoreAction::MultisampleResolve: mtlColorTgt.storeAction = MTLStoreActionMultisampleResolve; break;
-            case StoreAction::StoreAndMultisampleResolve: mtlColorTgt.storeAction = MTLStoreActionStoreAndMultisampleResolve; break;
-            case StoreAction::CustomSampleDepthStore: mtlColorTgt.storeAction = MTLStoreActionCustomSampleDepthStore; break;
+            mtlColorTgt.clearColor = MTLClearColorMake(ctAct.clearColor.r, 
+                                                       ctAct.clearColor.g,
+                                                       ctAct.clearColor.b,
+                                                       ctAct.clearColor.a);
+
+            bool hasMSAATarget = ctAct.msaaResolveTarget != nullptr;
+
+            switch(ctAct.storeAction) {
+                case StoreAction::DontCare: 
+                    mtlColorTgt.storeAction = hasMSAATarget ? MTLStoreActionMultisampleResolve
+                                                            : MTLStoreActionDontCare; 
+                    break;
+                case StoreAction::Store: 
+                    mtlColorTgt.storeAction = hasMSAATarget ? MTLStoreActionStoreAndMultisampleResolve
+                                                            : MTLStoreActionStore;
+                    break;
             }
 
-            switch(colorTgt.loadAction) {
-            case LoadAction::DontCare: mtlColorTgt.loadAction = MTLLoadActionDontCare; break;
-            case LoadAction::Load: mtlColorTgt.loadAction = MTLLoadActionLoad; break;
-            case LoadAction::Clear:mtlColorTgt.loadAction = MTLLoadActionClear; break;
+            switch(ctAct.loadAction) {
+                case LoadAction::DontCare: mtlColorTgt.loadAction = MTLLoadActionDontCare; break;
+                case LoadAction::Load: mtlColorTgt.loadAction = MTLLoadActionLoad; break;
+                case LoadAction::Clear:mtlColorTgt.loadAction = MTLLoadActionClear; break;
             }
 
-            auto mtlTex = common::SPCast<MetalTexture>(colorTgt.target->GetTexture().GetTextureObject());
-            mtlColorTgt.texture = mtlTex->GetHandle();
-            mtlColorTgt.level = colorTgt.target->GetTexture().GetDesc().baseMipLevel;
-            mtlColorTgt.slice = colorTgt.target->GetTexture().GetDesc().baseArrayLayer;
+            auto& mtlTexView = ctAct.target->GetTexture();
+            auto mtlColorTex = PtrCast<MetalTexture>(mtlTexView.GetTextureObject().get());
+            mtlColorTgt.texture = mtlColorTex->GetHandle();
+            mtlColorTgt.level = mtlTexView.GetDesc().baseMipLevel;
+            mtlColorTgt.slice = mtlTexView.GetDesc().baseArrayLayer;
 
-
+            if(hasMSAATarget) {
+                auto& mtlResolveTexView = ctAct.msaaResolveTarget->GetTexture();
+                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView.GetTextureObject().get());
+                mtlColorTgt.resolveTexture = mtlResolveTex->GetHandle();
+                mtlColorTgt.resolveLevel = mtlResolveTexView.GetDesc().baseMipLevel;
+                mtlColorTgt.resolveSlice = mtlResolveTexView.GetDesc().baseArrayLayer;
+            }
         }
 
         if(action.depthTargetAction) {
+            
+            const auto& dtAct = action.depthTargetAction.value();
+            
+            bool hasMSAATarget = dtAct.msaaResolveTarget != nullptr;
 
             auto* mtlDT = pass.depthAttachment;
-            mtlDT.clearDepth = action.depthTargetAction->clearDepth;
+            mtlDT.clearDepth = dtAct.clearDepth;
             
             switch(action.depthTargetAction->storeAction) {
-            case StoreAction::DontCare: mtlDT.storeAction = MTLStoreActionDontCare; break;
-            case StoreAction::Store: mtlDT.storeAction = MTLStoreActionStore; break;
-            case StoreAction::MultisampleResolve: mtlDT.storeAction = MTLStoreActionMultisampleResolve; break;
-            case StoreAction::StoreAndMultisampleResolve: mtlDT.storeAction = MTLStoreActionStoreAndMultisampleResolve; break;
-            case StoreAction::CustomSampleDepthStore: mtlDT.storeAction = MTLStoreActionCustomSampleDepthStore; break;
+                case StoreAction::DontCare:
+                    mtlDT.storeAction = hasMSAATarget ? MTLStoreActionMultisampleResolve
+                                                      : MTLStoreActionDontCare;
+                    break;
+                case StoreAction::Store: 
+                    mtlDT.storeAction = hasMSAATarget ? MTLStoreActionStoreAndMultisampleResolve
+                                                      : MTLStoreActionStore;
+                    break;
             }
 
             switch(action.depthTargetAction->loadAction) {
-            case LoadAction::DontCare: mtlDT.loadAction = MTLLoadActionDontCare; break;
-            case LoadAction::Load: mtlDT.loadAction = MTLLoadActionLoad; break;
-            case LoadAction::Clear:mtlDT.loadAction = MTLLoadActionClear; break;
+                case LoadAction::DontCare: mtlDT.loadAction = MTLLoadActionDontCare; break;
+                case LoadAction::Load: mtlDT.loadAction = MTLLoadActionLoad; break;
+                case LoadAction::Clear:mtlDT.loadAction = MTLLoadActionClear; break;
             }
 
-            auto mtlTex = common::SPCast<MetalTexture>(action.depthTargetAction->target->GetTexture().GetTextureObject());
-            mtlDT.texture = mtlTex->GetHandle();
-            mtlDT.level = action.depthTargetAction->target->GetTexture().GetDesc().baseMipLevel;
-            mtlDT.slice = action.depthTargetAction->target->GetTexture().GetDesc().baseArrayLayer;
+            auto& mtlTexView = dtAct.target->GetTexture();
+            auto mtlDepthTex = PtrCast<MetalTexture>(mtlTexView.GetTextureObject().get());
+
+            mtlDT.texture = mtlDepthTex->GetHandle();
+            mtlDT.level = mtlTexView.GetDesc().baseMipLevel;
+            mtlDT.slice = mtlTexView.GetDesc().baseArrayLayer;
+
+            if(hasMSAATarget) {
+                auto& mtlResolveTexView = dtAct.msaaResolveTarget->GetTexture();
+                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView.GetTextureObject().get());
+                mtlDT.resolveTexture = mtlResolveTex->GetHandle();
+                mtlDT.resolveLevel = mtlResolveTexView.GetDesc().baseMipLevel;
+                mtlDT.resolveSlice = mtlResolveTexView.GetDesc().baseArrayLayer;
+
+                switch(dtAct.msaaResolveMode) {
+                    case MSAADepthResolveMode::Min : mtlDT.depthResolveFilter = MTLMultisampleDepthResolveFilterMin; break;
+                    case MSAADepthResolveMode::Max : mtlDT.depthResolveFilter = MTLMultisampleDepthResolveFilterMax; break;
+                }
+            }
 
         }
 
@@ -473,17 +508,14 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
             mtlST.clearStencil = action.stencilTargetAction->clearStencil;
             
             switch(action.stencilTargetAction->storeAction) {
-            case StoreAction::DontCare: mtlST.storeAction = MTLStoreActionDontCare; break;
-            case StoreAction::Store: mtlST.storeAction = MTLStoreActionStore; break;
-            case StoreAction::MultisampleResolve: mtlST.storeAction = MTLStoreActionMultisampleResolve; break;
-            case StoreAction::StoreAndMultisampleResolve: mtlST.storeAction = MTLStoreActionStoreAndMultisampleResolve; break;
-            case StoreAction::CustomSampleDepthStore: mtlST.storeAction = MTLStoreActionCustomSampleDepthStore; break;
+                case StoreAction::DontCare: mtlST.storeAction = MTLStoreActionDontCare; break;
+                case StoreAction::Store: mtlST.storeAction = MTLStoreActionStore; break;
             }
 
             switch(action.stencilTargetAction->loadAction) {
-            case LoadAction::DontCare: mtlST.loadAction = MTLLoadActionDontCare; break;
-            case LoadAction::Load: mtlST.loadAction = MTLLoadActionLoad; break;
-            case LoadAction::Clear:mtlST.loadAction = MTLLoadActionClear; break;
+                case LoadAction::DontCare: mtlST.loadAction = MTLLoadActionDontCare; break;
+                case LoadAction::Load: mtlST.loadAction = MTLLoadActionLoad; break;
+                case LoadAction::Clear:mtlST.loadAction = MTLLoadActionClear; break;
             }
 
             auto mtlTex = common::SPCast<MetalTexture>(action.stencilTargetAction->target->GetTexture().GetTextureObject());
@@ -511,7 +543,7 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
         assert(_currEncoder == nullptr);
 
         @autoreleasepool {
-            MTLComputePassDescriptor* pass = [MTLComputePassDescriptor computePassDescriptor];
+            MTLComputePassDescriptor* pass = [[MTLComputePassDescriptor computePassDescriptor] autorelease];
             //pass.dispatchType = MTLDispatchTypeSerial;
             
             id<MTLComputeCommandEncoder> rawEnc
@@ -531,7 +563,7 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
         assert(_currEncoder == nullptr);
 
         @autoreleasepool {
-            MTLBlitPassDescriptor* pass = [MTLBlitPassDescriptor blitPassDescriptor];
+            MTLBlitPassDescriptor* pass = [[MTLBlitPassDescriptor blitPassDescriptor] autorelease];
 
             id<MTLBlitCommandEncoder> rawEnc
                 = [[_cmdBuf blitCommandEncoderWithDescriptor:pass] retain];
@@ -795,13 +827,4 @@ void MetalTransferCmdEnc::CopyBuffer(
         [_mtlEnc generateMipmapsForTexture:texImpl->GetHandle()];
     }
     
-        
-        /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
-        /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> > 1).</param>
-        /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
-        /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        void MetalTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) 
-        {}
-
 } // namespace alloy::mtl

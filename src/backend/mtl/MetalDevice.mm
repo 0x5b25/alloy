@@ -411,8 +411,21 @@ namespace alloy::mtl
         //max_compute_workgroups_per_dimension: 0xFFFF,
         //max_non_sampler_bindings: u32::MAX;
 
-        info.limits.pointSizeRange[0] = 0.f;
-        info.limits.pointSizeRange[1] = 511.f;
+        //info.limits.pointSizeRange[0] = 0.f;
+        //info.limits.pointSizeRange[1] = 511.f;
+
+        //Get max supported MSAA sample count
+        @autoreleasepool {
+
+            if     ([_dev supportsTextureSampleCount: 32]) info.limits.maxMSAASampleCount = SampleCount::x32;
+            else if([_dev supportsTextureSampleCount: 16]) info.limits.maxMSAASampleCount = SampleCount::x16;
+            else if([_dev supportsTextureSampleCount: 8])  info.limits.maxMSAASampleCount = SampleCount::x8;
+            else if([_dev supportsTextureSampleCount: 4])  info.limits.maxMSAASampleCount = SampleCount::x4;
+            else if([_dev supportsTextureSampleCount: 2])  info.limits.maxMSAASampleCount = SampleCount::x2;
+            else                                   info.limits.maxMSAASampleCount = SampleCount::x1;
+        }
+    
+
     }
 
 

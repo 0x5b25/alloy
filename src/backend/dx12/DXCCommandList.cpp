@@ -19,6 +19,29 @@
 namespace alloy::dxc
 {
 
+    constexpr D3D12_RESOURCE_STATES RESOURCE_STATE_ALL_WRITE_BITS =
+        D3D12_RESOURCE_STATE_RENDER_TARGET          |
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS       |
+        D3D12_RESOURCE_STATE_DEPTH_WRITE            |
+        D3D12_RESOURCE_STATE_STREAM_OUT             |
+        D3D12_RESOURCE_STATE_COPY_DEST              |
+        D3D12_RESOURCE_STATE_RESOLVE_DEST           |
+        D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE     |
+        D3D12_RESOURCE_STATE_VIDEO_PROCESS_WRITE;
+
+    static bool HasWriteAccess(D3D12_RESOURCE_STATES state) {
+        return (state & RESOURCE_STATE_ALL_WRITE_BITS) != 0;
+    };
+
+    bool IsStateCompatible(
+        D3D12_RESOURCE_STATES from,
+        D3D12_RESOURCE_STATES to
+    ) {
+        //Common state always come from explicit request
+        if(to == D3D12_RESOURCE_STATE_COMMON) return false;
+        return !HasWriteAccess(from | to);
+    };
+
     common::sp<DXCCommandList> DXCCommandList::Make( const common::sp<DXCDevice>& dev,
                                                      D3D12_COMMAND_LIST_TYPE type 
     ) {
@@ -49,10 +72,14 @@ namespace alloy::dxc
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
             return common::sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
+        } else {
+            //First supported in Win10 Creators update
+            //Can safely assume widespread support
+            ID3D12GraphicsCommandList1* pNewCmdList;
+            pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
+            pCmdList->Release();
+            return common::sp(new DXCCommandList(dev, pAllocator, pNewCmdList));
         }
-
-        return common::sp(new DXCCommandList(dev, pAllocator, pCmdList));
-
     }
 
     #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentPass != nullptr))
@@ -60,8 +87,8 @@ namespace alloy::dxc
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
     
-    ID3D12GraphicsCommandList* DXCCmdEncBase::GetCmdList() const {
-        return static_cast<ID3D12GraphicsCommandList*>(cmdList->GetHandle());
+    ID3D12GraphicsCommandList1* DXCCmdEncBase::GetCmdList() const {
+        return static_cast<ID3D12GraphicsCommandList1*>(cmdList->GetHandle());
     }
 
     void DXCCmdEncBase::RegisterBufferUsage(
@@ -70,9 +97,13 @@ namespace alloy::dxc
     ) {
         auto it = resStates.buffers.find(buffer);
         if(it != resStates.buffers.end()) {
-            it->second |= state;
+            assert(IsStateCompatible(it->second.initial, state));
+            assert(it->second.final == DXC_RESOURCE_STATE_ANY);
+            it->second.initial |= state;
         } else {
-            resStates.buffers[buffer] = state;
+            //Don't care about after states. Indicates no 
+            // state transition is performed by this operation
+            resStates.buffers[buffer] = {state, DXC_RESOURCE_STATE_ANY};
         }
     }
 
@@ -82,11 +113,63 @@ namespace alloy::dxc
     ) {
         auto it = resStates.textures.find(tex);
         if(it != resStates.textures.end()) {
-            it->second |= state;
+            assert(IsStateCompatible(it->second.initial, state));
+            assert(it->second.final == DXC_RESOURCE_STATE_ANY);
+            it->second.initial |= state;
         } else {
-            resStates.textures[tex] = state;
+            //Don't care about before states. Indicates explicit 
+            // state transition is performed by this operation
+            resStates.textures[tex] = {state, DXC_RESOURCE_STATE_ANY};
         }
     }
+
+    void DXCCmdEncBase::RegisterBufferStateChange(
+        DXCBuffer* buffer,
+        D3D12_RESOURCE_STATES state
+    ) {
+        auto it = resStates.buffers.find(buffer);
+        if(it != resStates.buffers.end()) {
+            it->second.final = state;
+        } else {
+            resStates.buffers[buffer] = {state, state};
+        }
+    }
+
+    void DXCCmdEncBase::RegisterTexStateChange(
+        DXCTexture* tex,
+        D3D12_RESOURCE_STATES state
+    ) {
+        auto it = resStates.textures.find(tex);
+        if(it != resStates.textures.end()) {
+            it->second.final = state;
+        } else {
+            resStates.textures[tex] = {state, state};
+        }
+    }
+
+    D3D12_RESOURCE_STATES DXCCmdEncBase::GetBufferState(DXCBuffer* tex) const {
+        return resStates.buffers.at(tex).final;
+    }
+
+    D3D12_RESOURCE_STATES DXCCmdEncBase::GetTexState(DXCTexture* tex) const {
+        return resStates.textures.at(tex).final;
+
+    }
+    
+    //return old states
+    D3D12_RESOURCE_STATES DXCCmdEncBase::SetBufferState(DXCBuffer* tex, D3D12_RESOURCE_STATES newState) {
+        auto& statePair = resStates.buffers.at(tex);
+        auto oldState = statePair.final;
+        statePair.final = newState;
+        return oldState;
+    }
+    D3D12_RESOURCE_STATES DXCCmdEncBase::SetTexState(DXCTexture* tex, D3D12_RESOURCE_STATES newState) {
+        auto& statePair = resStates.textures.at(tex);
+        auto oldState = statePair.final;
+        statePair.final = newState;
+        return oldState;
+    }
+
 
     void DXCCmdEncBase::RegisterResourceSet(DXCResourceSet* d3drs) {
         auto dxcLayout = static_cast<DXCResourceLayout*>(d3drs->GetDesc().layout.get());
@@ -215,6 +298,15 @@ namespace alloy::dxc
             
             D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_RENDER_TARGET;
             RegisterTexUsage(dxcColorTex, state);
+
+            if(ctAct.msaaResolveTarget) {
+                auto& resolveTexView = ctAct.msaaResolveTarget->GetTexture();
+                auto dxcResolveTex = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+
+                //See DXCRenderCmdEnc::End() for matched operations
+                RegisterTexStateChange(dxcColorTex, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+                RegisterTexUsage(dxcResolveTex, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+            }
         };
 
         DXCTexture *dxcDepthTex = nullptr, *dxcStencilTex = nullptr;
@@ -222,10 +314,17 @@ namespace alloy::dxc
 
         if (_fb.depthTargetAction.has_value())
         {
-            auto& texView = _fb.depthTargetAction->target->GetTexture();
+            auto& dtAct = _fb.depthTargetAction.value();
+            auto& texView = dtAct.target->GetTexture();
             dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
 
-            if(_fb.depthTargetAction->storeAction != alloy::StoreAction::DontCare)
+            //Emulate transient resources for StoreAction::DontCare
+            if(dtAct.msaaResolveTarget && 
+               dtAct.msaaResolveMode != MSAADepthResolveMode::None
+            ) {
+                depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            }
+            else if(dtAct.storeAction != alloy::StoreAction::DontCare)
             {
                 depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
             } else {
@@ -259,6 +358,19 @@ namespace alloy::dxc
             }
             if(dxcStencilTex) {
                 RegisterTexUsage(dxcStencilTex, stencilState);
+            }
+        }
+
+        if (_fb.depthTargetAction.has_value()) {
+            
+            auto& dtAct = _fb.depthTargetAction.value();
+            if(dtAct.msaaResolveTarget) {
+                auto& resolveTexView = dtAct.msaaResolveTarget->GetTexture();
+                auto dxcResolveTex = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+
+                //See DXCRenderCmdEnc::End() for matched operations
+                RegisterTexStateChange(dxcDepthTex, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+                RegisterTexUsage(dxcResolveTex, D3D12_RESOURCE_STATE_RESOLVE_DEST);
             }
         }
 
@@ -335,6 +447,116 @@ namespace alloy::dxc
                 );
             }
         });
+    }
+
+    void DXCRenderCmdEnc::EndPass() {
+        DXCCmdEncBase::EndPass();
+        //Inject MSAA resolve
+
+        //Gather barriers
+        std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+        for(auto& ctAct : _fb.colorTargetActions) {
+            if(ctAct.msaaResolveTarget) {
+                auto& texView = ctAct.target->GetTexture();
+                auto dxcColorTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+                auto srcState = GetTexState(dxcColorTex);
+                auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+
+                if(srcState != dstState) {
+
+                    auto& barrier = barriers.emplace_back();
+                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                    barrier.Transition.pResource = dxcColorTex->GetHandle();
+                    barrier.Transition.StateBefore = srcState;
+                    barrier.Transition.StateAfter = dstState;
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+                    SetTexState(dxcColorTex, dstState);
+                }
+            }
+        }
+
+        if (_fb.depthTargetAction.has_value())
+        {
+            auto& dtAct = _fb.depthTargetAction.value();
+            auto& texView = dtAct.target->GetTexture();
+            auto dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+            auto srcState = GetTexState(dxcDepthTex);
+            auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+
+            if(srcState != dstState) {
+                auto& barrier = barriers.emplace_back();
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                barrier.Transition.pResource = dxcDepthTex->GetHandle();
+                barrier.Transition.StateBefore = srcState;
+                barrier.Transition.StateAfter = dstState;
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                
+                SetTexState(dxcDepthTex, dstState);
+            }
+        }
+
+        //Inject barrier
+        if(!barriers.empty()) {
+            auto gfxCmdList = GetCmdList();
+            gfxCmdList->ResourceBarrier(barriers.size(), barriers.data());
+        }
+
+        //Run resolve command
+        for(auto& ctAct : _fb.colorTargetActions) {
+            if(ctAct.msaaResolveTarget) {
+                auto& texView = ctAct.target->GetTexture();
+                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+                auto& resolveTexView = ctAct.msaaResolveTarget->GetTexture();
+                auto dxcDestination = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+
+                GetCmdList()->ResolveSubresource(
+                    dxcDestination->GetHandle(),
+                    0,
+                    dxcSource->GetHandle(),
+                    0,
+                    dxcDestination->GetHandle()->GetDesc().Format);
+            }
+        }
+
+        if (_fb.depthTargetAction.has_value())
+        {
+            auto& dsAct = _fb.depthTargetAction.value();
+            if(dsAct.msaaResolveTarget) {
+                auto& texView = dsAct.target->GetTexture();
+                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+                auto& resolveTexView = dsAct.msaaResolveTarget->GetTexture();
+                auto dxcDestination = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+
+                auto resolveMode = _fb.depthTargetAction->msaaResolveMode;
+
+                if(resolveMode != MSAADepthResolveMode::None) {
+
+                    D3D12_RESOLVE_MODE dxcResovleMode = resolveMode == MSAADepthResolveMode::Min ?
+                        D3D12_RESOLVE_MODE_MIN :
+                        D3D12_RESOLVE_MODE_MAX ;
+
+                    GetCmdList()->ResolveSubresourceRegion(
+                        dxcDestination->GetHandle(),
+                        0,
+                        0,
+                        0,
+                        dxcSource->GetHandle(),
+                        0,
+                        nullptr,
+                        dxcDestination->GetHandle()->GetDesc().Format,
+                        dxcResovleMode
+                    );
+                }
+            }
+        }
     }
 
     void DXCRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
@@ -743,10 +965,12 @@ namespace alloy::dxc
         //vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
     };
 #endif
-    //static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
-    //{
-    //    return ((arrayLayer * mipLevelCount) + mipLevel);
-    //};
+
+#if 0
+    static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
+    {
+        return ((arrayLayer * mipLevelCount) + mipLevel);
+    };
 
     void DXCTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source,
                                            const common::sp<ITexture>& destination) {
@@ -765,13 +989,14 @@ namespace alloy::dxc
 
         recordedCmds.emplace_back([this, dxcSource, dxcDestination]() {
             GetCmdList()->ResolveSubresource(
-                dxcSource->GetHandle(),
-                0,
                 dxcDestination->GetHandle(),
+                0,
+                dxcSource->GetHandle(),
                 0,
                 dxcDestination->GetHandle()->GetDesc().Format);
         });
     }
+#endif
 
     void DXCTransferCmdEnc::CopyBufferToTexture(
         const common::sp<BufferRange>& src,
@@ -1022,30 +1247,6 @@ namespace alloy::dxc
         _EndCurrentActivePass();
 
 
-        
-        constexpr D3D12_RESOURCE_STATES RESOURCE_STATE_ALL_WRITE_BITS =
-            D3D12_RESOURCE_STATE_RENDER_TARGET          |
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS       |
-            D3D12_RESOURCE_STATE_DEPTH_WRITE            |
-            D3D12_RESOURCE_STATE_STREAM_OUT             |
-            D3D12_RESOURCE_STATE_COPY_DEST              |
-            D3D12_RESOURCE_STATE_RESOLVE_DEST           |
-            D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE     |
-            D3D12_RESOURCE_STATE_VIDEO_PROCESS_WRITE;
-
-        auto _HasWriteAccess = [](D3D12_RESOURCE_STATES state) {
-            return (state & RESOURCE_STATE_ALL_WRITE_BITS) != 0;
-        };
-
-        auto _IsStateCompatible = [&_HasWriteAccess](
-            D3D12_RESOURCE_STATES state1,
-            D3D12_RESOURCE_STATES state2
-        ) {
-            //Common state always come from explicit request
-            if(state2 == D3D12_RESOURCE_STATE_COMMON) return false;
-            return !_HasWriteAccess(state1 | state2);
-        };
-
         //Push state transitions as earily as possible
         //Also combine compatible states to avoid read to read state
         //transitions
@@ -1060,38 +1261,76 @@ namespace alloy::dxc
             auto& prevStates = prevPass->resStates;
 
             //Check buffer states
-            for(auto& [buffer, stateReq] : requestedStates.buffers) {
+            for(auto& [buffer, statePair] : requestedStates.buffers) {
+
+                auto stateReq = statePair.initial;
                 auto it = prevStates.buffers.find(buffer);
                 if(it == prevStates.buffers.end()) {
-                    prevStates.buffers.insert({buffer, stateReq});
+                    //Generally we don't care about statePair.final
+                    //Back-to-front scanning will only use 
+                    //currentPass's statePair.initial and previousPass's statePair.final
+                    prevStates.buffers.insert({buffer, statePair});
                     continue;
                 }
-                auto& prevState = it->second;
-                if(!_IsStateCompatible(prevState, stateReq)) {
+                auto& prevStatePair = it->second;
+                bool hasExplicitTransitionInPrevPass = prevStatePair.final != DXC_RESOURCE_STATE_ANY;
+                auto prevFinalState = hasExplicitTransitionInPrevPass ? prevStatePair.final
+                                                                      : prevStatePair.initial
+                                                                      ;
+                if(!IsStateCompatible(prevFinalState, stateReq)) {
                     //Not compatible. Add to current pass
-                    currPass->resStates.buffers.insert({buffer, stateReq});
+                    currPass->resStates.buffers.insert({buffer, statePair});
                 }
                 else {
                     //Compatible. Merge the states into prev pass
-                    prevState |= stateReq;
+                    if(!hasExplicitTransitionInPrevPass)
+                        prevStatePair.initial |= stateReq;
+                    else {
+                        //According to https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12#implicit-state-transitions
+                        //Explicit transition may not happen on prev pass
+                        // if resource states are compatible during barrier encoding
+                        // which means the auto promote/decay is uninterrupted
+                        //TODO: confirm:
+                        //If the transition happens(The barrier is encoded), will the 
+                        // auto promote still happen?
+                        // If so, then the current implementation is fine
+                        // If not, additional buffer state tracking & barrier insertion
+                        //  is needed during pass playback
+                    }
                 }
             }
 
             //Check texture states
-            for(auto& [texture, stateReq] : requestedStates.textures) {
+            for(auto& [texture, statePair] : requestedStates.textures) {
+                auto stateReq = statePair.initial;
                 auto it = prevStates.textures.find(texture);
                 if(it == prevStates.textures.end()) {
-                    prevStates.textures.insert({texture, stateReq});
+                    prevStates.textures.insert({texture, statePair});
                     continue;
                 }
-                auto& prevState = it->second;
-                if(!_IsStateCompatible(prevState, stateReq)) {
+                auto& prevStatePair = it->second;
+                
+                bool hasExplicitTransitionInPrevPass = prevStatePair.final != DXC_RESOURCE_STATE_ANY;
+                auto prevFinalState = hasExplicitTransitionInPrevPass ? prevStatePair.final
+                                                                      : prevStatePair.initial
+                                                                      ;
+                if(!IsStateCompatible(prevFinalState, stateReq)) {
                     //Not compatible. Add to current pass
-                    currPass->resStates.textures.insert({texture, stateReq});
+                    currPass->resStates.textures.insert({texture, statePair});
                 }
                 else {
                     //Compatible. Merge the states into prev pass
-                    prevState |= stateReq;
+                    if(!hasExplicitTransitionInPrevPass)
+                        prevStatePair.initial |= stateReq;
+                    else {
+                        //Textures generally don't have auto promote/decay.
+                        //If prev/after states aren't matched, we need explicit
+                        // transition
+                        if(prevFinalState & stateReq != stateReq) {
+                            //We have missing states. Add to current pass
+                            currPass->resStates.textures.insert({texture, statePair});
+                        }
+                    }
                 }
             }
 
@@ -1099,29 +1338,33 @@ namespace alloy::dxc
 
         ResourceStates currentStates {};
 
-        std::vector<std::vector<D3D12_RESOURCE_BARRIER>> barrierArgs;
-        barrierArgs.resize(_passes.size());
-        auto i = 0;
-   
+        //Playback begin
         for(auto pass : _passes) {
 
+            //Setup inital status for pass & insert barriers if necessary
             std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
             auto& resStates = pass->resStates;
-            for(auto& [buffer, state] : resStates.buffers) {
-                
+            for(auto& [buffer, statePair] : resStates.buffers) {
+                auto stateReq = statePair.initial;
+                bool hasExplicitTransition = statePair.final != DXC_RESOURCE_STATE_ANY;
                 auto it = currentStates.buffers.find(buffer);
                 D3D12_RESOURCE_STATES prevState = D3D12_RESOURCE_STATE_COMMON;
                 if(it == currentStates.buffers.end()) {
                     //DX12 buffers are always in common state when submission begins.
                     //So it is always compatible on first use.
-                    //currentStates.buffers.insert({buffer, D3D12_RESOURCE_STATE_COMMON});
-                    //continue;
+                    currentStates.buffers.insert({buffer, 
+                        { 
+                            .initial = D3D12_RESOURCE_STATE_COMMON,
+                            .final = stateReq,
+                        }
+                    });
+                    continue;
                 } else {
-                    prevState = it->second;
+                    prevState = it->second.final;
                 }
-                if(prevState == state) {
-                    if (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                if(prevState & stateReq == stateReq) {
+                    if (prevState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS != 0) {
                         //UAV barrier is needed on write-after-write scenario
                         auto& barrier = barriers.emplace_back();
                         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -1134,28 +1377,37 @@ namespace alloy::dxc
 
                 } else {
                     //Transition barrier
-                    assert(prevState != state);
+                    assert(prevState != stateReq);
                     auto& barrier = barriers.emplace_back();
                     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
                     barrier.Transition.pResource = buffer->GetHandle();
                     barrier.Transition.StateBefore = prevState;
-                    barrier.Transition.StateAfter = state;
+                    barrier.Transition.StateAfter = stateReq;
                 }
-                currentStates.buffers[buffer] = state;
+                //Will be set to statePair.final after pass completed. we need
+                // to setup initial states for pass
+                currentStates.buffers[buffer].final = stateReq;
             }
 
-            for(auto& [texture, state] : resStates.textures) {
+            for(auto& [texture, statePair] : resStates.textures) {
+                auto stateReq = statePair.initial;
                 auto it = currentStates.textures.find(texture);
                 if(it == currentStates.textures.end()) {
                     //DX12 textures often can't auto-decay, so we need to request
                     //states on first use
-                    currentStates.textures.insert({texture, state});
-                    _requestedStates.insert({texture, state});
+                    //Erase RESOURCE_STATE_ANY
+                    auto initStatePair = statePair;
+                    initStatePair.final = initStatePair.initial;
+                    //We can't have init as DXC_RESOURCE_STATE_ANY
+                    assert(statePair.initial != DXC_RESOURCE_STATE_ANY);
+
+                    currentStates.textures.insert({texture, initStatePair});
+                    //_statePairs.insert({texture, statePair});
                     continue;
                 }
-                auto& prevState = it->second;
-                if (prevState == state) {
-                    if (prevState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                auto& prevState = it->second.final;
+                if (prevState & stateReq == stateReq) {
+                    if (prevState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS != 0) {
                         //UAV barrier is needed on write-after-write scenario
                         auto& barrier = barriers.emplace_back();
                         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -1167,28 +1419,30 @@ namespace alloy::dxc
                     }
                 } else {
                     //Transition barrier
-                    assert(prevState != state);
+                    assert(prevState != stateReq);
                     auto& barrier = barriers.emplace_back();
                     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
                     barrier.Transition.pResource = texture->GetHandle();
                     barrier.Transition.StateBefore = prevState;
-                    barrier.Transition.StateAfter = state;
+                    barrier.Transition.StateAfter = stateReq;
                 }
                 
-                currentStates.textures[texture] = state;
+                currentStates.textures[texture].final = statePair.initial;
             }
             if(!barriers.empty())
                 _cmdList->ResourceBarrier(barriers.size(), barriers.data());
 
+            //Fill in current states
+            pass->resStates = std::move(currentStates);
             //Replay recorded commands
             pass->EndPass();
+            //Retrive current states after pass
+            currentStates = std::move(pass->resStates);
 
-            barrierArgs[i] = barriers;
-            ++i;
         }
 
         //Replay completed. Update final state
-        _finalStates = std::move(currentStates.textures);
+        _statePairs = std::move(currentStates.textures);
 
         ThrowIfFailed(_cmdList->Close());
     }

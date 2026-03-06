@@ -131,7 +131,7 @@ namespace alloy::dxc{
     class DXCAutoFence {
         Microsoft::WRL::ComPtr<ID3D12Fence> _fence;
         std::atomic<std::uint64_t> _expectedVal;
-        std::mutex _waitLock;
+        //std::mutex _waitLock;
 
         //SetEventOnCompletion will block until complete if handle is null
         HANDLE _fenceEventHandle;
@@ -155,6 +155,8 @@ namespace alloy::dxc{
         HRESULT InsertWaitToQueue(ID3D12CommandQueue* q);
         HRESULT InsertSignalToQueue(ID3D12CommandQueue* q);
         HRESULT InsertSignalToQueueAutoInc(ID3D12CommandQueue* q);//Automatic increment fence
+
+        HRESULT InsertSignalToQueueAndWait(ID3D12CommandQueue* q, std::uint32_t timeoutMs);
 
         void IncrementFence() { ++_expectedVal; }
 
@@ -183,6 +185,7 @@ namespace alloy::dxc{
 
         float timestamp_period;
         bool support_a4b4g4r4;
+        uint32_t maxMSAASampleCount;
 
         void ReadFromDevice(ID3D12Device* pdev);
 

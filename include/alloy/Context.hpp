@@ -120,25 +120,30 @@ namespace alloy {
             uint32_t              maxFramebufferWidth;
             uint32_t              maxFramebufferHeight;
             uint32_t              maxFramebufferLayers;
-            SampleCount           framebufferColorSampleCounts;
-            SampleCount           framebufferDepthSampleCounts;
-            SampleCount           framebufferStencilSampleCounts;
-            SampleCount           framebufferNoAttachmentsSampleCounts;
+            //SampleCount           framebufferColorSampleCounts;
+            //SampleCount           framebufferDepthSampleCounts;
+            //SampleCount           framebufferStencilSampleCounts;
+            //SampleCount           framebufferNoAttachmentsSampleCounts;
             uint32_t              maxColorAttachments;
-            SampleCount           sampledImageColorSampleCounts;
-            SampleCount           sampledImageIntegerSampleCounts;
-            SampleCount           sampledImageDepthSampleCounts;
-            SampleCount           sampledImageStencilSampleCounts;
-            SampleCount           storageImageSampleCounts;
-            uint32_t              maxSampleMaskWords;
+            //SampleCount           sampledImageColorSampleCounts;
+            //SampleCount           sampledImageIntegerSampleCounts;
+            //SampleCount           sampledImageDepthSampleCounts;
+            //SampleCount           sampledImageStencilSampleCounts;
+            //SampleCount           storageImageSampleCounts;
+            //uint32_t              maxSampleMaskWords;
             float                 timestampPeriod;
             uint32_t              maxClipDistances;
             uint32_t              maxCullDistances;
             uint32_t              maxCombinedClipAndCullDistances;
-            float                 pointSizeRange[2];
-            float                 lineWidthRange[2];
+
+            //TODO: Consider remove these props
+            // DX12 don't allow changing line width & point size
+            // Metal don't allow changing line width
+            //float                 pointSizeRange[2];
+            //float                 lineWidthRange[2];
             float                 pointSizeGranularity;
             float                 lineWidthGranularity;
+            SampleCount           maxMSAASampleCount;
         } limits;
 
         struct Capabilities {

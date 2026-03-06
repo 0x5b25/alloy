@@ -49,6 +49,20 @@ namespace alloy
             // Indicates whether presentation of the Swapchain will be synchronized to the window system's vertical refresh rate.
             bool syncToVerticalBlank;
 
+            //All the swapchains support BGRA8_Unorm format
+            //Metal has a very limited swapchain format support for CAMetalLayer:
+            //https://developer.apple.com/documentation/QuartzCore/CAMetalLayer/pixelFormat
+            //    default is bgra8Unorm
+            //    selectable:
+            //        bgra8Unorm
+            //        bgra8UnormSrgb
+            //        rgba16Float
+            //        rgb10a2Unorm
+            //        bgr10a2Unorm
+            //        bgra10_xr
+            //        bgra10_xr_srgb
+            //        bgr10_xr
+            //        bgr10_xr_srgb
             // Indicates whether the color target of the Swapchain will use an sRGB PixelFormat.
             bool colorSrgb;
         };

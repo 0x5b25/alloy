@@ -27,12 +27,14 @@ namespace alloy {
         enum class StoreAction {
             DontCare = 0,
             Store = 1,
-            MultisampleResolve = 2,
-            StoreAndMultisampleResolve = 3,
-            CustomSampleDepthStore = 5,
+
+            //Not supported other than metal
+            //MultisampleResolve = 2,
+            //StoreAndMultisampleResolve = 3,
+            //CustomSampleDepthStore = 5,
         };
         
-        enum class MSAADepthResolveFilter {
+        enum class MSAADepthResolveMode {
             None = 0,
             Min = 1,
             Max = 2,
@@ -51,8 +53,7 @@ namespace alloy {
             /// The mip level to render to. This value must be less than <see cref="Texture.MipLevels"/> in the target
             //std::uint32_t mipLevel;
             
-            /// The target texture for MSAA resolve. Can be null
-            //common::sp<ITexture> resolveTarget;
+            
                             
             //std::uint32_t resolveArrayLayer; //seems to translate to depthPlane in metal
                             
@@ -64,20 +65,36 @@ namespace alloy {
         
         struct ColorAttachmentAction : public AttachmentAction {
             Color4f clearColor;
+
+            /// The target texture for MSAA resolve. Can be null
+            // Use averaging mode to resolve
+            common::sp<IRenderTarget> msaaResolveTarget;
         };
         
         struct DepthAttachmentAction : public AttachmentAction {
             float clearDepth;
-            
-            MSAADepthResolveFilter resolveFilter;
+
+            /// The target texture for MSAA resolve. Can be null
+            common::sp<IRenderTarget> msaaResolveTarget;
+
+            //DX12 can resolve depth using ResolveSubresourceRegion
+            //DX12 & Vulkan support AVERAGE/MIN/MAX
+            //Metal only support MIN/MAX
+            MSAADepthResolveMode msaaResolveMode;
         };
         
         struct StencilAttachmentAction : public AttachmentAction {
             uint32_t clearStencil;
             
+            //DX12 can resolve stencil using ResolveSubresourceRegion
+            //Vulkan&Metal can resolve stencil inside renderpass
+            //  None of Metal's stencil resolve modes are in DX12/Vulkan
+            //So we don't enable stencil MSAA resolve.
             ///False: no filter applyed,
             ///True: use whatever depth resolve filter is selected.
-            bool enableResolveFilter;
+            //bool enableResolveFilter;
+            
+            //MSAAStencilResolveMode resolveFilter;
         };
         
         struct RenderPassAction {

@@ -826,6 +826,7 @@ namespace alloy::vk{
     };
 #endif
 
+#if 0
     void VkTransferCmdEnc::ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination)
     {
         VulkanTexture* vkSource = PtrCast<VulkanTexture>(source.get());
@@ -885,6 +886,7 @@ namespace alloy::vk{
             }
         });
     }
+#endif
 
     void VkTransferCmdEnc::CopyBufferToTexture(
         const common::sp<BufferRange>& src,
@@ -1366,6 +1368,17 @@ namespace alloy::vk{
             state.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             state.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             RegisterTexUsage(vkColorTex, state);
+
+            if(ctAct.msaaResolveTarget) {
+                auto& vkResolveTexView = ctAct.msaaResolveTarget->GetTexture();
+                auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
+
+                VulkanCommandList::TextureState destinationState{};
+                destinationState.access =  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                destinationState.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                destinationState.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                RegisterTexUsage(vkResolveTex, destinationState);
+            }
         };
 
         if (fb.depthTargetAction.has_value())
@@ -1387,18 +1400,29 @@ namespace alloy::vk{
                 state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             }
             RegisterTexUsage(vkDepthTex, state);
+
+            if(fb.depthTargetAction->msaaResolveTarget) {
+                auto& vkResolveTexView = fb.depthTargetAction->msaaResolveTarget->GetTexture();
+                auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
+
+                VulkanCommandList::TextureState destinationState{};
+                destinationState.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                destinationState.stage = state.stage;
+                destinationState.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                RegisterTexUsage(vkResolveTex, destinationState);
+            }
         }
 
         if(fb.stencilTargetAction.has_value())
         {
-            auto& vkTexView = fb.depthTargetAction->target->GetTexture();
+            auto& vkTexView = fb.stencilTargetAction->target->GetTexture();
             auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
             VulkanCommandList::TextureState state{};
             state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT 
                         | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
-            if(fb.depthTargetAction->storeAction != alloy::StoreAction::DontCare)
+            if(fb.stencilTargetAction->storeAction != alloy::StoreAction::DontCare)
             {
                 state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
                              | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -1408,6 +1432,18 @@ namespace alloy::vk{
                 state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             }
             RegisterTexUsage(vkDepthTex, state);
+
+            
+            //if(fb.stencilTargetAction->msaaResolveTarget) {
+            //    auto& vkResolveTexView = fb.stencilTargetAction->msaaResolveTarget->GetTexture();
+            //    auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
+            //
+            //    VulkanCommandList::TextureState destinationState{};
+            //    destinationState.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            //    destinationState.stage = state.stage;
+            //    destinationState.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            //    RegisterTexUsage(vkResolveTex, destinationState);
+            //}
         }
 
         recordedCmds.emplace_back(
@@ -1450,10 +1486,6 @@ namespace alloy::vk{
 
                     colorAttachmentDesc.imageView = vkTexView->GetHandle();
                     colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
-                    colorAttachmentDesc.resolveImageView = nullptr;
-                    colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
                     colorAttachmentDesc.loadOp = _Vd2VkLoadOp(ctAct.loadAction),
                     colorAttachmentDesc.storeOp = _Vd2VkStoreOp(ctAct.storeAction),
                     colorAttachmentDesc.clearValue = {.color = {
@@ -1464,6 +1496,19 @@ namespace alloy::vk{
                                 ctAct.clearColor.a
                             }
                         }};
+
+                    if(ctAct.msaaResolveTarget) {
+                        auto vkResolveTexView = common::PtrCast<VulkanTextureView>(&ctAct.msaaResolveTarget->GetTexture());
+
+                        colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+                        colorAttachmentDesc.resolveImageView = vkResolveTexView->GetHandle();
+                        colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    }
+                    else {
+                        colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
+                        colorAttachmentDesc.resolveImageView = nullptr;
+                        colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    }
                 }
 
                 VkRenderingAttachmentInfoKHR depthAttachment{
@@ -1489,9 +1534,6 @@ namespace alloy::vk{
 
                     depthAttachment.imageView = vkTexView->GetHandle();
                     depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-                    depthAttachment.resolveImageView = nullptr;
-                    depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                     depthAttachment.loadOp = _Vd2VkLoadOp(actions.depthTargetAction->loadAction);
                     depthAttachment.storeOp = _Vd2VkStoreOp(actions.depthTargetAction->storeAction);
                     depthAttachment.clearValue = {
@@ -1499,6 +1541,26 @@ namespace alloy::vk{
                             .depth = actions.depthTargetAction->clearDepth
                         }
                     };
+
+                    if(actions.depthTargetAction->msaaResolveTarget) {
+                        auto vkResolveTexView = common::PtrCast<VulkanTextureView>(
+                            &actions.depthTargetAction->msaaResolveTarget->GetTexture());
+
+                        VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
+                        switch(actions.depthTargetAction->msaaResolveMode) {
+                            case MSAADepthResolveMode::Min : resolveMode = VK_RESOLVE_MODE_MIN_BIT; break;
+                            case MSAADepthResolveMode::Max : resolveMode = VK_RESOLVE_MODE_MAX_BIT; break;
+                        }
+
+                        depthAttachment.resolveMode = resolveMode;
+                        depthAttachment.resolveImageView = vkResolveTexView->GetHandle();
+                        depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    }
+                    else {
+                        depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+                        depthAttachment.resolveImageView = nullptr;
+                        depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    }
                 }
 
                 if(actions.stencilTargetAction.has_value())
@@ -1514,9 +1576,6 @@ namespace alloy::vk{
 
                     stencilAttachment.imageView = vkTexView->GetHandle();
                     stencilAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    stencilAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-                    stencilAttachment.resolveImageView = nullptr;
-                    stencilAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                     stencilAttachment.loadOp = _Vd2VkLoadOp(actions.stencilTargetAction->loadAction);
                     stencilAttachment.storeOp = _Vd2VkStoreOp(actions.stencilTargetAction->storeAction);
                     stencilAttachment.clearValue = {
@@ -1524,6 +1583,21 @@ namespace alloy::vk{
                             .stencil = actions.stencilTargetAction->clearStencil
                         }
                     };
+
+                    //if(actions.stencilTargetAction->msaaResolveTarget) {
+                    //    auto vkResolveTexView = common::PtrCast<VulkanTextureView>(
+                    //        &actions.stencilTargetAction->msaaResolveTarget->GetTexture());
+                    //
+                    //    stencilAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+                    //    stencilAttachment.resolveImageView = vkResolveTexView->GetHandle();
+                    //    stencilAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    //}
+                    //else
+                    {
+                        stencilAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+                        stencilAttachment.resolveImageView = nullptr;
+                        stencilAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    }
                 }
 
                 const VkRenderingInfoKHR render_info {

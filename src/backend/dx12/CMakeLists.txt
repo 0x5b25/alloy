@@ -102,7 +102,7 @@ endfunction()
 
 function(alloy_copy_dxc_runtime_libs TARGET)
         
-    message("alloy: copying directx 12 runtime libraries to ${TARGET} binary path...")
+    message("alloy: will copy directx 12 runtime libraries to ${TARGET} binary path...")
 
     agility_sdk_copy_binaries(${TARGET})
     pix_runtime_copy_binaries(${TARGET})

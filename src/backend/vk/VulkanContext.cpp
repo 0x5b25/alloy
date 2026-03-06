@@ -235,36 +235,42 @@ namespace alloy::vk
         info.limits.maxFramebufferWidth = devProp.limits.maxFramebufferWidth; 
         info.limits.maxFramebufferHeight = devProp.limits.maxFramebufferHeight; 
         info.limits.maxFramebufferLayers = devProp.limits.maxFramebufferLayers; 
-        info.limits.framebufferColorSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferColorSampleCounts); 
-        info.limits.framebufferDepthSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferDepthSampleCounts); 
-        info.limits.framebufferStencilSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferStencilSampleCounts); 
-        info.limits.framebufferNoAttachmentsSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferNoAttachmentsSampleCounts); 
+        //info.limits.framebufferColorSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferColorSampleCounts); 
+        //info.limits.framebufferDepthSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferDepthSampleCounts); 
+        //info.limits.framebufferStencilSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferStencilSampleCounts); 
+        //info.limits.framebufferNoAttachmentsSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.framebufferNoAttachmentsSampleCounts); 
         info.limits.maxColorAttachments = devProp.limits.maxColorAttachments; 
-        info.limits.sampledImageColorSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageColorSampleCounts); 
-        info.limits.sampledImageIntegerSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageIntegerSampleCounts); 
-        info.limits.sampledImageDepthSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageDepthSampleCounts); 
-        info.limits.sampledImageStencilSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageStencilSampleCounts); 
-        info.limits.storageImageSampleCounts 
-            = _VkSampleCnts2AlSampleCnt(devProp.limits.storageImageSampleCounts); 
-        info.limits.maxSampleMaskWords = devProp.limits.maxSampleMaskWords; 
+        //info.limits.sampledImageColorSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageColorSampleCounts); 
+        //info.limits.sampledImageIntegerSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageIntegerSampleCounts); 
+        //info.limits.sampledImageDepthSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageDepthSampleCounts); 
+        //info.limits.sampledImageStencilSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.sampledImageStencilSampleCounts); 
+        //info.limits.storageImageSampleCounts 
+        //    = _VkSampleCnts2AlSampleCnt(devProp.limits.storageImageSampleCounts); 
+        //info.limits.maxSampleMaskWords = devProp.limits.maxSampleMaskWords; 
         info.limits.timestampPeriod = devProp.limits.timestampPeriod; 
         info.limits.maxClipDistances = devProp.limits.maxClipDistances; 
         info.limits.maxCullDistances = devProp.limits.maxCullDistances; 
         info.limits.maxCombinedClipAndCullDistances = devProp.limits.maxCombinedClipAndCullDistances; 
-        info.limits.pointSizeRange[0] = devProp.limits.pointSizeRange[0]; 
-        info.limits.pointSizeRange[1] = devProp.limits.pointSizeRange[1]; 
-        info.limits.lineWidthRange[0] = devProp.limits.lineWidthRange[0]; 
-        info.limits.lineWidthRange[1] = devProp.limits.lineWidthRange[1]; 
+        //info.limits.pointSizeRange[0] = devProp.limits.pointSizeRange[0]; 
+        //info.limits.pointSizeRange[1] = devProp.limits.pointSizeRange[1]; 
+        //info.limits.lineWidthRange[0] = devProp.limits.lineWidthRange[0]; 
+        //info.limits.lineWidthRange[1] = devProp.limits.lineWidthRange[1]; 
         info.limits.pointSizeGranularity = devProp.limits.pointSizeGranularity; 
-        info.limits.lineWidthGranularity = devProp.limits.lineWidthGranularity; 
+        info.limits.lineWidthGranularity = devProp.limits.lineWidthGranularity;
+
+        auto generalMSAASampleCntBits = devProp.limits.framebufferColorSampleCounts   //Render target supported
+                                      & devProp.limits.sampledImageColorSampleCounts  //Sampled support
+                                      & devProp.limits.storageImageSampleCounts       //Storage support
+                                      ;
+        info.limits.maxMSAASampleCount = _VkSampleCnts2AlSampleCnt(generalMSAASampleCntBits);
     }
 
     void VulkanAdapter::PopulateAdpMemSegs() {
@@ -378,6 +384,8 @@ namespace alloy::vk
             VkDevExtNames::VK_KHR_SYNCHRONIZATION2,
             VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE,
             VkDevExtNames::VK_KHR_DYNAMIC_RENDERING,
+            VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE,
+            VkDevExtNames::VK_KHR_CREATE_RENDERPASS2,
             VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
             VkDevExtNames::VK_KHR_MAINTENANCE1,
         };

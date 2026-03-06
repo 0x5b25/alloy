@@ -192,6 +192,20 @@ function(link_with_veldrid TARGET)
     endif()
 endfunction()
 
+function(alloy_copy_runtime_libs TARGET)
+    if(${VLD_BACKEND_DXC})
+        alloy_copy_dxc_runtime_libs(${TARGET})
+    endif()
+
+    if(${VLD_BACKEND_VK})
+        alloy_copy_vulkan_runtime_libs(${TARGET})
+    endif()
+
+    if(${VLD_BACKEND_MTL})
+        alloy_copy_metal_runtime_libs(${TARGET})
+    endif()
+endfunction()
+
 function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
 
     install(CODE "MESSAGE(\"alloy: installing runtime libraries for each backend to ${PREFIX_PATH}...\")"  COMPONENT ${COMP_NAME})

@@ -97,6 +97,9 @@ target_link_libraries(Veldrid
     )
 
 
+function(alloy_copy_vulkan_runtime_libs TARGET)
+endfunction()
+
 function(alloy_install_vulkan_runtime_libs COMP_NAME PREFIX_PATH)
     #message("alloy: installing vulkan runtime libraries to ${PREFIX_PATH}...")
     

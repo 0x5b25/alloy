@@ -165,6 +165,24 @@ namespace alloy::dxc {
             support_a4b4g4r4 =
              SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
         }
+
+        //Query usable sample qualities
+        maxMSAASampleCount = 1;
+        for(uint32_t sampleCount : {32, 16, 8, 4, 2}) {
+            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
+                .Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
+                .SampleCount = sampleCount
+            };
+            pdev->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
+                , &queryData, sizeof(queryData)
+            );
+
+            if(queryData.NumQualityLevels != 0) {
+                maxMSAASampleCount = sampleCount;
+                break;
+            }
+        }
+
         D3D12_COMMAND_QUEUE_DESC queue_desc = {
            /*.Type =*/ D3D12_COMMAND_LIST_TYPE_DIRECT,
            /*.Priority =*/ D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
@@ -209,14 +227,36 @@ namespace alloy::dxc {
         return true;
     }
 
+    
+    HRESULT DXCAutoFence::InsertSignalToQueueAndWait(ID3D12CommandQueue* q, uint32_t timeoutMs) {
+        auto expectedVal = ++_expectedVal;
+
+        ThrowIfFailed(_fence->SetEventOnCompletion(expectedVal, _fenceEventHandle));
+        ThrowIfFailed(q->Signal(_fence.Get(), expectedVal));
+
+        auto waitResult = WaitForSingleObjectEx(_fenceEventHandle, timeoutMs, false);
+        switch(waitResult){
+            //The state of the specified object is signaled.
+            case WAIT_OBJECT_0: return S_OK;
+            //The time-out interval elapsed, and the object's state is nonsignaled.
+            case WAIT_TIMEOUT: return DXGI_ERROR_WAIT_TIMEOUT;
+            //Object not released before thread terminate
+            case WAIT_ABANDONED:
+            //The wait was ended by one or more user-mode asynchronous procedure calls (APC) queued to the thread.
+            case WAIT_IO_COMPLETION:
+            //Other generic failures
+            default: return E_FAIL;
+        }
+    }
+
     HRESULT DXCAutoFence::WaitOnCPU(std::uint32_t timeoutMs) {
         auto expectedVal = _expectedVal.load(std::memory_order_acquire);
-        std::lock_guard lockGuard{_waitLock};
+        //std::lock_guard lockGuard{_waitLock};
 
         //Return if current fence is already completed
         if(expectedVal <= GetCurrentValue()) return S_OK;
     
-        auto result = _fence->SetEventOnCompletion(expectedVal, nullptr);
+        auto result = _fence->SetEventOnCompletion(expectedVal, _fenceEventHandle);
         if(FAILED(result)) return result;
 
         auto waitResult = WaitForSingleObjectEx(_fenceEventHandle, timeoutMs, false);
@@ -555,8 +595,11 @@ namespace alloy::dxc {
 
     void DXCDevice::WaitForIdle()
     {
-        _waitIdleFence.InsertSignalToQueueAutoInc(_gfxQ->GetHandle());
-        _waitIdleFence.WaitOnCPU(INFINITE);
+        //_waitIdleFence.InsertSignalToQueueAutoInc(_gfxQ->GetHandle());
+        //_waitIdleFence.WaitOnCPU(INFINITE);
+        //_waitIdleFence.WaitOnCPU(4000);
+
+        _waitIdleFence.InsertSignalToQueueAndWait(_gfxQ->GetHandle(), INFINITE);
     }
 
     DXCBuffer::~DXCBuffer() {
@@ -752,13 +795,14 @@ namespace alloy::dxc {
     void DXCCommandQueue::_TransitResourceStatesBeforeSubmit(
         const DXCCommandList& cmdList
     ) {
-        auto& resStateReq = cmdList.GetRequestedResourceStates();
+        auto& resStates = cmdList.GetResourceStates();
 
         auto& cpuTimeline = _dev->GetCurrentState();
 
         std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
-        for(auto& [texture, stateReq] : resStateReq) {
+        for(auto& [texture, statePair] : resStates) {
+            auto stateReq = statePair.initial;
             //Search for current recorded state
             D3D12_RESOURCE_STATES currState = D3D12_RESOURCE_STATE_COMMON;
             auto it = _currentState.textures.find(texture);
@@ -798,9 +842,9 @@ namespace alloy::dxc {
     void DXCCommandQueue::_MarkResourceStatesAfterSubmit(
         const DXCCommandList& cmdList
     ) {
-        auto& finalStates = cmdList.GetFinalResourceStates();
-        for(auto&[tex, state] : finalStates) {
-            _currentState.textures[tex] = state;
+        auto& resStates = cmdList.GetResourceStates();
+        for(auto&[tex, statePair] : resStates) {
+            _currentState.textures[tex] = statePair.final;
         }
     }
 
@@ -869,7 +913,7 @@ namespace alloy::dxc {
         _MarkResourceStatesAfterSubmit(*dxcCmdList);
 
 
-        auto rawCmdList = dxcCmdList->GetHandle();
+        ID3D12CommandList* rawCmdList = dxcCmdList->GetHandle();
         _q->ExecuteCommandLists(1, &rawCmdList);
 
         //Signal the fence
