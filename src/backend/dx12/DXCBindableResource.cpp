@@ -56,7 +56,7 @@ namespace alloy::dxc
 
             pDescRange->BaseShaderRegister = elem.bindingSlot; // start index of the shader registers in the range
             pDescRange->RegisterSpace = elem.bindingSpace; // space 0. can usually be zero
-            pDescRange->NumDescriptors = 1; // we only have one constant buffer, so the range is only 1
+            pDescRange->NumDescriptors = elem.bindingCount; // Support for array binding
             pDescRange->OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND; // this appends the range to the end of the root signature descriptor tables
         
         }
@@ -154,24 +154,28 @@ namespace alloy::dxc
         //std::vector<D3D12_DESCRIPTOR_RANGE> combinedShaderResDescTableRanges;
         //std::vector<D3D12_DESCRIPTOR_RANGE> samplerDescTableRanges;
 
-        std::vector<IBindableResource*> combinedBindables;
-        std::vector<IBindableResource*> samplerBindables;
+        //std::vector<IBindableResource*> combinedBindables;
+        //std::vector<IBindableResource*> samplerBindables;
 
-        for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
+        uint32_t combinedBindableCnt = 0, samplerBindableCnt = 0;
+
+        for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
             
             auto& elemDesc = layoutDesc.shaderResources[i];
-            auto& elem = desc.boundResources[i];
-            
-            switch (elemDesc.kind)
-            {
-            case IBindableResource::ResourceKind::UniformBuffer :
-            case IBindableResource::ResourceKind::StorageBuffer :
-            case IBindableResource::ResourceKind::Texture : 
-                combinedBindables.push_back(elem.get());
-                break;
-            case IBindableResource::ResourceKind::Sampler : 
-                samplerBindables.push_back(elem.get());
-                break;
+
+            for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
+                auto& elem = desc.boundResources[resIdx++];
+                switch (elemDesc.kind)
+                {
+                case IBindableResource::ResourceKind::UniformBuffer :
+                case IBindableResource::ResourceKind::StorageBuffer :
+                case IBindableResource::ResourceKind::Texture : 
+                    combinedBindableCnt++;
+                    break;
+                case IBindableResource::ResourceKind::Sampler : 
+                    samplerBindableCnt++;
+                    break;
+                }
             }
         }
 
@@ -179,10 +183,10 @@ namespace alloy::dxc
         //Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> samplerHeap;
         //std::vector<D3D12_ROOT_PARAMETER> rootParams;
 
-        if(!combinedBindables.empty()) {
+        if(combinedBindableCnt > 0) {
             auto& shaderResHeap = descHeap.emplace_back();
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-            heapDesc.NumDescriptors = combinedBindables.size();
+            heapDesc.NumDescriptors = combinedBindableCnt;
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
             auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&shaderResHeap));
@@ -192,11 +196,11 @@ namespace alloy::dxc
             }
         }
 
-        if(!samplerBindables.empty()) {
+        if(samplerBindableCnt > 0) {
             auto& samplerHeap = descHeap.emplace_back();
 
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-            heapDesc.NumDescriptors = samplerBindables.size();
+            heapDesc.NumDescriptors = samplerBindableCnt;
             heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
             auto hr = pDev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&samplerHeap));
@@ -213,262 +217,265 @@ namespace alloy::dxc
         auto combinedIncrSize = pDev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         auto samplerIncrSize = pDev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
-        for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
+        for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
             
             auto& elemDesc = layoutDesc.shaderResources[i];
-            auto& elem = desc.boundResources[i];
 
-            switch (elemDesc.kind)
-            {
-            case IBindableResource::ResourceKind::UniformBuffer : {
-                auto combinedDescHeap = descHeap.front();
+            for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
+                auto& elem = desc.boundResources[resIdx++];
 
-                auto* range = PtrCast<BufferRange>(elem.get());
-                auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
+                switch (elemDesc.kind)
+                {
+                case IBindableResource::ResourceKind::UniformBuffer : {
+                    auto combinedDescHeap = descHeap.front();
 
-                auto baseGPUAddr = rangedDXCBuffer->GetHandle()->GetGPUVirtualAddress();
-                auto byteCnt = range->GetShape().GetSizeInBytes();
+                    auto* range = PtrCast<BufferRange>(elem.get());
+                    auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
 
-                //DX12 requires CBVs have minimal alignment of 256Bytes
-                assert(byteCnt % 256 == 0);
+                    auto baseGPUAddr = rangedDXCBuffer->GetHandle()->GetGPUVirtualAddress();
+                    auto byteCnt = range->GetShape().GetSizeInBytes();
 
-                D3D12_CONSTANT_BUFFER_VIEW_DESC desc{};
-                desc.BufferLocation = baseGPUAddr + range->GetShape().offsetInElements;
-                desc.SizeInBytes = byteCnt;
+                    //DX12 requires CBVs have minimal alignment of 256Bytes
+                    assert(byteCnt % 256 == 0);
 
-                auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
-                heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
+                    D3D12_CONSTANT_BUFFER_VIEW_DESC desc{};
+                    desc.BufferLocation = baseGPUAddr + range->GetShape().offsetInElements;
+                    desc.SizeInBytes = byteCnt;
 
-                pDev->CreateConstantBufferView(&desc, heapSlot);
+                    auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
+                    heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
 
-                combinedShaderResCnt++;
-            }break;
-            case IBindableResource::ResourceKind::StorageBuffer :
-            case IBindableResource::ResourceKind::Texture : {
+                    pDev->CreateConstantBufferView(&desc, heapSlot);
 
-                //{
-                //DXGI_FORMAT Format;
-                //D3D12_UAV_DIMENSION ViewDimension;
-                //union 
-                //    {
-                //    D3D12_BUFFER_UAV Buffer;
-                //    D3D12_TEX1D_UAV Texture1D;
-                //    D3D12_TEX1D_ARRAY_UAV Texture1DArray;
-                //    D3D12_TEX2D_UAV Texture2D;
-                //    D3D12_TEX2D_ARRAY_UAV Texture2DArray;
-                //    D3D12_TEX2DMS_UAV Texture2DMS;
-                //    D3D12_TEX2DMS_ARRAY_UAV Texture2DMSArray;
-                //    D3D12_TEX3D_UAV Texture3D;
-                //    } 	;
-                //}
+                    combinedShaderResCnt++;
+                }break;
+                case IBindableResource::ResourceKind::StorageBuffer :
+                case IBindableResource::ResourceKind::Texture : {
 
-                auto combinedDescHeap = descHeap.front();
-                auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
-                heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
-
-                if(elemDesc.options.writable) {
-                
-                    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc {};
-                    ID3D12Resource* pRes;
-
-                    if(elemDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
-
-                        auto* range = PtrCast<BufferRange>(elem.get());
-                        auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
-                        auto& shape = range->GetShape();
-
-                        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-                        uavDesc.Buffer.FirstElement = shape.offsetInElements;
-                        uavDesc.Buffer.NumElements = shape.elementCount;
-                        uavDesc.Buffer.StructureByteStride = shape.elementSizeInBytes;
-                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-
-                        pRes = rangedDXCBuffer->GetHandle();
-                    } else {
-                        auto* texView = PtrCast<ITextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
-                        auto& texDesc = dxcTex->GetDesc();
-                        auto& viewDesc = texView->GetDesc();
-                        uavDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
-
-                        switch(texDesc.type) {
-                            case ITexture::Description::Type::Texture1D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    uavDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
-                                    uavDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                    uavDesc.Texture1DArray.MipSlice = viewDesc.baseMipLevel;
-                                    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1DARRAY;
-                                } else {
-                                    uavDesc.Texture1D.MipSlice = viewDesc.baseMipLevel;
-                                    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1D;
-                                }
-                            }break;
-
-                            case ITexture::Description::Type::Texture2D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    uavDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                                    uavDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                    uavDesc.Texture2DArray.PlaneSlice = 0;
-                                    uavDesc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
-                                    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
-                                } else {
-                                    uavDesc.Texture2D.PlaneSlice = 0;
-                                    uavDesc.Texture2D.MipSlice = viewDesc.baseMipLevel;
-                                    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-                                }
-                            }break;
-
-                            case ITexture::Description::Type::Texture3D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    ///#TODO: handle tex array & texture type mismatch
-                                    assert(false);
-                                } else {
-                                    uavDesc.Texture3D.FirstWSlice = 0;
-                                    uavDesc.Texture3D.WSize = -1;
-                                    uavDesc.Texture3D.MipSlice = viewDesc.baseMipLevel;
-                                    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
-                                }
-                            }break;
-                        }
-
-
-                        pRes = dxcTex->GetHandle();
-
-                    }
-
-                    pDev->CreateUnorderedAccessView(pRes, nullptr, &uavDesc, heapSlot);
-                } else {
-                    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc {};
-                    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                    ID3D12Resource* pRes;
-
-                    if(elemDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
-
-                        auto* range = PtrCast<BufferRange>(elem.get());
-                        auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
-                        auto& shape = range->GetShape();
-
-                        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-                        srvDesc.Buffer.FirstElement = shape.offsetInElements;
-                        srvDesc.Buffer.NumElements = shape.elementCount;
-                        srvDesc.Buffer.StructureByteStride = shape.elementSizeInBytes;
-                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-
-                        pRes = rangedDXCBuffer->GetHandle();
-                    } else {
-                        auto* texView = PtrCast<ITextureView>(elem.get());
-                        auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
-                        auto& texDesc = dxcTex->GetDesc();
-                        auto& viewDesc = texView->GetDesc();
-
-                        srvDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
-        
-
-                        ///#TODO: consider ResourceMinLODClamp
-                        switch(texDesc.type) {
-                            case ITexture::Description::Type::Texture1D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    srvDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
-                                    srvDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                    srvDesc.Texture1DArray.MipLevels = viewDesc.mipLevels;
-                                    srvDesc.Texture1DArray.MostDetailedMip = viewDesc.baseMipLevel;
-                                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;
-                                } else {
-                                    srvDesc.Texture1D.MostDetailedMip = viewDesc.baseMipLevel;
-                                    srvDesc.Texture1D.MipLevels = viewDesc.mipLevels;
-                                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
-                                }
-                            }break;
-
-                            case ITexture::Description::Type::Texture2D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    srvDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                                    srvDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                                    srvDesc.Texture2DArray.PlaneSlice = 0;
-                                    srvDesc.Texture2DArray.MipLevels = viewDesc.mipLevels;
-                                    srvDesc.Texture2DArray.MostDetailedMip = viewDesc.baseMipLevel;
-                                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
-                                } else {
-                                    srvDesc.Texture2D.PlaneSlice = 0;
-                                    srvDesc.Texture2D.MipLevels = viewDesc.mipLevels;
-                                    srvDesc.Texture2D.MostDetailedMip = viewDesc.baseMipLevel;
-                                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                                }
-                            }break;
-
-                            case ITexture::Description::Type::Texture3D : {
-                                if(texDesc.arrayLayers > 1) {
-                                    ///#TODO: handle tex array & texture type mismatch
-                                    assert(false);
-                                } else {
-                                    srvDesc.Texture3D.MostDetailedMip = viewDesc.baseMipLevel;
-                                    srvDesc.Texture3D.MipLevels = viewDesc.mipLevels;
-                                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-                                }
-                            }break;
-                        }
-
-
-                        pRes = dxcTex->GetHandle();
-
-                    }
+                    //{
+                    //DXGI_FORMAT Format;
+                    //D3D12_UAV_DIMENSION ViewDimension;
+                    //union 
+                    //    {
+                    //    D3D12_BUFFER_UAV Buffer;
+                    //    D3D12_TEX1D_UAV Texture1D;
+                    //    D3D12_TEX1D_ARRAY_UAV Texture1DArray;
+                    //    D3D12_TEX2D_UAV Texture2D;
+                    //    D3D12_TEX2D_ARRAY_UAV Texture2DArray;
+                    //    D3D12_TEX2DMS_UAV Texture2DMS;
+                    //    D3D12_TEX2DMS_ARRAY_UAV Texture2DMSArray;
+                    //    D3D12_TEX3D_UAV Texture3D;
+                    //    } 	;
+                    //}
 
                     auto combinedDescHeap = descHeap.front();
                     auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
                     heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
-                    pDev->CreateShaderResourceView(pRes, &srvDesc, heapSlot);
+
+                    if(elemDesc.options.writable) {
+                    
+                        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc {};
+                        ID3D12Resource* pRes;
+
+                        if(elemDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
+
+                            auto* range = PtrCast<BufferRange>(elem.get());
+                            auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
+                            auto& shape = range->GetShape();
+
+                            uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+                            uavDesc.Buffer.FirstElement = shape.offsetInElements;
+                            uavDesc.Buffer.NumElements = shape.elementCount;
+                            uavDesc.Buffer.StructureByteStride = shape.elementSizeInBytes;
+                            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+
+                            pRes = rangedDXCBuffer->GetHandle();
+                        } else {
+                            auto* texView = PtrCast<ITextureView>(elem.get());
+                            auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
+                            auto& texDesc = dxcTex->GetDesc();
+                            auto& viewDesc = texView->GetDesc();
+                            uavDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
+
+                            switch(texDesc.type) {
+                                case ITexture::Description::Type::Texture1D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        uavDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
+                                        uavDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                                        uavDesc.Texture1DArray.MipSlice = viewDesc.baseMipLevel;
+                                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1DARRAY;
+                                    } else {
+                                        uavDesc.Texture1D.MipSlice = viewDesc.baseMipLevel;
+                                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1D;
+                                    }
+                                }break;
+
+                                case ITexture::Description::Type::Texture2D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        uavDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
+                                        uavDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                                        uavDesc.Texture2DArray.PlaneSlice = 0;
+                                        uavDesc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
+                                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+                                    } else {
+                                        uavDesc.Texture2D.PlaneSlice = 0;
+                                        uavDesc.Texture2D.MipSlice = viewDesc.baseMipLevel;
+                                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+                                    }
+                                }break;
+
+                                case ITexture::Description::Type::Texture3D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        ///#TODO: handle tex array & texture type mismatch
+                                        assert(false);
+                                    } else {
+                                        uavDesc.Texture3D.FirstWSlice = 0;
+                                        uavDesc.Texture3D.WSize = -1;
+                                        uavDesc.Texture3D.MipSlice = viewDesc.baseMipLevel;
+                                        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+                                    }
+                                }break;
+                            }
+
+
+                            pRes = dxcTex->GetHandle();
+
+                        }
+
+                        pDev->CreateUnorderedAccessView(pRes, nullptr, &uavDesc, heapSlot);
+                    } else {
+                        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc {};
+                        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                        ID3D12Resource* pRes;
+
+                        if(elemDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
+
+                            auto* range = PtrCast<BufferRange>(elem.get());
+                            auto* rangedDXCBuffer = static_cast<const DXCBuffer*>(range->GetBufferObject());
+                            auto& shape = range->GetShape();
+
+                            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+                            srvDesc.Buffer.FirstElement = shape.offsetInElements;
+                            srvDesc.Buffer.NumElements = shape.elementCount;
+                            srvDesc.Buffer.StructureByteStride = shape.elementSizeInBytes;
+                            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+
+                            pRes = rangedDXCBuffer->GetHandle();
+                        } else {
+                            auto* texView = PtrCast<ITextureView>(elem.get());
+                            auto* dxcTex = PtrCast<DXCTexture>(texView->GetTextureObject().get());
+                            auto& texDesc = dxcTex->GetDesc();
+                            auto& viewDesc = texView->GetDesc();
+
+                            srvDesc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
+
+
+                            ///#TODO: consider ResourceMinLODClamp
+                            switch(texDesc.type) {
+                                case ITexture::Description::Type::Texture1D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        srvDesc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
+                                        srvDesc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                                        srvDesc.Texture1DArray.MipLevels = viewDesc.mipLevels;
+                                        srvDesc.Texture1DArray.MostDetailedMip = viewDesc.baseMipLevel;
+                                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;
+                                    } else {
+                                        srvDesc.Texture1D.MostDetailedMip = viewDesc.baseMipLevel;
+                                        srvDesc.Texture1D.MipLevels = viewDesc.mipLevels;
+                                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
+                                    }
+                                }break;
+
+                                case ITexture::Description::Type::Texture2D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        srvDesc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
+                                        srvDesc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                                        srvDesc.Texture2DArray.PlaneSlice = 0;
+                                        srvDesc.Texture2DArray.MipLevels = viewDesc.mipLevels;
+                                        srvDesc.Texture2DArray.MostDetailedMip = viewDesc.baseMipLevel;
+                                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+                                    } else {
+                                        srvDesc.Texture2D.PlaneSlice = 0;
+                                        srvDesc.Texture2D.MipLevels = viewDesc.mipLevels;
+                                        srvDesc.Texture2D.MostDetailedMip = viewDesc.baseMipLevel;
+                                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                                    }
+                                }break;
+
+                                case ITexture::Description::Type::Texture3D : {
+                                    if(texDesc.arrayLayers > 1) {
+                                        ///#TODO: handle tex array & texture type mismatch
+                                        assert(false);
+                                    } else {
+                                        srvDesc.Texture3D.MostDetailedMip = viewDesc.baseMipLevel;
+                                        srvDesc.Texture3D.MipLevels = viewDesc.mipLevels;
+                                        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+                                    }
+                                }break;
+                            }
+
+
+                            pRes = dxcTex->GetHandle();
+
+                        }
+
+                        auto combinedDescHeap = descHeap.front();
+                        auto heapSlot = combinedDescHeap->GetCPUDescriptorHandleForHeapStart();
+                        heapSlot.ptr += combinedIncrSize * combinedShaderResCnt;
+                        pDev->CreateShaderResourceView(pRes, &srvDesc, heapSlot);
+                    }
+
+                    combinedShaderResCnt++;
+                }break;
+
+                case IBindableResource::ResourceKind::Sampler : {
+
+                    auto* sampler = PtrCast<ISampler>(elem.get());
+                    auto& desc = sampler->GetDesc();
+
+                    D3D12_SAMPLER_DESC samplerDesc {};
+
+                    samplerDesc.Filter = VdToD3DFilter(desc.filter, desc.comparisonKind != nullptr);
+                    samplerDesc.AddressU = VdToD3DSamplerAddressMode(desc.addressModeU);
+                    samplerDesc.AddressV = VdToD3DSamplerAddressMode(desc.addressModeV);
+                    samplerDesc.AddressW = VdToD3DSamplerAddressMode(desc.addressModeW);
+                    if(desc.comparisonKind)
+                        samplerDesc.ComparisonFunc = VdToD3DCompareOp(*desc.comparisonKind);
+
+                    switch (desc.borderColor) {
+                        case ISampler::Description::BorderColor::TransparentBlack : 
+                           samplerDesc.BorderColor[0] = 0;
+                           samplerDesc.BorderColor[1] = 0;
+                           samplerDesc.BorderColor[2] = 0;
+                           samplerDesc.BorderColor[3] = 0; break;
+
+                        case ISampler::Description::BorderColor::OpaqueBlack : 
+                           samplerDesc.BorderColor[0] = 0;
+                           samplerDesc.BorderColor[1] = 0;
+                           samplerDesc.BorderColor[2] = 0;
+                           samplerDesc.BorderColor[3] = 1; break;
+
+                        case ISampler::Description::BorderColor::OpaqueWhite : 
+                           samplerDesc.BorderColor[0] = 1;
+                           samplerDesc.BorderColor[1] = 1;
+                           samplerDesc.BorderColor[2] = 1;
+                           samplerDesc.BorderColor[3] = 1; break;
+                    }
+
+                    samplerDesc.MipLODBias = desc.lodBias;
+                    samplerDesc.MaxAnisotropy = desc.maximumAnisotropy;
+                    samplerDesc.MinLOD = desc.minimumLod;
+                    samplerDesc.MaxLOD = desc.maximumLod;
+
+
+                    auto samplerDescHeap = descHeap.back();
+                    auto heapSlot = samplerDescHeap->GetCPUDescriptorHandleForHeapStart();
+                    heapSlot.ptr += samplerIncrSize * samplerCnt;
+                    pDev->CreateSampler(&samplerDesc, heapSlot);
+
+                    samplerCnt++;
+                }break;
                 }
-
-                combinedShaderResCnt++;
-            }break;
-
-            case IBindableResource::ResourceKind::Sampler : {
-
-                auto* sampler = PtrCast<ISampler>(elem.get());
-                auto& desc = sampler->GetDesc();
-
-                D3D12_SAMPLER_DESC samplerDesc {};
-
-                samplerDesc.Filter = VdToD3DFilter(desc.filter, desc.comparisonKind != nullptr);
-                samplerDesc.AddressU = VdToD3DSamplerAddressMode(desc.addressModeU);
-                samplerDesc.AddressV = VdToD3DSamplerAddressMode(desc.addressModeV);
-                samplerDesc.AddressW = VdToD3DSamplerAddressMode(desc.addressModeW);
-                if(desc.comparisonKind)
-                    samplerDesc.ComparisonFunc = VdToD3DCompareOp(*desc.comparisonKind);
-
-                switch (desc.borderColor) {
-                    case ISampler::Description::BorderColor::TransparentBlack : 
-                       samplerDesc.BorderColor[0] = 0;
-                       samplerDesc.BorderColor[1] = 0;
-                       samplerDesc.BorderColor[2] = 0;
-                       samplerDesc.BorderColor[3] = 0; break;
-                       
-                    case ISampler::Description::BorderColor::OpaqueBlack : 
-                       samplerDesc.BorderColor[0] = 0;
-                       samplerDesc.BorderColor[1] = 0;
-                       samplerDesc.BorderColor[2] = 0;
-                       samplerDesc.BorderColor[3] = 1; break;
-                       
-                    case ISampler::Description::BorderColor::OpaqueWhite : 
-                       samplerDesc.BorderColor[0] = 1;
-                       samplerDesc.BorderColor[1] = 1;
-                       samplerDesc.BorderColor[2] = 1;
-                       samplerDesc.BorderColor[3] = 1; break;
-                }
-
-                samplerDesc.MipLODBias = desc.lodBias;
-                samplerDesc.MaxAnisotropy = desc.maximumAnisotropy;
-                samplerDesc.MinLOD = desc.minimumLod;
-                samplerDesc.MaxLOD = desc.maximumLod;
-
-                
-                auto samplerDescHeap = descHeap.back();
-                auto heapSlot = samplerDescHeap->GetCPUDescriptorHandleForHeapStart();
-                heapSlot.ptr += samplerIncrSize * samplerCnt;
-                pDev->CreateSampler(&samplerDesc, heapSlot);
-
-                samplerCnt++;
-            }break;
             }
 
         }

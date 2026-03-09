@@ -55,8 +55,17 @@ namespace alloy
         };
 
         struct ShaderResourceDescription {
+            /* Alloy follows DX12 resource binding model
+             * 
+             * - each slot can only hold 1 resource, arrays will automatically
+             *    occupy subsequent slots
+             * - Every kind has it's own slot space, which means 
+             *    {slot = 0, kind = UniformBuffer} and {slot = 0, kind = Texture}
+             *    are different bindings that won't overlap
+             */
             uint32_t  bindingSlot;
             uint32_t  bindingSpace;
+            uint32_t  bindingCount;
             IBindableResource::ResourceKind kind;
             alloy::common::BitFlags<IShader::Stage> stages;
             struct Options {

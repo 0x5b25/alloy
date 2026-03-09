@@ -59,9 +59,10 @@ namespace alloy::vk
         }
 
         auto& elements = desc.shaderResources;
+
         //Count the set numbers for each descriptor types
         
-
+        //Register bind info for each kind separately
         std::vector<ResourceBindInfo> resBindings;
         
         //Sort the elements and build the mapping info
@@ -113,9 +114,11 @@ namespace alloy::vk
             }
             
             pSetInfo->elementIdInList.emplace_back(i);
-
         }
 
+        // In DX12, each resource types' register spaces are counted separately
+        // Alloy is following DX12 designs, but vulkan use shared register 
+        // space for all types. We flat them out here
         uint32_t currentSetIdx = 0;
 
         for(auto& b : resBindings) {
@@ -124,8 +127,10 @@ namespace alloy::vk
                 s.setIndexAllocated = currentSetIdx;
                 currentSetIdx++;
 
-                std::vector<VkDescriptorType> _descriptorTypes {s.elementIdInList.size()};
-                std::vector<VkDescriptorSetLayoutBinding> bindings {s.elementIdInList.size()};
+                //std::vector<VkDescriptorType> _descriptorTypes;
+                //    _descriptorTypes.reserve(s.elementInfo.size());
+                std::vector<VkDescriptorSetLayoutBinding> bindings;
+                    bindings.reserve(s.elementIdInList.size());
 
                 alloy::vk::DescriptorResourceCounts& drcs = s.resourceCounts;
                 //    .uniformBufferCount = uniformBufferCount,
@@ -147,42 +152,41 @@ namespace alloy::vk
 
                 //unsigned dynamicBufferCount = 0;
 
-                for (unsigned i = 0; i < s.elementIdInList.size(); i++)
+                for (auto& elemIdx : s.elementIdInList)
                 {
-                    auto& e = elements[s.elementIdInList[i]];
-                    bindings[i].binding = i;
-                    bindings[i].descriptorCount = 1;
+                    auto& e = elements[elemIdx];
+                    auto& b = bindings.emplace_back();
+                    b.binding = e.bindingSlot;
+                    b.descriptorCount = e.bindingCount;
                     VkDescriptorType descriptorType = VdToVkDescriptorType(e.kind, e.options);
-                    bindings[i].descriptorType = descriptorType;
-                    bindings[i].stageFlags = VdToVkShaderStages(e.stages);
+                    b.descriptorType = VdToVkDescriptorType(e.kind, e.options);
+                    b.stageFlags = VdToVkShaderStages(e.stages);
                     //if (e.options.dynamicBinding) {
                     //    s.dynamicBufferCount += 1;
                     //}
 
-                    _descriptorTypes[i] = descriptorType;
-
                     switch (descriptorType)
                     {
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLER:
-                            drcs.samplerCount += 1;
+                            drcs.samplerCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                            drcs.sampledImageCount += 1;
+                            drcs.sampledImageCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                            drcs.storageImageCount += 1;
+                            drcs.storageImageCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                            drcs.uniformBufferCount += 1;
+                            drcs.uniformBufferCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                            drcs.uniformBufferDynamicCount += 1;
+                            drcs.uniformBufferDynamicCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-                            drcs.storageBufferCount += 1;
+                            drcs.storageBufferCount += e.bindingCount;
                             break;
                         case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-                            drcs.storageBufferDynamicCount += 1;
+                            drcs.storageBufferDynamicCount += e.bindingCount;
                             break;
                     }
                 }
@@ -220,91 +224,108 @@ namespace alloy::vk
 
         auto& bindings = vkLayout->GetBindings();
         auto& boundResources = desc.boundResources;
-        auto& elems = vkLayout->GetDesc().shaderResources;
+        auto& resSlotDescs = vkLayout->GetDesc().shaderResources;
 
         //std::vector<sp<BindableResource>> _refCounts;
         std::unordered_set<VulkanTexture*> texReadOnly, texRW;
         
         std::vector<_DescriptorSet> descSetsAllocated;
 
+        uint32_t resIdx = 0;
         for(auto& b : bindings) {
 
             for(auto& s : b.sets) {
 
-                //VkDescriptorSetLayout dsl = vkLayout->GetHandle();
-                //_descriptorCounts = vkLayout.DescriptorResourceCounts;
                 auto descriptorAllocationToken = dev->AllocateDescriptorSet(s.layout);
-                auto descriptorWriteCount = s.elementIdInList.size();
-                std::vector<VkWriteDescriptorSet> descriptorWrites(descriptorWriteCount);
-                std::vector<VkDescriptorBufferInfo> bufferInfos(descriptorWriteCount);
-                std::vector<VkDescriptorImageInfo> imageInfos(descriptorWriteCount);
 
-                //assert(descriptorWriteCount == vkLayout->GetDesc().elements.size());
-                for (int i = 0; i < descriptorWriteCount; i++)
+                //Write each entry separately to simplify resource allocation
+                for (auto& elemIdx : s.elementIdInList)
                 {
-                    auto elemIdx = s.elementIdInList[i];
-                    auto& elem = elems[elemIdx];
-                    auto type = elem.kind;
+                    auto& resSlotDesc = resSlotDescs[elemIdx];
+                    auto slotStartIdx = resSlotDesc.bindingSlot;
+                    auto slotCnt = resSlotDesc.bindingCount;
+                    auto type = resSlotDesc.kind;
 
-                    descriptorWrites[i].sType = VkStructureType::VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    descriptorWrites[i].descriptorCount = 1;
-                    descriptorWrites[i].descriptorType = VdToVkResourceKind(type, false, elem.options.writable);
-                    descriptorWrites[i].dstBinding = i;
-                    descriptorWrites[i].dstSet = descriptorAllocationToken.GetHandle();
+                    VkWriteDescriptorSet descriptorWrite {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+                    };
+
+                    descriptorWrite.descriptorCount = slotCnt;
+                    descriptorWrite.descriptorType = VdToVkResourceKind(type, false, resSlotDesc.options.writable);
+                    descriptorWrite.dstBinding = slotStartIdx;
+                    descriptorWrite.dstSet = descriptorAllocationToken.GetHandle();
+
+                    std::vector<VkDescriptorBufferInfo> bufferInfos;
+                    std::vector<VkDescriptorImageInfo> imageInfos;
 
                     using _ResKind = IBindableResource::ResourceKind;
+
                     switch(type){
                         case _ResKind::UniformBuffer:
                         case _ResKind::StorageBuffer: {
-                            auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
-                            auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
-                            bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
-                            bufferInfos[i].offset = range->GetShape().offsetInElements;
-                            bufferInfos[i].range = range->GetShape().elementCount;
-                            descriptorWrites[i].pBufferInfo = &bufferInfos[i];
-                            //_refCounts.push_back(boundResources[i]);
+                            bufferInfos.resize(slotCnt);
+                            descriptorWrite.pBufferInfo = bufferInfos.data();
                         } break;
 
-                        case _ResKind::Texture:{
-                            auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
-                            imageInfos[i].imageView = vkTexView->GetHandle();
-                            if(elem.options.writable){
-                                imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
-                            } else {
-                                imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                            }
-                            descriptorWrites[i].pImageInfo = &imageInfos[i];
-
-                            auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-                            if(elem.options.writable)
-                                texRW.insert(vkTex);
-                            else
-                                texReadOnly.insert(vkTex);
-                            //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
-                            //_refCounts.push_back(boundResources[i]);
-                        }break;
-
-
+                        case _ResKind::Texture:
                         case _ResKind::Sampler:{
-                            auto* sampler = PtrCast<VulkanSampler>(boundResources[elemIdx].get());
-                            imageInfos[i].sampler = sampler->GetHandle();
-                            descriptorWrites[i].pImageInfo = &imageInfos[i];
-                            //_refCounts.push_back(boundResources[i]);
-                        }break;
+                            imageInfos.resize(slotCnt);
+                            descriptorWrite.pImageInfo = imageInfos.data();
+                        } break;
+                    };
+
+                    for(auto i = 0; i <  slotCnt; i++) {
+                        auto pElemRes = boundResources[resIdx++].get();
+                        switch(type){
+                            case _ResKind::UniformBuffer:
+                            case _ResKind::StorageBuffer: {
+                                auto* range = PtrCast<BufferRange>(pElemRes);
+                                auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
+                                bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
+                                bufferInfos[i].offset = range->GetShape().offsetInElements;
+                                bufferInfos[i].range = range->GetShape().elementCount;
+                                //_refCounts.push_back(boundResources[i]);
+                            } break;
+
+                            case _ResKind::Texture:{
+                                auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
+                                imageInfos[i].imageView = vkTexView->GetHandle();
+                                if(resSlotDesc.options.writable){
+                                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+                                } else {
+                                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                                }
+                                
+                                auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+                                if(resSlotDesc.options.writable)
+                                    texRW.insert(vkTex);
+                                else
+                                    texReadOnly.insert(vkTex);
+                                //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
+                                //_refCounts.push_back(boundResources[i]);
+                            }break;
+
+
+                            case _ResKind::Sampler:{
+                                auto* sampler = PtrCast<VulkanSampler>(boundResources[elemIdx].get());
+                                imageInfos[i].sampler = sampler->GetHandle();
+                                //_refCounts.push_back(boundResources[i]);
+                            }break;
+                        }
                     }
+
+                    VK_DEV_CALL(dev,
+                    vkUpdateDescriptorSets(
+                            dev->LogicalDev(), 
+                            1, 
+                            &descriptorWrite, 
+                            0,
+                            nullptr
+                        )
+                    );
 
                 }
                 descSetsAllocated.emplace_back(std::move(descriptorAllocationToken));
-
-                VK_DEV_CALL(dev,
-                    vkUpdateDescriptorSets(
-                        dev->LogicalDev(), 
-                        descriptorWriteCount, 
-                        descriptorWrites.data(), 
-                        0,
-                        nullptr
-                    )
-                );
             }
         }
 

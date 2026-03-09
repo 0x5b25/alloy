@@ -104,7 +104,6 @@ public:
 
             for(auto& b: *_bindingRemappings) {
                 if(b.type == type) {
-                    uint32_t allocatedSetIdx = b.baseSetIndex;
                     for(auto& set : b.sets) {
                         if(set.regSpaceDesignated == d3dRegSpace) {
                             vkSetOut = set.setIndexAllocated;
