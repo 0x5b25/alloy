@@ -9,4 +9,4 @@ add_library(AppBase
 
 target_compile_features(AppBase PUBLIC cxx_std_20)
 target_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(AppBase PUBLIC glfw glm imgui Veldrid)
+target_link_libraries(AppBase PUBLIC glfw glm imgui Veldrid dxcompiler)
