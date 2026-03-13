@@ -31,9 +31,18 @@ public:
 
 class AppBase : public IRuntimeService {
 
+    alloy::common::sp<alloy::IGraphicsDevice> _dev;
+
     IApp *_pUserApp;
 
     TimeServiceImpl _timeSvc;
+
+private:
+    
+    void SetupAlloyEnv(alloy::SwapChainSource* swapChainSrc);
+    void SetupImGui();
+    void TearDownImGui();
+    void TearDownAlloyEnv();
 
 public:
 
@@ -41,5 +50,7 @@ public:
     ~AppBase();
 
     int Run();
+
+private:
 
 };

@@ -1,7 +1,7 @@
 include(FetchContent)
 
 set(DXC_STATIC_VERSION "v0.1")
-set(DXC_STATIC_BASE_URL "https://github.com/0x5b25/dxc_static/releases/download/${MACH_DXC_VERSION}")
+set(DXC_STATIC_BASE_URL "https://github.com/0x5b25/dxc_static/releases/download/${DXC_STATIC_VERSION}")
 
 if(WIN32)
     set(HOST_OS windows)
@@ -66,7 +66,12 @@ FetchContent_Declare(
     DXC_EXECUTABLE
     URL ${DXC_EXECUTABLE_URL})
 
-FetchContent_MakeAvailable(DXC_STATIC_LIB DXC_EXECUTABLE)
+    
+message(STATUS "Fetching ${libdxcompiler} ${DXC_STATIC_VERSION} from ${DXC_STATIC_LIB_URL}...")
+FetchContent_MakeAvailable(DXC_STATIC_LIB)
+
+message(STATUS "Fetching ${dxc} ${DXC_STATIC_VERSION} from ${DXC_EXECUTABLE_URL}...")
+FetchContent_MakeAvailable(DXC_EXECUTABLE)
 
 FetchContent_GetProperties(DXC_STATIC_LIB SOURCE_DIR DXC_STATIC_LIB_DIR)
 FetchContent_GetProperties(DXC_EXECUTABLE SOURCE_DIR DXC_EXECUTABLE_DIR)

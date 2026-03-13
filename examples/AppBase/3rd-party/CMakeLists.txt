@@ -67,7 +67,7 @@ target_sources(imgui
         "${imgui_SRC_DIR}/imgui_widgets.cpp"
         "${imgui_SRC_DIR}/backends/imgui_impl_glfw.cpp"
 )
-target_include_directories(imgui PUBLIC "${imgui_SRC_DIR}/imgui")
+target_include_directories(imgui PUBLIC "${imgui_SRC_DIR}")
 target_link_libraries(imgui PRIVATE glfw)
 target_compile_features(imgui PRIVATE cxx_std_20)
 
