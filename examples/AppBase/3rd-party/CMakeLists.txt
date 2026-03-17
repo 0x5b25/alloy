@@ -46,6 +46,7 @@ fetch_git_repo(
     8d1fd52e5ab5590e2c81768ace50c72bae28f2ed # version 1.0.3
     glm
 )
+target_compile_definitions(glm PUBLIC GLM_FORCE_LEFT_HANDED)
 
 ########################
 # imgui
@@ -81,4 +82,3 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/../ ${CMAKE_CURRENT_BINARY_DIR}/alloy)
 # MISC settings
 ########################
 set_target_properties(imgui glfw glm PROPERTIES FOLDER "demo/3rd-party")
-

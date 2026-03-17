@@ -3,6 +3,9 @@
 #include "RuntimeServices.hpp"
 
 #include <chrono>
+#include <GLFW/glfw3.h>
+
+class AppRunner;
 
 class TimeServiceImpl : public ITimeService {
 
@@ -13,6 +16,9 @@ class TimeServiceImpl : public ITimeService {
 
     Clock::time_point _startTime;
 
+    uint64_t _deltaTicks;
+    Clock::time_point _frameStartTime;
+
 
 public:
     TimeServiceImpl(float fixedUpdatePerSecond);
@@ -21,7 +27,7 @@ public:
     virtual float GetDeltaSeconds() override;
     virtual float GetFixedUpdateDeltaSeconds() override;
 
-    std::uint64_t GetDeltaTicks() const;
+    std::uint64_t GetDeltaTicks() const { return _deltaTicks; }
     std::uint64_t GetFixedUpdateDeltaTicks() const { return _ticksPerFixedUpdate; }
 
     std::uint64_t GetCurrentTick() const;
@@ -29,27 +35,88 @@ public:
     std::uint64_t BeginNewFrame();
 };
 
-class AppBase : public IRuntimeService {
+class RenderServiceImpl : public IRenderService {
+    AppRunner* _runner;
+
+public:
+    RenderServiceImpl(AppRunner* runner) : _runner(runner) {}
+
+    virtual alloy_sp<alloy::IGraphicsDevice> GetDevice() override;
+    virtual uint32_t GetCurrentFrameIndex() override;
+
+    
+    virtual void GetFrameBufferSize(uint32_t& width, uint32_t& height) override;
+    
+    virtual alloy::PixelFormat GetFrameBufferColorFormat() override;
+    virtual alloy::PixelFormat GetFrameBufferDepthStencilFormat() override;
+    virtual alloy::SampleCount GetFrameBufferSampleCount() override;
+};
+
+class AppRunner : public IAppRunner {
+
+    friend class RenderServiceImpl;
 
     alloy::common::sp<alloy::IGraphicsDevice> _dev;
+    alloy::common::sp<alloy::ISwapChain> _swapChain;
 
-    IApp *_pUserApp;
+    //IApp *_pUserApp;
 
+    alloy::SampleCount _msaaSampleCnt = alloy::SampleCount::x16;
     TimeServiceImpl _timeSvc;
+    RenderServiceImpl _rndrSvc;
+
+    GLFWwindow* _window;
+    uint32_t _wndWidth, _wndHeight;
+
+    const uint32_t _maxFramesInFlight = 2;
+    uint32_t _nextFrameIdx = 0;
+
+    struct PerFrameResource {
+        uint32_t submissionFenceValue;
+        alloy_sp<alloy::ICommandList> submission;
+
+        struct MsaaRenderTarget {
+            alloy_sp<alloy::IRenderTarget> color, depthStencil;
+        } msaaTarget;
+    };
+
+    std::vector<PerFrameResource> _perFrameResources;
+
+    
+    uint32_t _fenceVal = 0;
+    alloy_sp<alloy::IEvent> _submissionFence;
 
 private:
     
-    void SetupAlloyEnv(alloy::SwapChainSource* swapChainSrc);
+    void SetupAlloyEnv();
     void SetupImGui();
     void TearDownImGui();
     void TearDownAlloyEnv();
 
+    void CreatePerFrameResources();
+    void ReleasePerFrameResources();
+
+    uint32_t GetLastCompletedCommandIndex() const;
+    void WaitForCommandComplete(uint32_t value);
+    uint32_t WaitForNextFrameResourceAvailable();
+
+    void BeginFrame();
+    void ResizeSwapChainIfNecessary();
+
 public:
 
-    AppBase();
-    ~AppBase();
+    AppRunner(unsigned width, unsigned height, const std::string& wndName);
+    ~AppRunner();
 
-    int Run();
+    
+    virtual ITimeService* GetTimeService() override;
+    virtual IRenderService* GetRenderService() override;
+    
+    virtual void* GetWindowHandle() override {return _window;}
+    virtual void LockAndHideCursor() override;
+    virtual void UnlockAndShowCursor() override;
+
+    virtual int Run(IApp* pUserApp) override;
 
 private:
 

@@ -67,10 +67,10 @@ FetchContent_Declare(
     URL ${DXC_EXECUTABLE_URL})
 
     
-message(STATUS "Fetching ${libdxcompiler} ${DXC_STATIC_VERSION} from ${DXC_STATIC_LIB_URL}...")
+message(STATUS "Fetching libdxcompiler ${DXC_STATIC_VERSION} from ${DXC_STATIC_LIB_URL}...")
 FetchContent_MakeAvailable(DXC_STATIC_LIB)
 
-message(STATUS "Fetching ${dxc} ${DXC_STATIC_VERSION} from ${DXC_EXECUTABLE_URL}...")
+message(STATUS "Fetching dxc ${DXC_STATIC_VERSION} from ${DXC_EXECUTABLE_URL}...")
 FetchContent_MakeAvailable(DXC_EXECUTABLE)
 
 FetchContent_GetProperties(DXC_STATIC_LIB SOURCE_DIR DXC_STATIC_LIB_DIR)
@@ -83,10 +83,10 @@ else()
 endif()
 
 
-add_library(dxcompiler STATIC IMPORTED)
+add_library(dxcompiler STATIC IMPORTED GLOBAL)
 set_target_properties(dxcompiler 
     PROPERTIES
-        IMPORTED_LOCATION_DEBUG ${DXC_STATIC_LIB}/Debug/${DXC_STATIC_LIB_BINARY_NAME}
-        IMPORTED_LOCATION ${DXC_STATIC_LIB}/Release/${DXC_STATIC_LIB_BINARY_NAME}
+        IMPORTED_LOCATION_DEBUG ${DXC_STATIC_LIB_DIR}/lib/Debug/${DXC_STATIC_LIB_BINARY_NAME}
+        IMPORTED_LOCATION ${DXC_STATIC_LIB_DIR}/lib/Release/${DXC_STATIC_LIB_BINARY_NAME}
 )
-
+target_include_directories(dxcompiler INTERFACE ${DXC_STATIC_LIB_DIR}/include)

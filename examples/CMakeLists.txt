@@ -5,8 +5,4 @@ project(alloy_example
     LANGUAGES C CXX)
 
 add_subdirectory(AppBase)
-
-function(add_alloy_executable TARGET_NAME)
-
-
-endfunction()
+add_subdirectory(PBRRenderer)

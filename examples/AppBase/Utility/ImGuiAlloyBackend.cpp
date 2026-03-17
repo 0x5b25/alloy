@@ -3,6 +3,8 @@
 #include "ImGuiShaders/ImGuiAlloyBackend_ps.h"
 #include "ImGuiShaders/ImGuiAlloyBackend_vs.h"
 
+#include "GPUCapture.hpp"
+
 using namespace alloy;
 
 class ImGuiAlloyBackend {
@@ -11,9 +13,12 @@ class ImGuiAlloyBackend {
 
     alloy::common::sp<alloy::IResourceLayout> pipelineLayout;
     alloy::common::sp<alloy::IGfxPipeline> pipeline;
-    alloy::common::sp<alloy::IResourceSet> fontRS;
+    //alloy::common::sp<alloy::IResourceSet> fontRS;
 
     //alloy::common::sp<alloy::IBuffer> mvpBuffer, vertBuffer, indexBuffer;
+
+    alloy::common::sp<alloy::IEvent> _submitFence;
+    uint32_t _submitFenceValue;
 
     BumpAllocator _allocator;
 
@@ -28,6 +33,8 @@ class ImGuiAlloyBackend {
                            common::sp<alloy::BufferRange> vertexBuffer,
                            common::sp<alloy::BufferRange> indexBuffer);
 
+    void _UpdateTexture(ImTextureData* tex);
+    void _DestroyTexture(ImTextureData* tex);
 public:
     ImGuiAlloyBackend(const ImGui_ImplAlloy_InitInfo&);
 
@@ -105,15 +112,24 @@ ImGuiAlloyBackend::ImGuiAlloyBackend(
     io.BackendRendererName = "imgui_impl_alloy";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;  // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
 
+    SetupCaptureEvent(gd);
 }
 
 
 ImGuiAlloyBackend::~ImGuiAlloyBackend() {
+
     ImGuiIO& io = ImGui::GetIO();
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
     io.BackendRendererName = nullptr;
     io.BackendRendererUserData = nullptr;
-    io.BackendFlags &= ~ImGuiBackendFlags_RendererHasVtxOffset;
+    io.BackendFlags &= ~(ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures);
+    platform_io.ClearRendererHandlers();
+
+    // Destroy all textures
+    for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
+        if (tex->RefCount == 1)
+            _DestroyTexture(tex);
 }
 
 void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
@@ -131,6 +147,10 @@ void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     }};
+    command_list->SetViewports(vp);
+
+    // Bind shader and vertex buffers
+    command_list->SetPipeline(pipeline);
 
     // Setup orthographic projection matrix into our constant buffer
     // Our visible imgui space lies from draw_data->DisplayPos (top left) to draw_data->DisplayPos+data_data->DisplaySize (bottom right).
@@ -158,12 +178,9 @@ void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
         command_list->SetPushConstants(0, pcSpan, 0);
     }
 
+    //texture_handle.ptr = (UINT64)pcmd->GetTexID();
     
-    command_list->SetViewports(vp);
-
-    // Bind shader and vertex buffers
-    command_list->SetPipeline(pipeline);
-    command_list->SetGraphicsResourceSet(fontRS);
+    //command_list->SetGraphicsResourceSet(fontRS);
     //command_list->SetGraphicsRoot32BitConstants(0, 16, &vertex_constant_buffer, 0);
 
     command_list->SetVertexBuffer(0, vertexBuffer);
@@ -178,6 +195,11 @@ void ImGuiAlloyBackend::RenderDrawData(
     //const alloy::common::sp<alloy::IRenderTarget>& rt,
     alloy::IRenderCommandEncoder& renderPass
 ) {
+    if (draw_data->Textures != nullptr)
+    for (ImTextureData* tex : *draw_data->Textures)
+        if (tex->Status != ImTextureStatus_OK)
+            _UpdateTexture(tex);
+
     // Avoid rendering when minimized
     int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
     int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
@@ -489,6 +511,7 @@ void ImGuiAlloyBackend::_CreateBuffers(const ImGui_ImplAlloy_InitInfo&) {
 }
 
 void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
+#if 0
     // Build texture atlas
     ImGuiIO& io = ImGui::GetIO();
     //ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
@@ -629,15 +652,185 @@ void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
 
     // Store our identifier
     io.Fonts->SetTexID((ImTextureID)fontRS.get());
+#endif
 }
 
 void ImGuiAlloyBackend::_CreateDeviceObjects(const ImGui_ImplAlloy_InitInfo& initInfo) {
     _CreateRenderPipeline(initInfo);
     _CreateBuffers(initInfo);
-    _CreateFontsTexture(initInfo);
+    //_CreateFontsTexture(initInfo);
+
+    _submitFence = gd->GetResourceFactory().CreateSyncEvent();
+    _submitFenceValue = 0;
 }
 
 
+void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
+    switch (tex->Status) {
+    case ImTextureStatus_WantCreate: {
+        // Create texture based on tex->Width, tex->Height.
+        // - Most backends only support tex->Format == ImTextureFormat_RGBA32.
+        // - Backends for particularly memory constrained platforms may support tex->Format == ImTextureFormat_Alpha8.
+
+        // Upload all texture pixels
+        // - Read from our CPU-side copy of the texture and copy to your graphics API.
+        // - Use tex->Width, tex->Height, tex->GetPixels(), tex->GetPixelsAt(), tex->GetPitch() as needed.
+
+        // Create and upload new texture to graphics system
+        //IMGUI_DEBUG_LOG("UpdateTexture #%03d: WantCreate %dx%d\n", tex->UniqueID, tex->Width, tex->Height);
+        IM_ASSERT(tex->TexID == ImTextureID_Invalid && tex->BackendUserData == nullptr);
+        IM_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+
+        common::sp<ITexture> fontTex;
+        {
+            ITexture::Description desc {};
+
+            desc.type = alloy::ITexture::Description::Type::Texture2D;
+            desc.width = tex->Width;
+            desc.height = tex->Height;
+            desc.depth = 1;
+            desc.mipLevels = 1;
+            desc.arrayLayers = 1;
+            desc.sampleCount = alloy::SampleCount::x1;
+            desc.hostAccess = alloy::HostAccess::None;
+            desc.usage.sampled = 1;
+            desc.format = alloy::PixelFormat::R8_G8_B8_A8_UNorm;
+
+            fontTex = gd->GetResourceFactory().CreateTexture(desc);
+        }
+
+        //Create sampler
+        common::sp<ISampler> samp;
+        {
+            // Bilinear sampling is required by default. Set 'io.Fonts->Flags |= ImFontAtlasFlags_NoBakedLines' or 'style.AntiAliasedLinesUseTex = false' to allow point/nearest sampling.
+            ISampler::Description desc {};
+            desc.filter = ISampler::Description::SamplerFilter::MinLinear_MagLinear_MipLinear;
+            desc.addressModeU = ISampler::Description::AddressMode::Clamp;
+            desc.addressModeV = ISampler::Description::AddressMode::Clamp;
+            desc.addressModeW = ISampler::Description::AddressMode::Clamp;
+            desc.lodBias = 0.f;
+            desc.maximumAnisotropy = 1;
+            //desc.comparisonKind = ComparisonKind::Always;
+            desc.borderColor = ISampler::Description::BorderColor::TransparentBlack;
+            desc.minimumLod = 0.f;
+            desc.maximumLod = 0.f;
+
+            samp = gd->GetResourceFactory().CreateSampler(desc);
+        }
+
+        // Create resource set
+        {
+
+            IResourceSet::Description rsDesc {};
+            rsDesc.layout = pipelineLayout;
+            rsDesc.boundResources = {
+                //BufferRange::MakeByteBuffer(mvpBuffer),
+                gd->GetResourceFactory().CreateTextureView(fontTex),
+                samp
+            };
+
+            auto resSet = gd->GetResourceFactory().CreateResourceSet(rsDesc);
+
+        // Store your data, and acknowledge creation.
+        tex->SetTexID((ImTextureID)resSet.release()); // Specify backend-specific ImTextureID identifier which will be stored in ImDrawCmd.
+        }
+        
+        // We don't set tex->Status to ImTextureStatus_OK to let the code fallthrough below.
+        //tex->SetStatus(ImTextureStatus_OK);
+        
+    }
+    [[fallthrough]];
+    case ImTextureStatus_WantUpdates:
+    {
+        // Upload a rectangle of pixels to the existing texture
+        // - We only ever write to textures regions which have never been used before!
+        // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
+        auto rs = (alloy::IResourceSet*)tex->GetTexID();
+        auto pTexView = static_cast<alloy::ITextureView*>(
+            rs->GetDesc().boundResources.front().get());
+        const auto& texViewDesc = pTexView->GetDesc();
+        auto pAlloyTex = pTexView->GetTextureObject();
+        // - Use tex->UpdateRect.x/y, tex->UpdateRect.w/h to obtain the block position and size.
+        //   - Use tex->Updates[] to obtain individual sub-regions within tex->UpdateRect. Not recommended.
+        // - Read from our CPU-side copy of the texture and copy to your graphics API.
+        // - Use tex->Width, tex->Height, tex->GetPixels(), tex->GetPixelsAt(), tex->GetPitch() as needed.
+
+        IM_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+
+        // We could use the smaller rect on _WantCreate but using the full rect allows us to clear the texture.
+        // FIXME-OPT: Uploading single box even when using ImTextureStatus_WantUpdates. Could use tex->Updates[]
+        // - Copy all blocks contiguously in upload buffer.
+        // - Barrier before copy, submit all CopyTextureRegion(), barrier after copy.
+        const uint32_t upload_x = (tex->Status == ImTextureStatus_WantCreate) ? 0 : tex->UpdateRect.x;
+        const uint32_t upload_y = (tex->Status == ImTextureStatus_WantCreate) ? 0 : tex->UpdateRect.y;
+        const uint32_t upload_w = (tex->Status == ImTextureStatus_WantCreate) ? tex->Width : tex->UpdateRect.w;
+        const uint32_t upload_h = (tex->Status == ImTextureStatus_WantCreate) ? tex->Height : tex->UpdateRect.h;
+
+        // Update full texture or selected blocks. We only ever write to textures regions which have never been used before!
+        // This backend choose to use tex->UpdateRect but you can use tex->Updates[] to upload individual regions.
+        // DX12 requires placement resource's pitch is aligned to D3D12_TEXTURE_DATA_PITCH_ALIGNMENT
+        //  which is 256 bytes
+        auto upload_pitch_src = upload_w * tex->BytesPerPixel;
+        auto upload_pitch_dst = (upload_pitch_src + 256 - 1u) & ~(256 - 1u);
+        auto upload_buffer_size = upload_pitch_dst * upload_h;
+
+        auto copyBuffer = _allocator.Allocate(upload_buffer_size, 256);
+        
+        auto copyDst = copyBuffer->MapToCPU();
+        // Copy to upload buffer
+        for (int y = 0; y < upload_h; y++)
+            memcpy((void*)((uintptr_t)copyDst + y * upload_pitch_dst), tex->GetPixelsAt(upload_x, upload_y + y), upload_pitch_src);
+
+        copyBuffer->UnMap();
+
+        
+        StartCapture();
+
+        auto cmdQ = gd->GetGfxCommandQueue();
+        auto cmdList = cmdQ->CreateCommandList();
+        cmdList->Begin();
+        auto& pass = cmdList->BeginTransferPass();
+
+        pass.CopyBufferToTexture(
+            copyBuffer, upload_pitch_dst, upload_buffer_size, 
+            pAlloyTex, {upload_x, upload_y, 0}, texViewDesc.baseMipLevel, texViewDesc.baseArrayLayer,
+            {upload_w, upload_h, 1}
+        );
+
+        cmdList->EndPass();
+        cmdList->End();
+
+
+        cmdQ->SubmitCommand(cmdList.get());
+        cmdQ->EncodeSignalEvent(_submitFence.get(), ++_submitFenceValue);
+
+        StopCapture();
+
+        _submitFence->WaitFromCPU(_submitFenceValue);
+        
+        // Acknowledge update
+        tex->SetStatus(ImTextureStatus_OK);
+    } break;
+    case ImTextureStatus_WantDestroy:
+        // If you use staged rendering and have in-flight renders, changed tex->UnusedFrames > 0 check to higher count as needed e.g. > 2
+        if (tex->UnusedFrames > 0)
+            _DestroyTexture(tex);
+        
+    break;
+    }
+}
+
+void ImGuiAlloyBackend::_DestroyTexture(ImTextureData* tex) {
+    // Destroy texture
+    // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
+    // - Destroy texture in your graphics API.
+    auto rs = (alloy::IResourceSet*)tex->GetTexID();
+    rs->unref();
+
+    // Acknowledge destruction
+    tex->SetTexID(ImTextureID_Invalid);
+    tex->SetStatus(ImTextureStatus_Destroyed);
+}
 
 void ImGuiAlloyBackend::NotifyBeginFrame() {
     _allocator.BeginNewFrame();
@@ -675,14 +868,6 @@ void ImGui_ImplAlloy_Shutdown() {
     ImGuiAlloyBackend* bd = ImGui_ImplAlloy_GetBackendData();
 
     IM_ASSERT(bd != nullptr && "No renderer backend to shutdown, or already shutdown?");
-    ImGuiIO& io = ImGui::GetIO();
-    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-
-    io.BackendRendererName = nullptr;
-    io.BackendRendererUserData = nullptr;
-    io.BackendFlags &= ~(ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures);
-    platform_io.ClearRendererHandlers();
-
     IM_DELETE(bd);
 }
 
