@@ -37,7 +37,7 @@ namespace alloy::mtl {
     static common::sp<MetalShader> MakeFromDXIL(
         common::sp<MetalDevice>&&,
         const alloy::IShader::Description& desc,
-        const std::span<std::uint8_t>& bin);
+        const std::span<const std::uint8_t>& bin);
     
 
         //const id<MTLFunction> GetFuncHandle() const {return _shaderFn;}

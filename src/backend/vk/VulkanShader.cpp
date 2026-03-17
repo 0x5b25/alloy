@@ -386,7 +386,7 @@ namespace alloy::vk
     common::sp<IShader> VulkanShader::Make(
         const common::sp<VulkanDevice>& dev,
         const IShader::Description& desc,
-        const std::span<std::uint8_t>& il
+        const std::span<const std::uint8_t>& il
     ){
         //VkShaderModuleCreateInfo shaderModuleCI {};
         //shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

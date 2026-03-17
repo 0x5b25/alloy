@@ -57,7 +57,7 @@ namespace alloy::mtl {
 
     common::sp<IShader> MetalResourceFactory::CreateShader(
         const IShader::Description& desc,
-        const std::span<std::uint8_t>& il
+        const std::span<const std::uint8_t>& il
     ){
         //return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
         return MetalShader::MakeFromDXIL(_CreateNewDevHandle(), desc, il);

@@ -62,7 +62,7 @@ namespace alloy::dxc
         static common::sp<IShader> Make(
             const common::sp<DXCDevice>& dev,
             const IShader::Description& desc,
-            const std::span<std::uint8_t>& il
+            const std::span<const std::uint8_t>& il
         );
         
         virtual const std::span<uint8_t> GetByteCode() override { return _bytes; }

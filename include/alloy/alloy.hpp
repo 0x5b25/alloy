@@ -20,3 +20,47 @@
 #include "SwapChainSources.hpp"
 #include "Texture.hpp"
 #include "Types.hpp"
+
+/* Coordinate systems: 
+ *   Alloy use DX12/Metal convention: lefthand .
+ *   Vulkan supports flipping the NDC by passing negative height during SetViewport.
+ * 
+ * Normalized device coord:
+ * DX12/Metal: 
+ *                   1.0
+ *                    +Y
+ *                    ▲   +Z 1.0
+ *                    │  /
+ *                    │ /
+ *                    │/
+ *  -1.0 -X ----------+----------► +X 1.0
+ *                   /│
+ *                  / │
+ *            -Z   /  │
+ *           -1.0     -Y
+ *                   -1.0
+ *
+ * Vulkan: 
+ *                   -1.0
+ *                    -Y  +Z 1.0
+ *                    │  /
+ *                    │ /
+ *                    │/
+ *  -1.0 -X ----------+----------► +X 1.0
+ *                   /│
+ *                  / │
+ *            -Z   /  │
+ *           -1.0     ▼
+ *                    +Y
+ *                   1.0
+ * 
+ * Frame buffer coord:
+ * DX12/Metal/Vulkan: 
+ *   (0,0)
+ *     +-----------► +X
+ *     │
+ *     │
+ *     │
+ *     ▼ 
+ *    +Y
+ */

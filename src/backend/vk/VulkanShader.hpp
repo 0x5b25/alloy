@@ -167,7 +167,7 @@ namespace alloy::vk {
         VulkanShader(
             const common::sp<VulkanDevice>& dev,
             const Description& desc,
-            const std::span<std::uint8_t>& il
+            const std::span<const std::uint8_t>& il
         ) 
             : IShader(desc)
             , _dev(dev)
@@ -185,7 +185,7 @@ namespace alloy::vk {
         static common::sp<IShader> Make(
             const common::sp<VulkanDevice>& dev,
             const IShader::Description& desc,
-            const std::span<std::uint8_t>& il
+            const std::span<const std::uint8_t>& il
         );
 
     };

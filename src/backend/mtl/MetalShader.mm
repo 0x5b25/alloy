@@ -57,7 +57,7 @@ common::sp<MetalShader> MetalShader::Make(common::sp<MetalDevice>&& dev, const a
 
 common::sp<MetalShader> MetalShader::MakeFromDXIL(common::sp<MetalDevice>&& dev,
                                                   const alloy::IShader::Description& desc,
-                                                  const std::span<std::uint8_t>& bin)
+                                                  const std::span<const std::uint8_t>& bin)
 {
     
     auto shaderObj = new MetalShader(std::move(dev), desc);
