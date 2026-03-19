@@ -1,12 +1,8 @@
-
-
 add_subdirectory("3rd-party")
 
 add_library(AppBase
     AppRunner.cpp    
     AppRunner.hpp
-    HLSLCompiler.cpp
-    include/HLSLCompiler.hpp
 
     Utility/GPUCapture.cpp
     Utility/GPUCapture.hpp
@@ -24,7 +20,6 @@ target_link_libraries(AppBase
         glm
         imgui
         Veldrid
-        dxcompiler
     PRIVATE
         WinPixEventRuntime        
 )

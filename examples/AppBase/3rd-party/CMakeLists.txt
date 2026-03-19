@@ -1,7 +1,6 @@
 # Using fetch content for 3rd-party libraries 
 # to avoid adding these dependencies into main repo
 include(FetchContent)
-include(FetchDXC.cmake)
 
 macro(fetch_git_repo URL TAG TARGET_NAME)
     FetchContent_Declare(

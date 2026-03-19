@@ -7,10 +7,14 @@ add_executable(PBRRenderer
     MeshRenderer.hpp
     MeshBuilder.cpp
     MeshBuilder.hpp
+    Scene.cpp
+    Scene.hpp
     )
 
-target_link_libraries(PBRRenderer PRIVATE AppBase)
+compile_shader(PBRRenderer_shaders Shaders/PBRObjectShader.hlsl)
+target_link_libraries(PBRRenderer PRIVATE PBRRenderer_shaders AppBase HLSLCompiler)
 target_compile_features(PBRRenderer PRIVATE cxx_std_20)
+
 
 if(WIN32)
     alloy_copy_dxc_runtime_libs(PBRRenderer)
