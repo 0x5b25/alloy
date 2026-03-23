@@ -56,6 +56,7 @@ PBRRendererApp::PBRRendererApp(IAppRunner* runner)
         .renderTargetFormat = runner->GetRenderService()->GetFrameBufferColorFormat(),
         .depthStencilFormat = runner->GetRenderService()->GetFrameBufferDepthStencilFormat(),
     })
+    , _scene(runner->GetRenderService()->GetDevice())
     , _cubeMesh(BuildBoxMesh(1,1,1))
     , _cam {
         .position = {0, 0, -4},
@@ -65,6 +66,13 @@ PBRRendererApp::PBRRendererApp(IAppRunner* runner)
 
 }
 
+void PBRRendererApp::_SetupScene() {
+    auto boxMeshID = _scene.AddMesh(BuildBoxMesh(1,1,1));
+
+    auto objID = _scene.CreateSceneObject();
+    auto* obj = _scene.GetSceneObject(objID);
+    obj->mesh.meshId = boxMeshID;
+}
 
 void PBRRendererApp::OnDrawGui() {        
     ImGui::ShowDemoWindow();

@@ -19,6 +19,12 @@ struct Mesh {
     //std::vector<uint32_t> indices;
 };
 
+struct Material {
+    
+    glm::vec4 color;
+    float roughness, metallic;
+};
+
 struct Viewport {
     float fovDeg; //Y direction fov
     float aspectRatio; //width / height

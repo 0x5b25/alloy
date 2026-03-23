@@ -2,6 +2,7 @@
 
 #include "IApp.hpp"
 #include "MeshRenderer.hpp"
+#include "Scene.hpp"
 
 class MeshRenderer;
 
@@ -22,6 +23,7 @@ class PBRRendererApp : public IApp {
     IAppRunner* _runner;
 
     MeshRenderer _rndr;
+    Scene _scene;
 
     Mesh _cubeMesh;
 
@@ -30,6 +32,8 @@ class PBRRendererApp : public IApp {
     bool _mouseLocked = false;
     double _cursorXPos, _cursorYPos;
     void _HandleInput();
+
+    void _SetupScene();
 
 public:
     PBRRendererApp(IAppRunner* runner);
