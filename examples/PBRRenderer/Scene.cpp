@@ -6,7 +6,9 @@ Scene::Scene(alloy_sp<alloy::IGraphicsDevice> dev)
     : _dev(std::move(dev))
     , _vertexBuffer{}
     , _perObjectDataBuffer{}
-{ }
+{
+    _CreateResLayout();
+}
 
 Scene::~Scene() {
 
@@ -59,7 +61,7 @@ Scene::Iterator Scene::end() { return Iterator(this, _objects.size()); }
 
 uint32_t Scene::AddMesh(Mesh&& mesh) {
     auto id = _meshes.size();
-    _meshes.emplace_back(std::move(mesh), 0, true);
+    _meshes.emplace_back(std::move(mesh), INVALID_ID, 0, true);
     return id;
 }
 
@@ -97,9 +99,12 @@ uint32_t Scene::CreateSceneObject() {
     uint32_t id = _objectAlloc.Allocate();
     if (id == _objectAlloc.INVALID_VALUE) {
         //Not enough slots
-        id = _objects.size();
+        //id = _objects.size();
         _objectAlloc.GrowAtEnd(1);
+        id = _objectAlloc.Allocate();
+        assert(id == _objects.size());
         _objects.emplace_back(SceneObject::CreateDefault(), true, true);
+        _cachedTransforms.emplace_back(1.f);
     }
 
     assert(id < _objects.size());
@@ -154,7 +159,7 @@ void Scene::UpdateGPUScene() {
     //            2. upload modified data, change spans accordingly
     bool anyMeshDirty = false;
     {
-        bool needNewBuffer = false;
+        bool needNewBuffer = _vertexBuffer ? false : true;
         for(auto& slot : _meshes) {
             if(!slot.isDirty) continue;
             anyMeshDirty = true;
@@ -176,23 +181,33 @@ void Scene::UpdateGPUScene() {
 
             slot.firstVertexIndex = newSpaceStart;
             slot.vertexCnt = currVertCnt;
+
+            auto vertEndIdx = newSpaceStart + currVertCnt;
+            if(vertEndIdx > _meshVertexCnt) {
+                _meshVertexCnt = vertEndIdx;
+            }
         }
 
         if(needNewBuffer) {
+            anyMeshDirty = true;
             //Gather buffer size
-            uint32_t totalVertCnt = 0;
+            _meshVertexCnt = 0;
             for(auto& slot : _meshes) { 
-                totalVertCnt += slot.mesh.vertices.size();
+                _meshVertexCnt += slot.mesh.vertices.size();
             }
+
+            //At least we need to have 1 vertex to avoid create buffers with
+            // zero size
+            auto allocatedVertCnt = std::max(1u, _meshVertexCnt);
 
             alloy::IBuffer::Description vbDesc{};
             vbDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
-            vbDesc.usage.vertexBuffer = 1;
-            vbDesc.sizeInBytes = totalVertCnt * sizeof(Vertex);
+            vbDesc.usage.structuredBufferReadOnly = 1;
+            vbDesc.sizeInBytes = allocatedVertCnt * sizeof(Vertex);
             auto vb = _dev->GetResourceFactory().CreateBuffer(vbDesc);
 
             auto pBuffer = (uint8_t*)vb->MapToCPU();
-            uint32_t currOffset;
+            uint32_t currOffset = 0;
             for(auto& slot : _meshes) {
                 auto thisVertCnt = slot.mesh.vertices.size();
                 auto copySize = thisVertCnt * sizeof(Vertex);
@@ -210,12 +225,14 @@ void Scene::UpdateGPUScene() {
 
             vb->UnMap();
 
-            _meshAllocator.Reset(totalVertCnt);
-            _meshAllocator.Allocate(totalVertCnt);
+            _meshAllocator.Reset(allocatedVertCnt);
+            //May need to revisit. Each individual mesh needs its own allocation
+            // for later modification
+            _meshAllocator.Allocate(_meshVertexCnt);
 
             _vertexBuffer = vb;
         }
-        else {
+        else if(anyMeshDirty){
             auto pBuffer = (uint8_t*)_vertexBuffer->MapToCPU();
             for(auto& slot : _meshes) { 
                 if(!slot.isDirty) continue;
@@ -306,7 +323,8 @@ void Scene::UpdateGPUScene() {
         }
 
         if(needNewBuffer) {
-            auto reqSize = sizeof(PerObjData) * _objects.size();
+            anyObjSlotDirty = true;
+            auto reqSize = sizeof(PerObjData) * std::max(1ull, _objects.size());
             alloy::IBuffer::Description vbDesc{};
             vbDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
             vbDesc.usage.structuredBufferReadOnly = 1;
@@ -316,29 +334,31 @@ void Scene::UpdateGPUScene() {
 
     //For each dirty SceneObject PerObjData
     //    upload modified data (PerObjData as a whole)
-        auto pBuffer = (uint8_t*)_perObjectDataBuffer->MapToCPU();
+        if(anyObjSlotDirty) {
+            auto pBuffer = (uint8_t*)_perObjectDataBuffer->MapToCPU();
 
-        for(auto i = 0 ; i < _objects.size(); ++i) {
-            auto& slot = _objects[i];
-            if(!slot.isDirty && !needNewBuffer) continue;
+            for(auto i = 0 ; i < _objects.size(); ++i) {
+                auto& slot = _objects[i];
+                if(!slot.isDirty && !needNewBuffer) continue;
 
-            PerObjData data{};
-            if(slot.isAlive) {
-                data.transform = _cachedTransforms[i];
+                PerObjData data{};
+                if(slot.isAlive) {
+                    data.transform = _cachedTransforms[i];
 
-                data.color = slot.object.mesh.color;
-                data.metallic = slot.object.mesh.metallic;
-                data.roughness = slot.object.mesh.roughness;
+                    data.color = slot.object.mesh.color;
+                    data.metallic = slot.object.mesh.metallic;
+                    data.roughness = slot.object.mesh.roughness;
+                }
+
+                auto pDst = pBuffer + i * sizeof(PerObjData);
+
+                memcpy(pDst, &data, sizeof(PerObjData));
+                //Mark all as dirty
+                slot.isDirty = false;
             }
-            
-            auto pDst = pBuffer + i * sizeof(PerObjData);
 
-            memcpy(pDst, &data, sizeof(PerObjData));
-            //Mark all as dirty
-            slot.isDirty = false;
+            _perObjectDataBuffer->UnMap();
         }
-
-        _perObjectDataBuffer->UnMap();
     }
 
 
@@ -347,17 +367,17 @@ void Scene::UpdateGPUScene() {
     //are marked dirty
     if(anyMeshDirty || anyObjSlotDirty) {
         //Gather vertex count
-        uint32_t vertCnt = 0;
+        _sceneVertexCnt = 0;
         for(auto& slot : _objects) {
             if(!slot.isAlive) continue;
             auto meshID = slot.object.mesh.meshId;
             const auto& mesh = _meshes[meshID];
-            vertCnt += mesh.vertexCnt;
+            _sceneVertexCnt += mesh.vertexCnt;
         }
 
         std::vector<uint32_t> indexData, objIdxData;
-        indexData.reserve(vertCnt);
-        objIdxData.reserve(vertCnt);
+        indexData.reserve(_sceneVertexCnt);
+        objIdxData.reserve(_sceneVertexCnt);
         for(uint32_t i = 0; i < _objects.size(); ++i) {
             auto& slot = _objects[i];
             if(!slot.isAlive) continue;
@@ -387,9 +407,9 @@ void Scene::UpdateGPUScene() {
             if(needNewBuffer) {
                 alloy::IBuffer::Description vbDesc{};
                 vbDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
-                vbDesc.usage.indexBuffer = 1;
+                //vbDesc.usage.indexBuffer = 1;
                 vbDesc.usage.structuredBufferReadOnly = 1;
-                vbDesc.sizeInBytes = reqSize;
+                vbDesc.sizeInBytes = std::max(reqSize, 0x100ull);
                 bufferSlot = _dev->GetResourceFactory().CreateBuffer(vbDesc);
             }
 
@@ -403,4 +423,79 @@ void Scene::UpdateGPUScene() {
         _UpdateBuffer(objIdxData, _objIdxBuffer);
     }
 
+    if(anyMeshDirty || anyObjSlotDirty) {
+        _CreateResSet();
+    }
+
+}
+
+void Scene::_CreateResLayout() {
+
+    auto& factory = _dev->GetResourceFactory();
+
+    alloy::IResourceLayout::Description resLayoutDesc{};
+    using ElemKind = alloy::IBindableResource::ResourceKind;
+    using alloy::common::operator|;
+
+    {
+        auto& pc = resLayoutDesc.pushConstants.emplace_back();
+        pc.bindingSlot = 0;
+        pc.bindingSpace = 0;
+        pc.sizeInDwords = (sizeof(SceneDescriptor) + 3) / 4;
+    }
+
+    //Use manual vertex fetching due to SV_VertexID is aligned with index buffer value
+    { //Vertex buffer
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        elem.kind = ElemKind::StorageBuffer;
+        elem.bindingSlot = 0;
+        elem.bindingCount = 1;
+        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+    }
+
+    { //Index buffer
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        elem.kind = ElemKind::StorageBuffer;
+        elem.bindingSlot = 1;
+        elem.bindingCount = 1;
+        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+    }
+
+    { //Object index buffer
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        elem.kind = ElemKind::StorageBuffer;
+        elem.bindingSlot = 2;
+        elem.bindingCount = 1;
+        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+    }
+
+    { //Per object data
+        auto& elem = resLayoutDesc.shaderResources.emplace_back();
+        elem.kind = ElemKind::StorageBuffer;
+        elem.bindingSlot = 3;
+        elem.bindingCount = 1;
+        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+    }
+
+    _resLayout = factory.CreateResourceLayout(resLayoutDesc);
+}
+
+void Scene::_CreateResSet() {
+
+    const auto indexCnt = _sceneVertexCnt;
+    const auto objCnt = _objects.size();
+
+    auto& factory = _dev->GetResourceFactory();
+
+    alloy::IResourceSet::Description resSetDesc{
+        .layout = _resLayout,
+        .boundResources = {
+            alloy::BufferRange::MakeStructuredBuffer<Vertex>(_vertexBuffer, 0, _meshVertexCnt),
+            alloy::BufferRange::MakeStructuredBuffer<uint32_t>(_indexBuffer, 0, indexCnt),
+            alloy::BufferRange::MakeStructuredBuffer<uint32_t>(_objIdxBuffer, 0, indexCnt),
+            alloy::BufferRange::MakeStructuredBuffer<PerObjData>(_perObjectDataBuffer, 0, objCnt)
+        }
+    };
+
+    _resSet = factory.CreateResourceSet(resSetDesc);
 }

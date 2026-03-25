@@ -8,13 +8,27 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <alloy/alloy.hpp>
 
-#include "MeshRenderer.hpp"
 #include "Allocators.hpp"
 
 template<typename T>
 using alloy_sp = alloy::common::sp<T>;
 
 constexpr uint32_t INVALID_ID = 0xffffffff;
+
+struct Vertex {
+    glm::vec3 position;
+    glm::vec2 texCoord;
+    glm::vec3 normal;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+};
+
+// Assume triangle list topology
+// CCW front facing
+struct Mesh {
+    std::vector<Vertex> vertices;
+    //std::vector<uint32_t> indices;
+};
 
 /* GPU scene representation:
  * struct Vertex {
@@ -41,6 +55,16 @@ struct PerObjData {
     //Material
     glm::vec4 color;
     float roughness, metallic;
+};
+
+struct SceneDescriptor{
+    glm::vec4 skyBoxSkyColor;
+    glm::vec4 skyBoxLightDir;
+    glm::vec4 skyBoxLightColor;
+
+    glm::vec4 cameraPos;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 struct MeshComponent {
@@ -105,6 +129,9 @@ class Scene {
                     _vertexBuffer,  //Holds all registered meshes. May have holes after mesh modify
                     _perObjectDataBuffer;
 
+    alloy_sp<alloy::IResourceLayout> _resLayout;
+    alloy_sp<alloy::IResourceSet> _resSet;
+
     struct MeshDataHolder {
         Mesh mesh;
         uint32_t firstVertexIndex, vertexCnt;
@@ -113,7 +140,7 @@ class Scene {
     std::vector<MeshDataHolder> _meshes;
     FreeListAllocator<uint32_t> _meshAllocator;
 
-    std::vector<Material> _materials;
+    //std::vector<Material> _materials;
     
     struct SceneObjectHolder {
         SceneObject object;
@@ -126,6 +153,12 @@ class Scene {
 
     std::vector<SceneObjectHolder> _objects;
     BitmapAllocator<uint32_t> _objectAlloc;
+
+    uint32_t _meshVertexCnt;
+    uint32_t _sceneVertexCnt;
+
+    void _CreateResLayout();
+    void _CreateResSet();
 
 public:
 
@@ -204,4 +237,11 @@ public:
     const SceneObject* GetSceneObject(uint32_t objectId) const;
 
     void UpdateGPUScene();
+
+    alloy_sp<alloy::IBuffer> GetVertexBuffer() const { return _vertexBuffer; }
+    alloy_sp<alloy::IBuffer> GetIndexBuffer() const { return _indexBuffer; }
+    alloy_sp<alloy::IResourceSet> GetResourceSet() const { return _resSet; }
+    alloy_sp<alloy::IResourceLayout> GetResourceLayout() const { return _resLayout; }
+
+    uint32_t GetVertexCount() const { return _sceneVertexCnt; }
 };

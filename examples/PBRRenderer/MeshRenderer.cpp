@@ -8,6 +8,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Scene.hpp"
+
 namespace PBRObjectShader {
     #include "Shaders/PBRObjectShader_ps.h"
     #include "Shaders/PBRObjectShader_vs.h"
@@ -21,11 +23,11 @@ struct UniformBufferObject{
 };
 
 MeshRenderer::MeshRenderer(const CreateArgs& args)
-    : _dev(args.device)
+    : _scene(args.scene)
+    , _dev(args.device)
     , _rtFormat(args.renderTargetFormat)
     , _dsFormat(args.depthStencilFormat)
     , _msaaSampleCnt(args.msaaSampleCount)
-    , _currRndPass(nullptr)
 {
     _CreateObjRenderPipeline();
 }
@@ -52,37 +54,6 @@ void MeshRenderer::_CreateObjRenderPipeline() {
     auto vertexShader = factory.CreateShader(vertexShaderDesc, PBRObjectShader::g_VSMain);
 
 
-    /**********************
-     * Create Pipeline
-     */
-    
-    alloy::IResourceLayout::Description resLayoutDesc{};
-    using ElemKind = alloy::IBindableResource::ResourceKind;
-    using alloy::common::operator|;
-
-    {
-        auto& pc = resLayoutDesc.pushConstants.emplace_back();
-        pc.bindingSlot = 0;
-        pc.bindingSpace = 0;
-        pc.sizeInDwords = (sizeof(UniformBufferObject) + 3) / 4;
-    }
-#if 0
-    {
-        auto& elem = resLayoutDesc.shaderResources.emplace_back();
-        //resLayoutDesc.shaderResources[0].name = "ObjectUniform";
-        elem.kind = ElemKind::UniformBuffer;
-        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
-    }
-
-    {
-        auto& elem = resLayoutDesc.shaderResources.emplace_back();
-        //resLayoutDesc.shaderResources[1].name = "Struct";
-        elem.kind = ElemKind::StorageBuffer;
-        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
-    }
-#endif
-    _objRenderLayout = factory.CreateResourceLayout(resLayoutDesc);
-
     //alloy::IResourceSet::Description resSetDesc{};
     //resSetDesc.layout = _layout;
     //resSetDesc.boundResources = {
@@ -94,7 +65,7 @@ void MeshRenderer::_CreateObjRenderPipeline() {
     //auto outputDesc = swapChain->GetBackBuffer()->GetDesc();
     
     alloy::GraphicsPipelineDescription pipelineDescription{};
-    pipelineDescription.resourceLayout = _objRenderLayout;
+    pipelineDescription.resourceLayout = _scene.GetResourceLayout();
     pipelineDescription.attachmentState = {};
     pipelineDescription.attachmentState.colorAttachments.push_back(
         alloy::AttachmentStateDescription::ColorAttachment::MakeAlphaBlend()
@@ -133,13 +104,13 @@ void MeshRenderer::_CreateObjRenderPipeline() {
     //    float3 tangent  : TANGENT;
     //    float3 bitangent: BINORMAL;
     //};
-    pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
-        {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0},          alloy::ShaderDataType::Float3},
-        {"TEXCOORD", {alloy::VertexInputSemantic::Name::TextureCoordinate, 0}, alloy::ShaderDataType::Float2},
-        {"NORMAL",   {alloy::VertexInputSemantic::Name::Normal, 0},            alloy::ShaderDataType::Float3},
-        {"TANGENT",  {alloy::VertexInputSemantic::Name::Tangent, 0},           alloy::ShaderDataType::Float3},
-        {"BINORMAL", {alloy::VertexInputSemantic::Name::Binormal, 0},          alloy::ShaderDataType::Float3},
-        });
+    //pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
+    //    {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0},          alloy::ShaderDataType::Float3},
+    //    {"TEXCOORD", {alloy::VertexInputSemantic::Name::TextureCoordinate, 0}, alloy::ShaderDataType::Float2},
+    //    {"NORMAL",   {alloy::VertexInputSemantic::Name::Normal, 0},            alloy::ShaderDataType::Float3},
+    //    {"TANGENT",  {alloy::VertexInputSemantic::Name::Tangent, 0},           alloy::ShaderDataType::Float3},
+    //    {"BINORMAL", {alloy::VertexInputSemantic::Name::Binormal, 0},          alloy::ShaderDataType::Float3},
+    //    });
     pipelineDescription.shaderSet.vertexShader = vertexShader;
     pipelineDescription.shaderSet.fragmentShader = fragmentShader;
 
@@ -148,16 +119,19 @@ void MeshRenderer::_CreateObjRenderPipeline() {
     _objRenderPipeline = factory.CreateGraphicsPipeline(pipelineDescription);
 }
 
-void MeshRenderer::BeginRendering(alloy::IRenderCommandEncoder* rndPass, const Viewport& vp) {
-    assert(_currRndPass == nullptr);//Previous BeginRendering call not finished.
-    _currRndPass = rndPass;
+void MeshRenderer::DrawScene(alloy::IRenderCommandEncoder* rndPass, const Viewport& vp) {
+
+    _scene.UpdateGPUScene();
 
     std::vector<uint32_t> ubo{};
-    ubo.resize(sizeof(UniformBufferObject) / 4);
+    ubo.resize(sizeof(SceneDescriptor) / 4);
 
-    auto pubo = (UniformBufferObject*)ubo.data();
+    auto pubo = (SceneDescriptor*)ubo.data();
+
+    pubo->skyBoxLightColor = glm::vec4(0.992, 0.984, 0.827, 10);
+    pubo->skyBoxLightDir = glm::normalize(glm::vec4(-1.0, -1.0, -1.0, 1.0));
+
     pubo->cameraPos = glm::vec4(vp.position, 1.f);
-    pubo->model = glm::mat4(1);
     pubo->view = glm::lookAt(
         vp.position,
         vp.position + vp.front,
@@ -167,48 +141,18 @@ void MeshRenderer::BeginRendering(alloy::IRenderCommandEncoder* rndPass, const V
         vp.aspectRatio, //swapChain->GetWidth() / (float)swapChain->GetHeight(),
         vp.nearClip, vp.farClip);
 
-    _currRndPass->SetPipeline(_objRenderPipeline);
-    _currRndPass->SetPushConstants(0, ubo, 0);
-    _currRndPass->SetFullViewports();
-    _currRndPass->SetFullScissorRects();
+    rndPass->SetPipeline(_objRenderPipeline);
+    rndPass->SetPushConstants(0, ubo, 0);
+    rndPass->SetGraphicsResourceSet(_scene.GetResourceSet());
+    rndPass->SetFullViewports();
+    rndPass->SetFullScissorRects();
 
     //Construct MVP matrices
 
-}
+    //rndPass->SetVertexBuffer(0, alloy::BufferRange::MakeByteBuffer(_scene.GetVertexBuffer()));
+    //rndPass->SetIndexBuffer(alloy::BufferRange::MakeByteBuffer(_scene.GetIndexBuffer()), alloy::IndexFormat::UInt32);
 
-void MeshRenderer::DrawMesh(const Mesh& mesh) {
-    auto vertSizeInBytes = mesh.vertices.size() * sizeof(Vertex);
-    alloy::IBuffer::Description vertBufferDesc {};
-    vertBufferDesc.sizeInBytes = vertSizeInBytes;
-    vertBufferDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
-    vertBufferDesc.usage.vertexBuffer = 1;
-    auto vertBuffer = _dev->GetResourceFactory().CreateBuffer(vertBufferDesc);
-
-    auto dst = vertBuffer->MapToCPU();
-    memcpy(dst, mesh.vertices.data(), vertSizeInBytes);
-    vertBuffer->UnMap();
-
-    _currRndPass->SetVertexBuffer(0, alloy::BufferRange::MakeByteBuffer(vertBuffer));
-
-
-    //Modify model transform matrtix;
-    
-    std::vector<uint32_t> modelMat{};
-    modelMat.resize(sizeof(UniformBufferObject::model) / 4);
-
-    auto pModelMat = (glm::mat4*)modelMat.data();
-
-    *pModelMat = glm::mat4(1);
-    //(*pModelMat)[2][2] = -1;
-
-    constexpr auto pcOff = offsetof(UniformBufferObject, model) / 4;
-
-    _currRndPass->SetPushConstants(0, modelMat, pcOff);
-
-    _currRndPass->Draw(mesh.vertices.size());
+    rndPass->Draw(_scene.GetVertexCount());
 
 }
 
-void MeshRenderer::EndRendering() {
-    _currRndPass = nullptr;
-}

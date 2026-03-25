@@ -118,7 +118,7 @@ public:
 
     SizeType Allocate(SizeType size, SizeType alignment = 1) {
         if (size == 0 || alignment == 0) {
-            return kInvalidValue;
+            return INVALID_VALUE;
         }
 
         Node* prev = nullptr;
@@ -137,12 +137,11 @@ public:
                 continue;
             }
 
-            SizeType remainingAfterPrefix = (SizeType)(curr->size - prefixSize);
-            if (remainingAfterPrefix < size) {
+            if (curr->size < size + prefixSize) {
                 continue;
             }
 
-            SizeType suffixSize = (SizeType)(remainingAfterPrefix - size);
+            auto remainingAfterPrefix = (SizeType)(curr->size - prefixSize);
 
             if (prefixSize > 0) {
                 Node* prefix = new Node{ curr->offset, prefixSize, true, curr };
@@ -152,7 +151,10 @@ public:
                 curr->size = remainingAfterPrefix;
             }
 
-            if (suffixSize > 0) {
+            
+            auto suffixSize = (SizeType)(remainingAfterPrefix - size);
+
+            if (suffixSize) {
                 Node* suffix = new Node{
                     (SizeType)(alignedOffset + size),
                     suffixSize,
@@ -168,11 +170,11 @@ public:
             return curr->offset;
         }
 
-        return kInvalidValue;
+        return INVALID_VALUE;
     }
 
     bool Free(SizeType offset) {
-        if (offset == kInvalidValue) {
+        if (offset == INVALID_VALUE) {
             return false;
         }
 
@@ -279,7 +281,7 @@ public:
     }
 
     static constexpr SizeType InvalidOffset() {
-        return kInvalidValue;
+        return INVALID_VALUE;
     }
 };
 
@@ -289,7 +291,7 @@ class BitmapAllocator {
     static_assert(std::is_unsigned_v<IndexType>);
 
 public:
-    static constexpr SizeType INVALID_VALUE = std::numeric_limits<SizeType>::max();
+    static constexpr IndexType INVALID_VALUE = std::numeric_limits<IndexType>::max();
 
 private:
 
@@ -324,7 +326,7 @@ public:
             return index;
         }
 
-        return kInvalidIndex;
+        return INVALID_VALUE;
     }
 
     void Free(IndexType index) {
@@ -384,7 +386,7 @@ public:
         const uint64_t validBitCntInLastWord = _capacity & 0x3ff; // _capacity % 64
         //Clear reserved bits if necessary
         if(validBitCntInLastWord) {
-            uint64_t validMask = 1ULL << validBitCntInLastWord;
+            uint64_t validMask = (1ULL << validBitCntInLastWord) - 1;
             _words.back() &= validMask;
         }
 
@@ -408,6 +410,6 @@ public:
     }
 
     static constexpr IndexType InvalidIndex() {
-        return kInvalidIndex;
+        return INVALID_VALUE;
     }
 };

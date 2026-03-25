@@ -50,28 +50,47 @@ Camera::operator Viewport() const {
 
 PBRRendererApp::PBRRendererApp(IAppRunner* runner)
     : _runner(runner)
+    , _scene(runner->GetRenderService()->GetDevice())
     , _rndr({
         .device = runner->GetRenderService()->GetDevice(),
         .msaaSampleCount = runner->GetRenderService()->GetFrameBufferSampleCount(),
         .renderTargetFormat = runner->GetRenderService()->GetFrameBufferColorFormat(),
         .depthStencilFormat = runner->GetRenderService()->GetFrameBufferDepthStencilFormat(),
+
+        .scene = _scene
     })
-    , _scene(runner->GetRenderService()->GetDevice())
-    , _cubeMesh(BuildBoxMesh(1,1,1))
     , _cam {
         .position = {0, 0, -4},
         .fovY = 45,
     }
 {
-
+    _SetupScene();
 }
 
 void PBRRendererApp::_SetupScene() {
     auto boxMeshID = _scene.AddMesh(BuildBoxMesh(1,1,1));
 
-    auto objID = _scene.CreateSceneObject();
-    auto* obj = _scene.GetSceneObject(objID);
-    obj->mesh.meshId = boxMeshID;
+    {
+        auto objID = _scene.CreateSceneObject();
+        auto* obj = _scene.GetSceneObject(objID);
+        auto& mesh = obj->mesh;
+        mesh.meshId = boxMeshID;
+        mesh.color = {0.5,0.7,0.6,1};
+        mesh.roughness = 0.5;
+        mesh.metallic = 0.1;
+    }
+
+    {
+        auto objID = _scene.CreateSceneObject();
+        auto* obj = _scene.GetSceneObject(objID);
+        obj->transform.position = {1.5,0,0};
+        auto& mesh = obj->mesh;
+        mesh.color = {0.3,0.2,0.7,1};
+        mesh.meshId = boxMeshID;
+        mesh.roughness = 0.3;
+        mesh.metallic = 0.9;
+    }
+
 }
 
 void PBRRendererApp::OnDrawGui() {        
@@ -98,9 +117,7 @@ void PBRRendererApp::OnRenderFrame(alloy::IRenderCommandEncoder& renderPass) {
     _cam.windowW = (float)windowW;
     _cam.windowH = (float)windowH;
 
-    _rndr.BeginRendering(&renderPass, _cam);
-    _rndr.DrawMesh(_cubeMesh);
-    _rndr.EndRendering();
+    _rndr.DrawScene(&renderPass, _cam);
 }
 
 void PBRRendererApp::Update() { 

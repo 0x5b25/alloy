@@ -27,6 +27,7 @@ macro(compile_shader TARGET_NAME)
         add_custom_command(
             OUTPUT ${SHADER_RESULT}
             COMMAND ${HLSL_COMPILER} -E ${ENTRY_NAME} -T ${TYPE}_6_0 -Fh ${SHADER_RESULT} -Zi -Qembed_debug ${SHADER_SRC}
+            DEPENDS ${SHADER_SRC}
             COMMENT "Compiling ${TYPE} shader from ${SHADER_SRC}"
             VERBATIM
         )

@@ -4,26 +4,7 @@
 #include <glm/glm.hpp>
 #include <alloy/alloy.hpp>
 
-struct Vertex {
-    glm::vec3 position;
-    glm::vec2 texCoord;
-    glm::vec3 normal;
-    glm::vec3 tangent;
-    glm::vec3 bitangent;
-};
-
-// Assume triangle list topology
-// CCW front facing
-struct Mesh {
-    std::vector<Vertex> vertices;
-    //std::vector<uint32_t> indices;
-};
-
-struct Material {
-    
-    glm::vec4 color;
-    float roughness, metallic;
-};
+#include "Scene.hpp"
 
 struct Viewport {
     float fovDeg; //Y direction fov
@@ -37,15 +18,16 @@ struct Viewport {
 class MeshRenderer {
     template<typename T> using alloy_sp = alloy::common::sp<T>;
 
+    Scene& _scene; 
+
     alloy::PixelFormat _rtFormat;
     alloy::PixelFormat _dsFormat;
     alloy::SampleCount _msaaSampleCnt;
 
     alloy_sp<alloy::IGraphicsDevice> _dev;
     alloy_sp<alloy::IGfxPipeline> _objRenderPipeline;
-    alloy_sp<alloy::IResourceLayout> _objRenderLayout;
 
-    alloy::IRenderCommandEncoder* _currRndPass;
+    
 
     void _CreateObjRenderPipeline();
 
@@ -55,13 +37,12 @@ public:
         alloy::SampleCount msaaSampleCount;
         alloy::PixelFormat renderTargetFormat;
         alloy::PixelFormat depthStencilFormat;
+
+        Scene& scene;
     };
 
     MeshRenderer(const CreateArgs& args);
     ~MeshRenderer();
 
-    void BeginRendering(alloy::IRenderCommandEncoder* rndPass, const Viewport& vp);
-    void DrawMesh(const Mesh& mesh);
-    void EndRendering();
-
+    void DrawScene(alloy::IRenderCommandEncoder* rndPass, const Viewport& vp);
 };

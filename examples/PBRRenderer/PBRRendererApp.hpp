@@ -22,15 +22,16 @@ struct Camera {
 class PBRRendererApp : public IApp {
     IAppRunner* _runner;
 
-    MeshRenderer _rndr;
     Scene _scene;
+    MeshRenderer _rndr;
 
-    Mesh _cubeMesh;
+    //Mesh _cubeMesh;
 
     Camera _cam;
 
     bool _mouseLocked = false;
     double _cursorXPos, _cursorYPos;
+
     void _HandleInput();
 
     void _SetupScene();
