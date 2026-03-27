@@ -10,4 +10,5 @@ include(cmake/CompileHLSL.cmake)
 
 add_subdirectory(AppBase)
 add_subdirectory(HLSLCompiler)
+add_subdirectory(SimpleQuad)
 add_subdirectory(PBRRenderer)

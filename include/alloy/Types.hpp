@@ -319,7 +319,7 @@ namespace alloy
     };
 
 #define ALLOY_SAMPLECNT_COMARISON_OPERATOR(op)               \
-    inline bool operator##op(SampleCount a, SampleCount b) { \
+    inline bool operator op (SampleCount a, SampleCount b) { \
         using T = std::underlying_type<SampleCount>::type;   \
         return T(a) op T(b);                                 \
     }                                                        \

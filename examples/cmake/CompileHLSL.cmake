@@ -1,84 +1,118 @@
+#Usages:
+# compile_shader(<target_name>
+#    [SOURCES <hlsl_src>...
+#        TYPES <shader_types>... #can be vs, ps, cs...
+#        [WITH_DBG_INFO]        #preserve debug info in generated DXIL
+#    ]...
+# )
+#
 
+function(compile_shader TARGET_NAME)
 
-macro(compile_shader TARGET_NAME)
-
-    #dxc -E PSMain -Fh ImGuiAlloyBackend_ps.h -T ps_6_0 -Zi -Qembed_debug ImGuiAlloyBackend.hlsl
-
-    set(SHADER_SOURCE_FILES ${ARGN}) # the rest of arguments to this function will be assigned as shader source files
-  
-    # Validate that source files have been passed
-    list(LENGTH SHADER_SOURCE_FILES FILE_COUNT)
-    if(FILE_COUNT EQUAL 0)
-        message(FATAL_ERROR "Cannot create a shaders target without any source files")
-    endif()
+    # Map short type names to entry point names
+    macro(_get_entry_point TYPE OUT_VAR)
+        if(${TYPE} STREQUAL "vs")
+            set(${OUT_VAR} "VSMain")
+        elseif(${TYPE} STREQUAL "ps")
+            set(${OUT_VAR} "PSMain")
+        elseif(${TYPE} STREQUAL "cs")
+            set(${OUT_VAR} "CSMain")
+        elseif(${TYPE} STREQUAL "gs")
+            set(${OUT_VAR} "GSMain")
+        elseif(${TYPE} STREQUAL "hs")
+            set(${OUT_VAR} "HSMain")
+        elseif(${TYPE} STREQUAL "ds")
+            set(${OUT_VAR} "DSMain")
+        else()
+            string(TOUPPER "${TYPE}" _UP)
+            set(${OUT_VAR} "${_UP}Main")
+        endif()
+    endmacro()
 
     set(HLSL_COMPILER ${DXC_EXECUTABLE_DIR}/Debug/dxc)
     set(HLSL_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 
-    #make the generated output folder
     file(MAKE_DIRECTORY ${HLSL_OUTPUT_DIR})
 
-    #set(SHADER_COMMANDS)
     set(SHADER_PRODUCTS)
 
-    macro(add_dxc_compile_command SHADER_SRC SHADER_NAME ENTRY_NAME TYPE)
-        set(SHADER_RESULT "${HLSL_OUTPUT_DIR}/${SHADER_NAME}_${TYPE}.h")
+    # ---------------------------------------------------------------
+    # Parse the variadic argument list.
+    # Grammar:  (SOURCES <file>... TYPES <type>... [WITH_DBG_INFO])*
+    # We walk the list token-by-token with a small state machine.
+    # ---------------------------------------------------------------
+    set(_STATE "IDLE")           # IDLE | IN_SOURCES | IN_TYPES
+    set(_CUR_SOURCES)
+    set(_CUR_TYPES)
+    set(_CUR_DBG OFF)
 
-        add_custom_command(
-            OUTPUT ${SHADER_RESULT}
-            COMMAND ${HLSL_COMPILER} -E ${ENTRY_NAME} -T ${TYPE}_6_0 -Fh ${SHADER_RESULT} -Zi -Qembed_debug ${SHADER_SRC}
-            DEPENDS ${SHADER_SRC}
-            COMMENT "Compiling ${TYPE} shader from ${SHADER_SRC}"
-            VERBATIM
-        )
+    # Helper macro: flush the current SOURCES/TYPES group
+    macro(_flush_group)
+        if(_CUR_SOURCES AND _CUR_TYPES)
+            foreach(_SRC IN LISTS _CUR_SOURCES)
+                cmake_path(ABSOLUTE_PATH _SRC NORMALIZE)
+                cmake_path(GET _SRC STEM _SNAME)
 
-        ## Build command
-        #list(APPEND SHADER_COMMANDS COMMAND)
-        #list(APPEND SHADER_COMMANDS ${HLSL_COMPILER})
-        ##set entry 
-        #list(APPEND SHADER_COMMANDS "-E ${ENTRY_NAME}")
-        ##Shader type
-        #list(APPEND SHADER_COMMANDS "-T ${TYPE}_6_0")
-        ##Embed debug info
-        #list(APPEND SHADER_COMMANDS "-Zi -Qembed_debug")
-        ##output header name
-        #list(APPEND SHADER_COMMANDS "-Fh ${SHADER_RESULT}")
-        ##input
-        #list(APPEND SHADER_COMMANDS "${SHADER_SRC}")
+                foreach(_TYPE IN LISTS _CUR_TYPES)
+                    _get_entry_point(${_TYPE} _ENTRY)
 
-        # Add product
-        list(APPEND SHADER_PRODUCTS ${SHADER_RESULT})
+                    set(_RESULT "${HLSL_OUTPUT_DIR}/${_SNAME}_${_TYPE}.h")
+
+                    if(_CUR_DBG)
+                        set(_DBG_FLAGS -Zi -Qembed_debug)
+                    else()
+                        set(_DBG_FLAGS)
+                    endif()
+
+                    add_custom_command(
+                        OUTPUT ${_RESULT}
+                        COMMAND ${HLSL_COMPILER}
+                            -E ${_ENTRY}
+                            -T ${_TYPE}_6_0
+                            -Fh ${_RESULT}
+                            ${_DBG_FLAGS}
+                            ${_SRC}
+                        DEPENDS ${_SRC}
+                        COMMENT "Compiling ${_TYPE} shader from ${_SRC}"
+                        VERBATIM
+                    )
+
+                    list(APPEND SHADER_PRODUCTS ${_RESULT})
+                endforeach()
+            endforeach()
+        endif()
+
+        set(_CUR_SOURCES)
+        set(_CUR_TYPES)
+        set(_CUR_DBG OFF)
     endmacro()
 
-    foreach(SHADER_SOURCE IN LISTS SHADER_SOURCE_FILES)
-        #expand the shader file path
-        cmake_path(ABSOLUTE_PATH SHADER_SOURCE NORMALIZE)
-
-        #get shader file name
-        cmake_path(GET SHADER_SOURCE STEM SHADER_NAME)
-        # Build command
-        # Generate pixel shader
-        add_dxc_compile_command(${SHADER_SOURCE} ${SHADER_NAME} PSMain ps)
-        # Generate vertex shader
-        add_dxc_compile_command(${SHADER_SOURCE} ${SHADER_NAME} VSMain vs)
-
+    foreach(_TOKEN IN ITEMS ${ARGN})
+        if(_TOKEN STREQUAL "SOURCES")
+            _flush_group()
+            set(_STATE "IN_SOURCES")
+        elseif(_TOKEN STREQUAL "TYPES")
+            set(_STATE "IN_TYPES")
+        elseif(_TOKEN STREQUAL "WITH_DBG_INFO")
+            set(_CUR_DBG ON)
+        elseif(_STATE STREQUAL "IN_SOURCES")
+            list(APPEND _CUR_SOURCES ${_TOKEN})
+        elseif(_STATE STREQUAL "IN_TYPES")
+            list(APPEND _CUR_TYPES ${_TOKEN})
+        endif()
     endforeach()
 
-    #add_custom_target(${TARGET_NAME}
-    #    ${SHADER_COMMANDS}
-    #    COMMENT "Compiling Shaders [${TARGET_NAME}]"
-    #    SOURCES ${SHADER_SOURCE_FILES}
-    #    BYPRODUCTS ${SHADER_PRODUCTS}
-    #)
+    # Flush the last group
+    _flush_group()
 
+    if(NOT SHADER_PRODUCTS)
+        message(FATAL_ERROR "compile_shader(${TARGET_NAME}): no shader products generated. Check SOURCES/TYPES arguments.")
+    endif()
 
     add_library(${TARGET_NAME} INTERFACE)
-    target_sources(${TARGET_NAME} PUBLIC 
+    target_sources(${TARGET_NAME} PUBLIC
         FILE_SET HEADERS
         BASE_DIRS ${CMAKE_CURRENT_BINARY_DIR}
         FILES ${SHADER_PRODUCTS})
 
-
-    #target_include_directories(${TARGET_NAME} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-
-endmacro()
+endfunction()
