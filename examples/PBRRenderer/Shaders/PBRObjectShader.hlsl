@@ -81,11 +81,11 @@ float DistributionGGX(float3 N, float3 H, float roughness)
     float a2     = a*a;
     float NdotH  = max(dot(N, H), 0.0);
     float NdotH2 = NdotH*NdotH;
-	
+
     float num   = a2;
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
     denom = PI * denom * denom;
-	
+
     return num / denom;
 }
 
@@ -96,7 +96,7 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 
     float num   = NdotV;
     float denom = NdotV * (1.0 - k) + k;
-	
+
     return num / denom;
 }
 float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
@@ -105,7 +105,7 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
     float NdotL = max(dot(N, L), 0.0);
     float ggx2  = GeometrySchlickGGX(NdotV, roughness);
     float ggx1  = GeometrySchlickGGX(NdotL, roughness);
-	
+
     return ggx1 * ggx2;
 }
 
@@ -159,11 +159,13 @@ float4 PSMain(PSInput input) : SV_TARGET
     //Calculate diffuse component {
     //Use lambert model
     float3 diffuse = max(dot(N, L), 0.f);
+    
+    //Skylight
+    float3 skyColor = ubo.skyBoxSkyColor.xyz * ubo.skyBoxSkyColor.w;
 
     //Metal surfaces don't have refractions, limit the diffuse part
     //using metallic value
-    float3 Fr =  kS * specular + kD * diffuse * (1.f - matMetallic);
+    float3 Fr =  kS * specular + kD * diffuse * (1.f - matMetallic) + skyColor * matColor;
 
     return float4(Fr, 1);
-    //return input.uv;
 }

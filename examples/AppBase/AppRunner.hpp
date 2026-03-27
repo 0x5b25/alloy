@@ -68,21 +68,11 @@ class AppRunner : public IAppRunner {
     GLFWwindow* _window;
     uint32_t _wndWidth, _wndHeight;
 
-    const uint32_t _maxFramesInFlight = 2;
-    uint32_t _nextFrameIdx = 0;
+    struct MsaaRenderTarget {
+        alloy_sp<alloy::IRenderTarget> color, depthStencil;
+    } _msaaTarget;
 
-    struct PerFrameResource {
-        uint32_t submissionFenceValue;
-        alloy_sp<alloy::ICommandList> submission;
-
-        struct MsaaRenderTarget {
-            alloy_sp<alloy::IRenderTarget> color, depthStencil;
-        } msaaTarget;
-    };
-
-    std::vector<PerFrameResource> _perFrameResources;
-
-    
+    alloy_sp<alloy::ICommandList> _submission;
     uint32_t _fenceVal = 0;
     alloy_sp<alloy::IEvent> _submissionFence;
 
@@ -98,7 +88,6 @@ private:
 
     uint32_t GetLastCompletedCommandIndex() const;
     void WaitForCommandComplete(uint32_t value);
-    uint32_t WaitForNextFrameResourceAvailable();
 
     void BeginFrame();
     void ResizeSwapChainIfNecessary();

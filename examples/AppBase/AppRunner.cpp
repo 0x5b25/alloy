@@ -69,7 +69,7 @@ alloy_sp<alloy::IGraphicsDevice> RenderServiceImpl::GetDevice() {
     return _runner->_dev;
 }
 uint32_t RenderServiceImpl::GetCurrentFrameIndex() {
-    return _runner->_nextFrameIdx;
+    return _runner->_fenceVal;
 }
 
 void RenderServiceImpl::GetFrameBufferSize(uint32_t& width, uint32_t& height) {
@@ -140,14 +140,16 @@ int AppRunner::Run(IApp* pUserApp) {
 
         ResizeSwapChainIfNecessary();
 
-        auto frameIdx = WaitForNextFrameResourceAvailable();
-        auto& frameRes = _perFrameResources[frameIdx];
-
-        auto preFence = frameRes.submissionFenceValue;
-
-        //Submission fence = frame index + 1
-        if(preFence) {
-            pUserApp->OnFrameComplete(preFence - 1);
+        //auto frameIdx = WaitForNextFrameResourceAvailable();
+        //auto& frameRes = _perFrameResources[frameIdx];
+        if(_fenceVal) {
+            auto completedFenceVal = GetLastCompletedCommandIndex();
+            if(completedFenceVal < _fenceVal)
+                WaitForCommandComplete(_fenceVal);
+            //Submission fence = frame index + 1
+            pUserApp->OnFrameComplete(_fenceVal - 1);
+            //Release command list
+            _submission = nullptr;
         }
 
         BeginFrame();
@@ -175,7 +177,7 @@ int AppRunner::Run(IApp* pUserApp) {
         //Begin render
 
 
-        auto& tgt = frameRes.msaaTarget;
+        auto& tgt = _msaaTarget;
         auto fb = _swapChain->GetBackBuffer();
         auto fbDesc = fb->GetDesc();
 
@@ -234,8 +236,7 @@ int AppRunner::Run(IApp* pUserApp) {
         cmdQ->SubmitCommand(commandList.get());
         cmdQ->EncodeSignalEvent(_submissionFence.get(), fenceVal);
 
-        frameRes.submissionFenceValue = fenceVal;
-        frameRes.submission = commandList;
+        _submission = commandList;
         
         _dev->PresentToSwapChain(_swapChain.get());
     }
@@ -307,7 +308,7 @@ void AppRunner::SetupAlloyEnv() {
     swapChainDesc.initialWidth = w;
     swapChainDesc.initialHeight = h;
     swapChainDesc.depthFormat = alloy::PixelFormat::D24_UNorm_S8_UInt;
-    swapChainDesc.backBufferCnt = _maxFramesInFlight;
+    swapChainDesc.backBufferCnt = 2;
     _swapChain = factory.CreateSwapChain(swapChainDesc);
 
     CreatePerFrameResources();
@@ -347,85 +348,51 @@ void AppRunner::TearDownAlloyEnv() {
 
 
 void AppRunner::ReleasePerFrameResources() {
-    for(auto& slot : _perFrameResources) {
-        slot.msaaTarget = {};
-        slot.submission = nullptr;
-    }
+    _msaaTarget = {};
+    _submission = nullptr;
 }
 
 void AppRunner::CreatePerFrameResources() {
-    if(!_perFrameResources.empty()) {
-        //Destroy old targets
-        ReleasePerFrameResources();
-        //_nextFrameIdx = 0;
-    } else {
-        _perFrameResources.resize(_maxFramesInFlight);
-    }
-
+    //Destroy old targets
+    ReleasePerFrameResources();
+    //_nextFrameIdx = 0;
+    
     auto w = _swapChain->GetWidth();
     auto h = _swapChain->GetHeight();
 
     auto& factory = _dev->GetResourceFactory();
-    for(auto i = 0; i < _maxFramesInFlight; ++i) {
 
-        auto& slot = _perFrameResources[i];
 
-        auto& tgt = slot.msaaTarget;
+    auto& tgt = _msaaTarget;
 
-        alloy::ITexture::Description msaaTgtDesc {};
-        msaaTgtDesc.type = alloy::ITexture::Description::Type::Texture2D;
-        msaaTgtDesc.sampleCount = _msaaSampleCnt;
-        msaaTgtDesc.width = w;
-        msaaTgtDesc.height = h;
-        msaaTgtDesc.depth = 1;
-        msaaTgtDesc.mipLevels = 1;
-        msaaTgtDesc.arrayLayers = 1;
-        msaaTgtDesc.format = alloy::PixelFormat::B8_G8_R8_A8_UNorm;
-        msaaTgtDesc.usage.renderTarget = 1;
-        {
-            auto tex = factory.CreateTexture(msaaTgtDesc);
-            auto view = factory.CreateTextureView(tex);
-            tgt.color = factory.CreateRenderTarget(view);
+    alloy::ITexture::Description msaaTgtDesc {};
+    msaaTgtDesc.type = alloy::ITexture::Description::Type::Texture2D;
+    msaaTgtDesc.sampleCount = _msaaSampleCnt;
+    msaaTgtDesc.width = w;
+    msaaTgtDesc.height = h;
+    msaaTgtDesc.depth = 1;
+    msaaTgtDesc.mipLevels = 1;
+    msaaTgtDesc.arrayLayers = 1;
+    msaaTgtDesc.format = alloy::PixelFormat::B8_G8_R8_A8_UNorm;
+    msaaTgtDesc.usage.renderTarget = 1;
+    {
+        auto tex = factory.CreateTexture(msaaTgtDesc);
+        auto view = factory.CreateTextureView(tex);
+        tgt.color = factory.CreateRenderTarget(view);
 
-            tex->SetDebugName(std::format("MSAAColorTgt_frame{}", i));
-        }
-
-        msaaTgtDesc.format = alloy::PixelFormat::D24_UNorm_S8_UInt;
-        msaaTgtDesc.usage.renderTarget = 0;
-        msaaTgtDesc.usage.depthStencil = 1;
-        {
-            auto tex = factory.CreateTexture(msaaTgtDesc);
-            auto view = factory.CreateTextureView(tex);
-            tgt.depthStencil = factory.CreateRenderTarget(view);
-
-            tex->SetDebugName(std::format("MSAADSTgt_frame{}", i));
-        }
-    }
-}
-
-uint32_t AppRunner::WaitForNextFrameResourceAvailable() {
-
-    auto& nextFrameResSlot = _perFrameResources[_nextFrameIdx];
-
-    if(nextFrameResSlot.submissionFenceValue != 0) {
-        auto expVal = nextFrameResSlot.submissionFenceValue;
-        auto lastCompletedFenceVal = GetLastCompletedCommandIndex();
-
-        if(lastCompletedFenceVal < expVal) {
-            WaitForCommandComplete(expVal);
-        }
+        tex->SetDebugName(std::format("MSAAColorTgt_frame"));
     }
 
-    //nextFrameResSlot.submission = nullptr;
-    //nextFrameResSlot.submissionFenceValue = 0;
+    msaaTgtDesc.format = alloy::PixelFormat::D24_UNorm_S8_UInt;
+    msaaTgtDesc.usage.renderTarget = 0;
+    msaaTgtDesc.usage.depthStencil = 1;
+    {
+        auto tex = factory.CreateTexture(msaaTgtDesc);
+        auto view = factory.CreateTextureView(tex);
+        tgt.depthStencil = factory.CreateRenderTarget(view);
 
-    auto retVal =  _nextFrameIdx;
-
-    _nextFrameIdx++;
-    if(_nextFrameIdx >= _maxFramesInFlight) 
-        _nextFrameIdx = 0;
-
-    return retVal;
+        tex->SetDebugName(std::format("MSAADSTgt_frame"));
+    }
 }
 
 void AppRunner::ResizeSwapChainIfNecessary() {

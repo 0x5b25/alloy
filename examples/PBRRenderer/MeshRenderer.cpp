@@ -128,6 +128,7 @@ void MeshRenderer::DrawScene(alloy::IRenderCommandEncoder* rndPass, const Viewpo
 
     auto pubo = (SceneDescriptor*)ubo.data();
 
+    pubo->skyBoxSkyColor = glm::vec4(0.2, 0.2, 0.3, 1.0);
     pubo->skyBoxLightColor = glm::vec4(0.992, 0.984, 0.827, 10);
     pubo->skyBoxLightDir = glm::normalize(glm::vec4(-1.0, -1.0, -1.0, 1.0));
 
