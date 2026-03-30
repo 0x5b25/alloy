@@ -1,5 +1,7 @@
 #include "PBRRendererApp.hpp"
 
+#include <format>
+
 #include <imgui.h>
 #include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
@@ -72,29 +74,94 @@ void PBRRendererApp::_SetupScene() {
 
     {
         auto objID = _scene.CreateSceneObject();
-        auto* obj = _scene.GetSceneObject(objID);
-        auto& mesh = obj->mesh;
-        mesh.meshId = boxMeshID;
-        mesh.color = {0.5,0.7,0.6,1};
-        mesh.roughness = 0.5;
-        mesh.metallic = 0.1;
+        auto* mesh = _scene.GetMeshComponent(objID);
+        mesh->meshId = boxMeshID;
+        mesh->color = {0.5,0.7,0.6,1};
+        mesh->roughness = 0.5;
+        mesh->metallic = 0.1;
     }
 
     {
         auto objID = _scene.CreateSceneObject();
-        auto* obj = _scene.GetSceneObject(objID);
-        obj->transform.position = {1.5,0,0};
-        auto& mesh = obj->mesh;
-        mesh.color = {0.3,0.2,0.7,1};
-        mesh.meshId = boxMeshID;
-        mesh.roughness = 0.3;
-        mesh.metallic = 0.9;
+        _scene.GetTransformComponent(objID)->position = {1.5,0,0};
+        auto* mesh = _scene.GetMeshComponent(objID);
+        mesh->color = {0.3,0.2,0.7,1};
+        mesh->meshId = boxMeshID;
+        mesh->roughness = 0.3;
+        mesh->metallic = 0.9;
     }
 
 }
 
 void PBRRendererApp::OnDrawGui() {        
-    ImGui::ShowDemoWindow();
+    ImGui::Begin("Scene Objects");
+
+    int objIndex = 0;
+    for (auto& obj : _scene) {
+        ImGui::PushID(objIndex);
+
+        auto label = std::format("Object {}", obj.id);
+        if (ImGui::CollapsingHeader(label.c_str())) {
+            // Transform
+            if (ImGui::TreeNode("Transform")) {
+                const auto* t = _scene.GetTransformComponent(obj.id);
+                glm::vec3 position = t->position;
+                glm::vec3 euler = glm::degrees(t->GetEulerAngles());
+                glm::vec3 scale = t->scale;
+
+                ImGui::DragFloat3("Position", &position.x, 0.1f);
+                ImGui::DragFloat3("Rotation (deg)", &euler.x, 1.0f);
+                ImGui::DragFloat3("Scale", &scale.x, 0.1f);
+
+                if (position != t->position || euler != glm::degrees(t->GetEulerAngles()) || scale != t->scale) {
+                    auto* tWritable = _scene.GetTransformComponent(obj.id);
+                    tWritable->position = position;
+                    tWritable->SetEulerAngles(glm::radians(euler));
+                    tWritable->scale = scale;
+                }
+                ImGui::TreePop();
+            }
+
+            // Mesh Component
+            if (ImGui::TreeNode("Mesh")) {
+                const auto* m = _scene.GetMeshComponent(obj.id);
+                if (m->meshId != INVALID_ID) {
+                    ImGui::Text("Mesh ID: %u", m->meshId);
+                    const Mesh* mesh = _scene.GetMesh(m->meshId);
+                    if (mesh) {
+                        ImGui::Text("Vertices: %zu", mesh->vertices.size());
+                    }
+                } else {
+                    ImGui::TextDisabled("No mesh assigned");
+                }
+
+                glm::vec4 color = m->color;
+                float roughness = m->roughness;
+                float metallic = m->metallic;
+
+                ImGui::ColorEdit4("Color", &color.x);
+                ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f);
+                ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f);
+
+                if (color != m->color || roughness != m->roughness || metallic != m->metallic) {
+                    auto* mWritable = _scene.GetMeshComponent(obj.id);
+                    mWritable->color = color;
+                    mWritable->roughness = roughness;
+                    mWritable->metallic = metallic;
+                }
+                ImGui::TreePop();
+            }
+        }
+
+        ImGui::PopID();
+        ++objIndex;
+    }
+
+    if (objIndex == 0) {
+        ImGui::TextDisabled("No scene objects");
+    }
+
+    ImGui::End();
 }
 
 void PBRRendererApp::OnRenderFrame(alloy::IRenderCommandEncoder& renderPass) { 

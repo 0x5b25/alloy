@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <alloy/alloy.hpp>
 
 #include "Allocators.hpp"
@@ -82,28 +83,37 @@ struct MeshComponent {
 };
 
 struct TransformComponent {
-    glm::vec3 position, rotation, scale;
+    glm::vec3 position;
+    glm::quat rotation;
+    glm::vec3 scale;
 
     static TransformComponent CreateDefault() {
         return TransformComponent {
             .position = {},
-            .rotation = {},
+            .rotation = glm::quat(1,0,0,0),
             .scale = {1,1,1}
         };
+    }
+
+    glm::vec3 GetEulerAngles() const {
+        return glm::eulerAngles(rotation);
+    }
+
+    void SetEulerAngles(const glm::vec3& eulerAngles) {
+        rotation = glm::quat(eulerAngles);
     }
 
     glm::mat4 BuiltMatrix() const {
         auto m = glm::mat4(1);//Identity matrix
         m = glm::translate(m, position);
-        m = glm::rotate(m, rotation.z, {0,0,1});
-        m = glm::rotate(m, rotation.y, {0,1,0});
-        m = glm::rotate(m, rotation.x, {1,0,0});
+        m *= glm::mat4_cast(rotation);
         m = glm::scale(m, scale);
         return m;
     }
 };
 
 struct SceneObject {
+    uint32_t id;
     uint32_t parentId;
 
     TransformComponent transform;
@@ -145,8 +155,8 @@ class Scene {
     struct SceneObjectHolder {
         SceneObject object;
         bool isAlive;
-        bool isDirty; //Indicates slot changes. 
-                      //Also get set when object is destroyed
+        bool isTransformDirty;
+        bool isMeshDirty;
     };
 
     std::vector<glm::mat4> _cachedTransforms;
@@ -210,12 +220,12 @@ public:
         Iterator& operator=(Iterator&& other) = default;
 
         bool operator==(const Iterator& other) const;
-        SceneObject& operator*();
-        SceneObject const& operator*() const;
-        SceneObject* operator&();
-        SceneObject const* operator&() const;
-        SceneObject* operator->();
-        SceneObject const* operator->() const;
+        //SceneObject& operator*();
+        const SceneObject& operator*() const;
+        //SceneObject* operator&();
+        const SceneObject* operator&() const;
+        //SceneObject* operator->();
+        const SceneObject* operator->() const;
         Iterator& operator++();  // prefix
         Iterator operator++(int);//postfix
     };
@@ -233,8 +243,13 @@ public:
     uint32_t CreateSceneObject();
     void DestroySceneObject(uint32_t objectId);
 
-    SceneObject* GetSceneObject(uint32_t objectId);
     const SceneObject* GetSceneObject(uint32_t objectId) const;
+
+    TransformComponent* GetTransformComponent(uint32_t objectId);
+    const TransformComponent* GetTransformComponent(uint32_t objectId) const;
+
+    MeshComponent* GetMeshComponent(uint32_t objectId);
+    const MeshComponent* GetMeshComponent(uint32_t objectId) const;
 
     void UpdateGPUScene();
 

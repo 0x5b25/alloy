@@ -64,10 +64,12 @@ PSInput VSMain(uint indiceIdx : SV_VertexID)
 
     float4x4 modelT = perObjData[objIdx].transform;
 
+    float3x3 modelRot = (float3x3)modelT;
+
     result.worldPos = mul(modelT, float4(vertices[vertIdx].position, 1.0)).xyz;
     result.position = mul(ubo.proj, mul(ubo.view, float4(result.worldPos, 1.0)));
     result.uv = vertices[vertIdx].texCoord;
-    result.normal = vertices[vertIdx].normal;
+    result.normal = mul(modelRot, vertices[vertIdx].normal);
 
     //result.position.w = 1;
     result.objIdx = objIdx;

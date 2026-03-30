@@ -18,25 +18,25 @@ bool Scene::Iterator::operator==(const Iterator& other) const {
     return _scene == other._scene && _idx == other._idx;
 }
 
-SceneObject& Scene::Iterator::operator*() {
-    return _scene->_objects[_idx].object;
-}
+//SceneObject& Scene::Iterator::operator*() {
+//    return _scene->_objects[_idx].object;
+//}
 
 SceneObject const& Scene::Iterator::operator*() const {
     return _scene->_objects[_idx].object;
 }
 
-SceneObject* Scene::Iterator::operator&() {
-    return _scene ? &_scene->_objects[_idx].object : nullptr;
-}
+//SceneObject* Scene::Iterator::operator&() {
+//    return _scene ? &_scene->_objects[_idx].object : nullptr;
+//}
 
 SceneObject const* Scene::Iterator::operator&() const {
     return _scene ? &_scene->_objects[_idx].object : nullptr;
 }
 
-SceneObject* Scene::Iterator::operator->() {
-    return _scene ? &_scene->_objects[_idx].object : nullptr;
-}
+//SceneObject* Scene::Iterator::operator->() {
+//    return _scene ? &_scene->_objects[_idx].object : nullptr;
+//}
 
 SceneObject const* Scene::Iterator::operator->() const {
     return _scene ? &_scene->_objects[_idx].object : nullptr;
@@ -103,15 +103,18 @@ uint32_t Scene::CreateSceneObject() {
         _objectAlloc.GrowAtEnd(1);
         id = _objectAlloc.Allocate();
         assert(id == _objects.size());
-        _objects.emplace_back(SceneObject::CreateDefault(), true, true);
+        _objects.emplace_back(SceneObject::CreateDefault(), true, true, true);
         _cachedTransforms.emplace_back(1.f);
     }
 
     assert(id < _objects.size());
     auto& holder = _objects[id];
 
+    holder.object.id = id;
+
     holder.isAlive = true;
-    holder.isDirty = true;
+    holder.isTransformDirty = true;
+    holder.isMeshDirty = true;
     return id;
 }
 
@@ -129,16 +132,8 @@ void Scene::DestroySceneObject(uint32_t objectId) {
     _objectAlloc.Free(objectId);
     objToDestroy.isAlive = false;
     //Mark slot as dirty to trigger index buffer rebuild
-    objToDestroy.isDirty = true;
-}
-
-SceneObject* Scene::GetSceneObject(uint32_t objectId) {
-    if(objectId > _objects.size()) return nullptr;
-    auto& objHolder = _objects[objectId];
-
-    if (!objHolder.isAlive) return nullptr;
-    objHolder.isDirty = true;
-    return &objHolder.object;
+    objToDestroy.isTransformDirty = true;
+    objToDestroy.isMeshDirty = true;
 }
 
 SceneObject const* Scene::GetSceneObject(uint32_t objectId) const {
@@ -147,6 +142,40 @@ SceneObject const* Scene::GetSceneObject(uint32_t objectId) const {
 
     if (!objHolder.isAlive) return nullptr;
     return &objHolder.object;
+}
+
+TransformComponent* Scene::GetTransformComponent(uint32_t objectId) {
+    if(objectId > _objects.size()) return nullptr;
+    auto& objHolder = _objects[objectId];
+
+    if (!objHolder.isAlive) return nullptr;
+    objHolder.isTransformDirty = true;
+    return &objHolder.object.transform;
+}
+
+TransformComponent const* Scene::GetTransformComponent(uint32_t objectId) const {
+    if(objectId > _objects.size()) return nullptr;
+    auto& objHolder = _objects[objectId];
+
+    if (!objHolder.isAlive) return nullptr;
+    return &objHolder.object.transform;
+}
+
+MeshComponent* Scene::GetMeshComponent(uint32_t objectId) {
+    if(objectId > _objects.size()) return nullptr;
+    auto& objHolder = _objects[objectId];
+
+    if (!objHolder.isAlive) return nullptr;
+    objHolder.isMeshDirty = true;
+    return &objHolder.object.mesh;
+}
+
+MeshComponent const* Scene::GetMeshComponent(uint32_t objectId) const {
+    if(objectId > _objects.size()) return nullptr;
+    auto& objHolder = _objects[objectId];
+
+    if (!objHolder.isAlive) return nullptr;
+    return &objHolder.object.mesh;
 }
 
 void Scene::UpdateGPUScene() {
@@ -256,14 +285,15 @@ void Scene::UpdateGPUScene() {
     //    4. calculate all the transform matrices down the chain and update their
     //          _cachedTransforms entries, also mark them as dirty
     bool anyObjSlotDirty = false;
+    bool anyMeshComponentDirty = false;
     {
         std::vector<bool> visited(_objects.size(), false);
         for(uint32_t i = 0; i < _objects.size(); ++i) {
             if(visited[i]) continue;
             auto& slot = _objects[i];
-            //Objects are just destroyed also considered dirty
-            //because we need to rebuild index buffer
-            if(slot.isDirty) 
+            if(slot.isMeshDirty)
+                anyMeshComponentDirty = true;
+            if(slot.isTransformDirty || slot.isMeshDirty) 
                 anyObjSlotDirty = true;
             if(!slot.isAlive) continue;
 
@@ -282,7 +312,7 @@ void Scene::UpdateGPUScene() {
             while(currIdx >= 0) {
                 auto objIdx = inheritChain[currIdx];
                 auto& currObjData = _objects[objIdx];
-                if(currObjData.isDirty) {
+                if(currObjData.isTransformDirty) {
                     hasChangedObject = true;
                     break;
                 }
@@ -295,7 +325,7 @@ void Scene::UpdateGPUScene() {
                 while(currIdx >= 0) {
                     auto objIdx = inheritChain[currIdx];
                     auto& currObjData = _objects[objIdx];
-                    currObjData.isDirty = true;
+                    currObjData.isTransformDirty = true;
                     visited[objIdx] = true;
                     auto& finalT = _cachedTransforms[objIdx];
 
@@ -339,7 +369,7 @@ void Scene::UpdateGPUScene() {
 
             for(auto i = 0 ; i < _objects.size(); ++i) {
                 auto& slot = _objects[i];
-                if(!slot.isDirty && !needNewBuffer) continue;
+                if(!slot.isTransformDirty && !slot.isMeshDirty && !needNewBuffer) continue;
 
                 PerObjData data{};
                 if(slot.isAlive) {
@@ -353,8 +383,8 @@ void Scene::UpdateGPUScene() {
                 auto pDst = pBuffer + i * sizeof(PerObjData);
 
                 memcpy(pDst, &data, sizeof(PerObjData));
-                //Mark all as dirty
-                slot.isDirty = false;
+                slot.isTransformDirty = false;
+                slot.isMeshDirty = false;
             }
 
             _perObjectDataBuffer->UnMap();
@@ -365,7 +395,7 @@ void Scene::UpdateGPUScene() {
     //All the newly changed mesh that verts can't fit in original are appended at end
     //Rebuild whole index buffer & objIdx buffer if any of the meshes or SceneObjects
     //are marked dirty
-    if(anyMeshDirty || anyObjSlotDirty) {
+    if(anyMeshDirty || anyMeshComponentDirty) {
         //Gather vertex count
         _sceneVertexCnt = 0;
         for(auto& slot : _objects) {
@@ -423,7 +453,7 @@ void Scene::UpdateGPUScene() {
         _UpdateBuffer(objIdxData, _objIdxBuffer);
     }
 
-    if(anyMeshDirty || anyObjSlotDirty) {
+    if(anyMeshDirty || anyMeshComponentDirty) {
         _CreateResSet();
     }
 

@@ -8,18 +8,9 @@
 	path = src/backend/vk/3rd-party/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers.git
 
-[submodule "demo/glfw"]
-	path = demo/glfw
-	url = https://github.com/glfw/glfw.git
-[submodule "demo/glm"]
-	path = demo/glm
-	url = https://github.com/g-truc/glm.git
 [submodule "src/backend/dx12/3rd-party/D3D12MemoryAllocator"]
 	path = src/backend/dx12/3rd-party/D3D12MemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
 [submodule "src/backend/vk/3rd-party/dxil-spirv"]
 	path = src/backend/vk/3rd-party/dxil-spirv
 	url = https://github.com/HansKristian-Work/dxil-spirv.git
-[submodule "demo/imgui"]
-	path = demo/imgui
-	url = https://github.com/ocornut/imgui.git
