@@ -916,12 +916,18 @@ namespace alloy::vk{
         dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         RegisterTexUsage(dstImg, dstState);
+        //Vulkan region bufferRowLength is in texel count
+        auto sizePerPixel = FormatHelpers::GetSizeInBytes(dstImg->GetDesc().format);
+        auto srcTexelsPerRow = srcBytesPerRow / sizePerPixel;
+
+        assert(srcBytesPerRow%sizePerPixel == 0);
+        assert(srcBytesPerImage%srcBytesPerRow == 0);
 
         recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
 
             VkBufferImageCopy regions{};
             regions.bufferOffset = src->GetShape().GetOffsetInBytes();
-            regions.bufferRowLength = srcBytesPerRow;
+            regions.bufferRowLength = srcTexelsPerRow;
             regions.bufferImageHeight = srcBytesPerImage / srcBytesPerRow;
             regions.imageExtent = {copySize.width, copySize.height, copySize.depth};
             regions.imageOffset = {(int)dstOrigin.x, (int)dstOrigin.y, (int)dstOrigin.z};
@@ -983,6 +989,13 @@ namespace alloy::vk{
         dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(dstBuffer, dstState);
 
+        //Vulkan region bufferRowLength is in texel count
+        auto sizePerPixel = FormatHelpers::GetSizeInBytes(srcVkTexture->GetDesc().format);
+        auto dstTexelsPerRow = dstBytesPerRow / sizePerPixel;
+        
+        assert(dstTexelsPerRow%sizePerPixel == 0);
+        assert(dstBytesPerImage%dstTexelsPerRow == 0);
+
         recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
 
             VkImage srcImage = srcVkTexture->GetHandle();
@@ -1004,7 +1017,7 @@ namespace alloy::vk{
 
             VkBufferImageCopy region {};
 
-            region.bufferRowLength = dstBytesPerRow;
+            region.bufferRowLength = sizePerPixel;
             region.bufferImageHeight = dstBytesPerImage / dstBytesPerRow;
             region.bufferOffset =  dst->GetShape().GetSizeInBytes();
             region.imageExtent = { copySize.width, copySize.height, copySize.depth };

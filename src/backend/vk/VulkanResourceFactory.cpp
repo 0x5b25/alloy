@@ -44,7 +44,7 @@ namespace alloy::vk
 
     common::sp<IShader> VulkanResourceFactory::CreateShader(
         const IShader::Description& desc,
-        const std::span<std::uint8_t>& il
+        const std::span<const std::uint8_t>& il
     ){
         return VulkanShader::Make(_CreateNewDevHandle(), desc, il);
     }

@@ -47,7 +47,7 @@ namespace alloy::dxc{
 
         common::sp<IShader> CreateShader(
             const IShader::Description& desc,
-            const std::span<std::uint8_t>& spv
+            const std::span<const std::uint8_t>& spv
         ) override;
 
         common::sp<ITexture> WrapNativeTexture(

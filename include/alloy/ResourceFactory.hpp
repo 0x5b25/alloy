@@ -42,7 +42,7 @@ namespace alloy
 
         virtual common::sp<IShader> CreateShader(
             const IShader::Description& description,
-            const std::span<std::uint8_t>& il) = 0;
+            const std::span<const std::uint8_t>& il) = 0;
 
         virtual common::sp<IGfxPipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) = 0;

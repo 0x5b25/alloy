@@ -14,7 +14,7 @@ namespace alloy::dxc{
     common::sp<IShader> DXCShader::Make(
         const common::sp<DXCDevice> &dev,
         const IShader::Description &desc,
-        const std::span<std::uint8_t> &il
+        const std::span<const std::uint8_t> &il
     ) {
         std::vector<std::uint8_t> buffer(il.begin(), il.end());
         

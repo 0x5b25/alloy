@@ -52,7 +52,7 @@ namespace alloy::dxc
 
     common::sp<IShader> DXCResourceFactory::CreateShader(
         const IShader::Description& desc,
-        const std::span<std::uint8_t>& il
+        const std::span<const std::uint8_t>& il
     ){
         //return VulkanShader::Make(_CreateNewDevHandle(), desc, spv);
         return DXCShader::Make(_CreateNewDevHandle(), desc, il);
