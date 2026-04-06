@@ -619,15 +619,18 @@ namespace alloy::vk {
 
     void VulkanTexture::SetDebugName(const std::string& name) {
         // Check for a valid function pointer
-        if (_dev->GetFeatures().commandListDebugMarkers)
+
+        if (_dev->GetContext().GetCaps().hasDebugUtilExt)
         {
-            VkDebugMarkerObjectNameInfoEXT nameInfo = {};
-            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-            nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
-            nameInfo.object = (uint64_t)_img;
+            VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+            nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
+            nameInfo.objectHandle = (uint64_t)_img;
             nameInfo.pObjectName = name.c_str();
-            _dev->GetFnTable().vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+            VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
         }
+
+        _debugName = name;
     }
 
     void VulkanTexture::NotifyUsageOn(IVkTimeline* timeline) {

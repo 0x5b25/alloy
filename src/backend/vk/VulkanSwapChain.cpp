@@ -19,11 +19,11 @@ namespace alloy::vk
     {
         auto& vulkanAdp = static_cast<VulkanAdapter&>(dev->GetAdapter());
         VkBool32 supported;
-        VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(
+        VK_CHECK(VK_INST_CALL(dev, vkGetPhysicalDeviceSurfaceSupportKHR(
             vulkanAdp.GetHandle(),
             queueFamilyIndex,
             surface,
-            &supported));
+            &supported)));
         
         return supported;
     }
@@ -422,10 +422,10 @@ namespace alloy::vk
         }
         // Obtain the surface capabilities first -- this will indicate whether the surface has been lost.
         VkSurfaceCapabilitiesKHR surfaceCapabilities;
-        VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        VkResult result = VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
             vulkanAdp.GetHandle(), 
             surface, 
-            &surfaceCapabilities);
+            &surfaceCapabilities));
 
         if (result == VkResult::VK_ERROR_SURFACE_LOST_KHR)
         {
@@ -448,9 +448,9 @@ namespace alloy::vk
 
         _currentImageIndex = 0;
         std::uint32_t surfaceFormatCount = 0;
-        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(vulkanAdp.GetHandle(), surface, &surfaceFormatCount, nullptr));
+        VK_CHECK(VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfaceFormatsKHR(vulkanAdp.GetHandle(), surface, &surfaceFormatCount, nullptr)));
         std::vector<VkSurfaceFormatKHR> formats (surfaceFormatCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(vulkanAdp.GetHandle(), surface, &surfaceFormatCount, formats.data()));
+        VK_CHECK(VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfaceFormatsKHR(vulkanAdp.GetHandle(), surface, &surfaceFormatCount, formats.data())));
 
         VkFormat desiredFormat = description.colorSrgb
             ? VkFormat::VK_FORMAT_B8G8R8A8_SRGB
@@ -484,9 +484,9 @@ namespace alloy::vk
         }
 
         std::uint32_t presentModeCount = 0;
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(vulkanAdp.GetHandle(), surface, &presentModeCount, nullptr));
+        VK_CHECK(VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfacePresentModesKHR(vulkanAdp.GetHandle(), surface, &presentModeCount, nullptr)));
         std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(vulkanAdp.GetHandle(), surface, &presentModeCount, presentModes.data()));
+        VK_CHECK(VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfacePresentModesKHR(vulkanAdp.GetHandle(), surface, &presentModeCount, presentModes.data())));
         
         VkPresentModeKHR presentMode = VkPresentModeKHR::VK_PRESENT_MODE_FIFO_KHR;
 
@@ -582,14 +582,14 @@ namespace alloy::vk
         
         auto& vulkanAdp = static_cast<VulkanAdapter&>(_dev->GetAdapter());
 
-        auto inst = vulkanAdp.GetCtx()->GetHandle();
+        auto inst = vulkanAdp.GetCtx().GetHandle();
 
         VK_DEV_CALL(_dev, vkDestroyFence(_dev->LogicalDev(), _imageAvailableFence, nullptr));
         //_framebuffer.Dispose();
         VK_DEV_CALL(_dev, vkDestroySwapchainKHR(_dev->LogicalDev(), _deviceSwapchain, nullptr));
 
         if(_surf.isOwnSurface){
-            vkDestroySurfaceKHR(inst, _surf.surface, nullptr);
+            VK_INST_CALL(_dev, vkDestroySurfaceKHR(inst, _surf.surface, nullptr));
         }
     }
 
@@ -606,8 +606,8 @@ namespace alloy::vk
 
         if (_swapchainSource != nullptr) {
             auto& vulkanAdp = static_cast<VulkanAdapter&>(dev->GetAdapter());
-            auto inst = vulkanAdp.GetCtx()->GetHandle();
-            _surf = VK::priv::CreateSurface(inst, _swapchainSource);
+            auto inst = vulkanAdp.GetCtx().GetHandle();
+            _surf = VK::priv::CreateSurface(dev->GetContext(), _swapchainSource);
         }
 
         //auto _surface = dev->Surface();

@@ -144,13 +144,16 @@ namespace alloy {
             float                 pointSizeGranularity;
             float                 lineWidthGranularity;
             SampleCount           maxMSAASampleCount;
+            uint32_t              minStructuredBufferStride;
         } limits;
 
         struct Capabilities {
             uint32_t supportMeshShader : 1;
+            uint32_t supportRayTracing : 1;
             uint32_t supportBindless : 1;
             uint32_t supportDedicatedTransferQueue : 1;
             uint32_t isUMA : 1;
+            uint32_t supportResizableBar : 1;
         } capabilities;
 
         std::vector<MemorySegmentProperties> memSegments;

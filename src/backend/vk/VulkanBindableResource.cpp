@@ -282,8 +282,8 @@ namespace alloy::vk
                                 auto* range = PtrCast<BufferRange>(pElemRes);
                                 auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
                                 bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
-                                bufferInfos[i].offset = range->GetShape().offsetInElements;
-                                bufferInfos[i].range = range->GetShape().elementCount;
+                                bufferInfos[i].offset = range->GetShape().GetOffsetInBytes();
+                                bufferInfos[i].range = range->GetShape().GetSizeInBytes();
                                 //_refCounts.push_back(boundResources[i]);
                             } break;
 

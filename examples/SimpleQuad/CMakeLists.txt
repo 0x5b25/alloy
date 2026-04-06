@@ -10,4 +10,5 @@ target_compile_features(SimpleQuad PRIVATE cxx_std_20)
 
 if(WIN32)
     alloy_copy_dxc_runtime_libs(SimpleQuad)
+    pix_runtime_copy_binaries(SimpleQuad)
 endif()

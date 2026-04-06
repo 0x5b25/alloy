@@ -5,6 +5,9 @@
 #include "DXCDevice.hpp"
 
 #include <iostream>
+#include <stdexcept>
+#include <format>
+#include <string>
 
 namespace alloy {
     
@@ -15,9 +18,141 @@ namespace alloy {
 
 namespace alloy::dxc {
 
-    void PrintDxErrorMsg() {
-        IDXGIDebug1* dxgiDebug;
-        if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+
+    DllLoader::DllLoader(const char* dllName) 
+        : dllHandle(LoadLibraryA(dllName))
+    {
+        if(!dllHandle)
+            throw std::runtime_error(std::format("Load dll {} failed", dllName));
+    }
+
+    DllLoader::~DllLoader() {
+        if(dllHandle) {
+            FreeLibrary((HMODULE)dllHandle);
+        }
+    }
+
+    void* DllLoader::GetFunctionEntry(const char* name) {
+        return (void*)GetProcAddress((HMODULE)dllHandle, name);
+    }
+
+
+    D3D12DllLoader::D3D12DllLoader() 
+        : DllLoader("d3d12.dll")
+        , pfnD3D12CreateDevice(nullptr)
+        , pfnD3D12GetDebugInterface(nullptr)
+        , pfnD3D12SerializeRootSignature(nullptr)
+        , pfnD3D12SerializeVersionedRootSignature(nullptr)
+    {
+        pfnD3D12CreateDevice = (PFN_D3D12_CREATE_DEVICE)GetFunctionEntry("D3D12CreateDevice");
+        pfnD3D12GetDebugInterface = (PFN_D3D12_GET_DEBUG_INTERFACE)GetFunctionEntry("D3D12GetDebugInterface");
+        pfnD3D12SerializeRootSignature
+            = (PFN_D3D12_SERIALIZE_ROOT_SIGNATURE)GetFunctionEntry("D3D12SerializeRootSignature");
+        pfnD3D12SerializeVersionedRootSignature 
+            = (PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE)GetFunctionEntry("D3D12SerializeVersionedRootSignature");
+        
+    }
+    
+    DxgiDllLoader::DxgiDllLoader() 
+        : DllLoader("dxgi.dll")
+        , pfnCreateDXGIFactory2(nullptr)
+        , pfnDXGIGetDebugInterface1(nullptr)
+    {
+        pfnCreateDXGIFactory2 = (PFN_CreateDXGIFactory2)GetFunctionEntry("CreateDXGIFactory2");
+        pfnDXGIGetDebugInterface1 
+            = (PFN_DXGIGetDebugInterface1)GetFunctionEntry("DXGIGetDebugInterface1");
+    }
+
+    AgilitySDKLoader::AgilitySDKLoader(bool loadDebugLayer)
+        : d3d12CoreDllHandle(nullptr)
+        , d3d12SDKLayersDllHandle(nullptr)
+        , d3d12CoreVersion(0)
+        , d3d12SDKLayersVersion(0)
+    {
+        //Get buffer length
+        DWORD reqWCharCnt = GetCurrentDirectoryW(0, nullptr);
+        std::wstring cwd(reqWCharCnt, L'\0');
+        //Get data
+        GetCurrentDirectoryW(reqWCharCnt, cwd.data());
+
+        //GetCurrentDirectoryW returns content size WITH null terminator if
+        //all args are null ???
+        while(!cwd.empty() && cwd.ends_with(L'\0')) {
+            cwd.pop_back();
+        }
+
+        //Append slashes at end
+        if(!cwd.ends_with(L'\\')) {
+            cwd += L'\\';
+        }
+
+        //Search "<CWD>/D3D12/"
+        auto dllSearchPath = cwd + L"D3D12\\";
+        {
+            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
+            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
+        }
+
+        // Search <CWD>
+        if(!d3d12CoreDllHandle) {
+            dllSearchPath = cwd;
+            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
+            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
+        }
+
+        //Search default paths
+        if(!d3d12CoreDllHandle) {
+            dllSearchPath = L"";
+            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
+            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
+        }
+
+        if(d3d12CoreDllHandle) {
+            {
+                //Extract D3D12SDKVersion variable from dll
+                auto pSDKVer = (uint32_t*)GetProcAddress((HMODULE)d3d12CoreDllHandle, "D3D12SDKVersion");
+                //An not-matching dll may not have this field
+                if(pSDKVer) {
+                    d3d12CoreVersion = *pSDKVer;
+                }
+
+                std::cout << std::format("AgilitySDK D3D12Core.dll version {}\n", d3d12CoreVersion);
+                    
+            }
+
+            //Load d3d12SDKLayers.dll from same path as D3D12Core.dll's
+            if(loadDebugLayer) {
+                auto dllLoadPath = dllSearchPath + L"d3d12SDKLayers.dll";
+                d3d12SDKLayersDllHandle = LoadLibraryW(dllLoadPath.c_str());
+                if(d3d12SDKLayersDllHandle) {
+                    //Extract D3D12SDKVersion variable from dll
+                    auto pSDKVer = (uint32_t*)GetProcAddress((HMODULE)d3d12SDKLayersDllHandle, "D3D12SDKVersion");
+                    //An not-matching dll may not have this field
+                    if(pSDKVer) {
+                        d3d12SDKLayersVersion = *pSDKVer;
+                    }
+
+                    std::cout << std::format("AgilitySDK d3d12SDKLayers.dll version {}\n", d3d12SDKLayersVersion);
+
+                    if(d3d12SDKLayersVersion != d3d12CoreVersion) {
+                        std::cout << std::format("Version mismatch between AgilitySDK D3D12Core.dll (version {}) and d3d12SDKLayers.dll (version {}), CreateDevice may fail!\n", d3d12CoreVersion, d3d12SDKLayersVersion);
+                    }
+                }
+            }
+        }
+    }
+
+    AgilitySDKLoader::~AgilitySDKLoader() {
+        if(d3d12CoreDllHandle) {
+            FreeLibrary((HMODULE)d3d12CoreDllHandle);
+        }
+        if(d3d12SDKLayersDllHandle) {
+            FreeLibrary((HMODULE)d3d12SDKLayersDllHandle);
+        }
+    }
+
+    void PrintDxErrorMsg(IDXGIDebug1* dxgiDebug) {
+        //if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
         {
             IDXGIInfoQueue* dxgiInfoQueue;
             ThrowIfFailed(dxgiDebug->QueryInterface(IID_PPV_ARGS(&dxgiInfoQueue)));
@@ -36,6 +171,102 @@ namespace alloy::dxc {
             dxgiInfoQueue->Release();
             dxgiDebug->Release();
         }
+    }
+
+    
+    void D3D12DevCaps::ReadFromDevice(ID3D12Device* pdev)
+    {
+        *this = { };
+
+        D3D_FEATURE_LEVEL checklist[] = {
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_12_0,
+            D3D_FEATURE_LEVEL_12_1,
+            D3D_FEATURE_LEVEL_12_2,
+        };
+
+        D3D12_FEATURE_DATA_FEATURE_LEVELS levels = {
+            _countof(checklist),
+            checklist
+        };
+
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &levels, sizeof(levels)))){
+            feature_level = levels.MaxSupportedFeatureLevel;
+        }
+
+        D3D12_FEATURE_DATA_SHADER_MODEL shader_model{};
+        shader_model.HighestShaderModel = D3D_SHADER_MODEL_6_7;
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))){
+            this->shader_model = shader_model.HighestShaderModel;
+        }
+
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE root_sig{};
+        root_sig.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &root_sig, sizeof(root_sig)))){
+            root_sig_version = root_sig.HighestVersion;
+        }
+
+
+        pdev->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE1, &architecture, sizeof(architecture));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &options1, sizeof(options1));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options2, sizeof(options2));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &options4, sizeof(options4));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof(options12));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13, &options13, sizeof(options13));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS14, &options14, sizeof(options14));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS15, &options15, sizeof(options15));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS16, &options16, sizeof(options16));
+        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS17, &options17, sizeof(options17));
+        if (FAILED(pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS19, &options19, sizeof(options19)))) {
+            options19.MaxSamplerDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
+            options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = options19.MaxSamplerDescriptorHeapSize;
+            options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
+        }
+        {
+            D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
+                DXGI_FORMAT_A4B4G4R4_UNORM
+            };
+            support_a4b4g4r4 =
+             SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
+        }
+
+        //Query usable sample qualities
+        maxMSAASampleCount = 1;
+        for(uint32_t sampleCount : {32, 16, 8, 4, 2}) {
+            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
+                .Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
+                .SampleCount = sampleCount
+            };
+            pdev->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
+                , &queryData, sizeof(queryData)
+            );
+
+            if(queryData.NumQualityLevels != 0) {
+                maxMSAASampleCount = sampleCount;
+                break;
+            }
+        }
+
+        D3D12_COMMAND_QUEUE_DESC queue_desc = {
+           /*.Type =*/ D3D12_COMMAND_LIST_TYPE_DIRECT,
+           /*.Priority =*/ D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
+           /*.Flags =*/ D3D12_COMMAND_QUEUE_FLAG_NONE,
+           /*.NodeMask =*/ 0,
+        };
+ 
+        ID3D12CommandQueue *cmdqueue;
+        pdev->CreateCommandQueue(&queue_desc,
+                                 IID_ID3D12CommandQueue,
+                                 (void **)&cmdqueue);
+ 
+        uint64_t ts_freq;
+        cmdqueue->GetTimestampFrequency(&ts_freq);
+        timestamp_period = 1000000000.0f / ts_freq;
+        cmdqueue->Release();
     }
 
     common::sp<IGraphicsDevice> DXCAdapter::RequestDevice(
@@ -62,8 +293,7 @@ namespace alloy::dxc {
 
         ThrowIfFailed(D3D12CreateDevice(_adp, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dev)));
 
-        D3D12DevCaps caps {};
-        caps.ReadFromDevice(dev);
+        _caps.ReadFromDevice(dev);
 
         dev->Release();
 
@@ -90,6 +320,10 @@ namespace alloy::dxc {
                     if (required_size == 0) break;
         
                     WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, devNameStr.data(), required_size, NULL, NULL);
+                    //Trim null terminators
+                    while(devNameStr.ends_with('\0')) {
+                        devNameStr.pop_back();
+                    }
                 }while(0);
         
         
@@ -103,7 +337,7 @@ namespace alloy::dxc {
             
             auto& apiVer = info.apiVersion;
             apiVer = {Backend::DX12};
-            switch (caps.feature_level)
+            switch (_caps.feature_level)
             {
             case D3D_FEATURE_LEVEL_12_2:apiVer.major = 12; apiVer.minor = 2; break;
             case D3D_FEATURE_LEVEL_12_1:apiVer.major = 12; apiVer.minor = 1; break;
@@ -125,7 +359,7 @@ namespace alloy::dxc {
             if(SUCCEEDED(_adp->GetDesc1(&desc))){
                 auto& localSeg = info.memSegments.emplace_back();
                 localSeg.sizeInBytes = desc.DedicatedVideoMemory;
-                if(caps.SupportReBAR() || caps.SupportUMA()) {
+                if(_caps.SupportReBAR() || _caps.SupportUMA()) {
                     localSeg.flags.isCPUVisible = 1;
                 }
 
@@ -136,14 +370,16 @@ namespace alloy::dxc {
             }
         }
 
-        info.capabilities.isUMA = caps.SupportUMA();
-        info.capabilities.supportMeshShader = caps.SupportMeshShader();
+        info.capabilities.isUMA = _caps.SupportUMA();
+        info.capabilities.supportMeshShader = _caps.SupportMeshShader();
+        info.capabilities.supportRayTracing = _caps.SupportRayTracing();
+        info.capabilities.supportResizableBar = _caps.SupportReBAR();
 
         uint32_t full_heap_count = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
         uint32_t uav_count = 8;
-        switch(caps.ResourceBindingTier()){
+        switch(_caps.ResourceBindingTier()){
             case 1 : {
-                uav_count = caps.feature_level == D3D_FEATURE_LEVEL_11_0 ? 8 : 64;
+                uav_count = _caps.feature_level == D3D_FEATURE_LEVEL_11_0 ? 8 : 64;
                 full_heap_count = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
             } break;
             case 2 : {
@@ -169,9 +405,9 @@ namespace alloy::dxc {
         //    .max_dynamic_uniform_buffers_per_pipeline_layout,
         //max_dynamic_storage_buffers_per_pipeline_layout: base
         //    .max_dynamic_storage_buffers_per_pipeline_layout,
-        info.limits.maxPerStageDescriptorSampledImages = caps.ResourceBindingTier() > 1 ? 
+        info.limits.maxPerStageDescriptorSampledImages = _caps.ResourceBindingTier() > 1 ? 
             full_heap_count : 128;
-        info.limits.maxPerStageDescriptorSamplers = caps.ResourceBindingTier() > 1 ? 
+        info.limits.maxPerStageDescriptorSamplers = _caps.ResourceBindingTier() > 1 ? 
             D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE : 16;
         // these both account towards `uav_count`, but we can't express the limit as as sum
         // of the two, so we divide it by 4 to account for the worst case scenario
@@ -243,17 +479,38 @@ namespace alloy::dxc {
         //max_buffer_size: i32::MAX as u64,
         //max_non_sampler_bindings: 1_000_000,
         
-        if     (caps.maxMSAASampleCount >= 32) info.limits.maxMSAASampleCount = SampleCount::x32;
-        else if(caps.maxMSAASampleCount >= 16) info.limits.maxMSAASampleCount = SampleCount::x16;
-        else if(caps.maxMSAASampleCount >= 8)  info.limits.maxMSAASampleCount = SampleCount::x8;
-        else if(caps.maxMSAASampleCount >= 4)  info.limits.maxMSAASampleCount = SampleCount::x4;
-        else if(caps.maxMSAASampleCount >= 2)  info.limits.maxMSAASampleCount = SampleCount::x2;
+        if     (_caps.maxMSAASampleCount >= 32) info.limits.maxMSAASampleCount = SampleCount::x32;
+        else if(_caps.maxMSAASampleCount >= 16) info.limits.maxMSAASampleCount = SampleCount::x16;
+        else if(_caps.maxMSAASampleCount >= 8)  info.limits.maxMSAASampleCount = SampleCount::x8;
+        else if(_caps.maxMSAASampleCount >= 4)  info.limits.maxMSAASampleCount = SampleCount::x4;
+        else if(_caps.maxMSAASampleCount >= 2)  info.limits.maxMSAASampleCount = SampleCount::x2;
         else                                   info.limits.maxMSAASampleCount = SampleCount::x1;
+
+        //DX12 can have any strides in a structured buffer;
+        info.limits.minStructuredBufferStride = 1;
     }
 
 
     
     common::sp<DXCContext> DXCContext::Make(const IContext::Options& opts) {
+        //Init Agility SDK first
+        AgilitySDKLoader agilitySDK {opts.debug};
+
+        //Load the relevant dlls:
+        //auto d3d12Dll = std::make_unique<D3D12DllLoader>();
+        std::unique_ptr<D3D12DllLoader> d3d12Dll;
+        std::unique_ptr<DxgiDllLoader> dxgiDll;
+
+        try {
+            d3d12Dll = std::make_unique<D3D12DllLoader>();
+            dxgiDll = std::make_unique<DxgiDllLoader>();
+        }
+        catch(const std::runtime_error& e) {
+            //Failed to load dll
+            return nullptr;
+        }
+
+
         UINT dxgiFactoryFlags = 0;
         // Enable the debug layer (requires the Graphics Tools "optional feature").
         // NOTE: Enabling the debug layer after device creation will invalidate the active device.
@@ -261,7 +518,7 @@ namespace alloy::dxc {
 //#ifndef NDEBUG
             // Enable the debug layer.
             ID3D12Debug* debugController;
-            if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+            if (SUCCEEDED(d3d12Dll->pfnD3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
             {
                 debugController->EnableDebugLayer();
 
@@ -275,7 +532,7 @@ namespace alloy::dxc {
             }
 
             IDXGIInfoQueue* dxgiInfoQueue;
-            if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiInfoQueue))))
+            if (SUCCEEDED(dxgiDll->pfnDXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiInfoQueue))))
             {
                 dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
                 dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
@@ -284,19 +541,20 @@ namespace alloy::dxc {
         }
         //Create DXGIFactory
         IDXGIFactory4* dxgiFactory;
-        auto status = CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
+        auto status = dxgiDll->pfnCreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&dxgiFactory));
         if(FAILED(status)) {
             return nullptr;
         }
 
-        return common::sp(new DXCContext(dxgiFactory));
+        return common::sp(new DXCContext(
+            std::move(agilitySDK),
+            std::move(*d3d12Dll),
+            std::move(*dxgiDll),
+            dxgiFactory
+        ));
     }
 
     
-    DXCContext::DXCContext(IDXGIFactory4* factory)
-        : _factory(factory)
-    { }
-       
     DXCContext::~DXCContext() {
         _factory->Release();
 
@@ -304,7 +562,7 @@ namespace alloy::dxc {
 #ifndef NDEBUG
         {
             IDXGIDebug1* dxgiDebug;
-            if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
+            if (SUCCEEDED(_dxgiDll.pfnDXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug))))
             {
                 dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL,
                     DXGI_DEBUG_RLO_FLAGS(DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
@@ -355,7 +613,7 @@ namespace alloy::dxc {
             // Check to see if the adapter supports Direct3D 12,
             // but don't create the actual device yet.
             if (FAILED(
-                D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0,
+                _d3d12Dll.pfnD3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0,
                     _uuidof(ID3D12Device), nullptr)))
             {
                 adapter->Release();

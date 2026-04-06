@@ -56,6 +56,8 @@ set(VLD_BACKEND_DXC_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/D3DDescriptorHeapMgr.hpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.cpp"
     #"${CMAKE_CURRENT_LIST_DIR}/VkSurfaceUtil.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DPixEventEncoder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/D3DPixEventEncoder.hpp"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${VLD_BACKEND_DXC_SRCS})
@@ -69,9 +71,9 @@ target_link_libraries(Veldrid
         D3D12MemoryAllocator
         AgilitySDK
     #    DirectX-Headers
-        d3d12.lib
-        dxgi.lib
-        WinPixEventRuntime
+    #    d3d12.lib
+    #    dxgi.lib
+    #    WinPixEventRuntime
     #    dxguid.lib
     #    common
     #    glm
@@ -105,6 +107,5 @@ function(alloy_copy_dxc_runtime_libs TARGET)
     message("alloy: will copy directx 12 runtime libraries to ${TARGET} binary path...")
 
     agility_sdk_copy_binaries(${TARGET})
-    pix_runtime_copy_binaries(${TARGET})
 
 endfunction()

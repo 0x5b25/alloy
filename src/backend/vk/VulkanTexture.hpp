@@ -25,6 +25,8 @@ namespace alloy::vk
         //Layout tracking
         std::unordered_set<IVkTimeline*> timelines;
 
+        std::string _debugName;
+
 
         VulkanTexture(
             const common::sp<VulkanDevice>& dev,

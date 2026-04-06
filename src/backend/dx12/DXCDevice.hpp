@@ -29,6 +29,7 @@
 //Local headers
 #include "DXCResourceFactory.hpp"
 #include "D3DDescriptorHeapMgr.hpp"
+#include "DXCContext.hpp"
 
 namespace alloy::dxc{
 
@@ -162,48 +163,6 @@ namespace alloy::dxc{
 
     };
 
-    
-    struct D3D12DevCaps{
-        D3D_FEATURE_LEVEL feature_level;
-        D3D_SHADER_MODEL shader_model;
-        D3D_ROOT_SIGNATURE_VERSION root_sig_version;
-        D3D12_FEATURE_DATA_ARCHITECTURE1 architecture;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS options;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS1 options1;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS2 options2;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS4 options4;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS7 options7;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
-        D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
-
-        float timestamp_period;
-        bool support_a4b4g4r4;
-        uint32_t maxMSAASampleCount;
-
-        void ReadFromDevice(ID3D12Device* pdev);
-
-        bool SupportEnhancedBarrier() const { return options12.EnhancedBarriersSupported; }
-        bool SupportMeshShader() const {return options7.MeshShaderTier != D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;}
-        bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
-        bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
-    
-        uint32_t ResourceBindingTier() const {
-            switch(options.ResourceBindingTier) {
-                case D3D12_RESOURCE_BINDING_TIER_3: return 3;
-                case D3D12_RESOURCE_BINDING_TIER_2: return 2;
-                case D3D12_RESOURCE_BINDING_TIER_1:
-                default: return 1;
-            }
-        }
-    };
-
     class DXCDevice : public IGraphicsDevice
                     , public DXCResourceFactory
                     , public IDXCTimeline
@@ -237,10 +196,8 @@ namespace alloy::dxc{
         //DXCResourceFactory _resFactory;
 
         //GraphicsApiVersion _apiVer;
-        
 
         IGraphicsDevice::Features _commonFeat;
-        D3D12DevCaps _dxcFeat;
 
         DXCDevice(ID3D12Device* dev);
 
@@ -250,6 +207,8 @@ namespace alloy::dxc{
 
         ID3D12Device* GetDevice() const {return _dev;}
         IPhysicalAdapter& GetAdapter() const override;
+
+        DXCContext& GetContext() const { return _adp->GetContext(); }
 
         virtual void* GetNativeHandle() const override { return GetDevice(); }
 
@@ -287,7 +246,7 @@ namespace alloy::dxc{
         //virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
         virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
 
-        const D3D12DevCaps& GetDevCaps() const { return _dxcFeat; }
+        const D3D12DevCaps& GetDevCaps() const { return _adp->GetCaps(); }
 
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 

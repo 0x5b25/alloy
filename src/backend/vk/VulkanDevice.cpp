@@ -72,7 +72,8 @@ bool Contains(T&& container, U&& element) {
 		const common::sp<VulkanAdapter>& adp,
 		const IGraphicsDevice::Options& options
 	){
-        auto ctx = adp->GetCtx();
+        auto& ctx = adp->GetCtx();
+        auto& devCaps = adp->GetCaps();
 
         //Make the surface if possible
         //VK::priv::SurfaceContainer _surf = {VK_NULL_HANDLE, false};
@@ -141,18 +142,33 @@ bool Contains(T&& container, U&& element) {
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
+        ctx.GetFnTable().vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
 
-        VkPhysicalDeviceSynchronization2FeaturesKHR syncFeatures{
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
-            .synchronization2 = 1u
-        };
+        
+        VkPhysicalDeviceVulkan11Features features11 { };
+        features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+        features11.shaderDrawParameters = true; //Not sure, required by dxil-spirv
+        createInfo.pNext = &features11;
 
         VkPhysicalDeviceVulkan12Features features12 { };
-        features12.pNext = &syncFeatures;
         features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         features12.timelineSemaphore = true;
-        createInfo.pNext = &features12;
+
+        if(devCaps.supportBindless) {
+            features12.descriptorIndexing = true;
+            features12.descriptorBindingPartiallyBound = true;
+        }
+
+        if(devCaps.SupportScalarBlockLayout()) {
+            features12.scalarBlockLayout = true;
+        }
+        
+        features11.pNext = &features12;
+
+        //VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutFeatures { };
+        //scalarBlockLayoutFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+        //scalarBlockLayoutFeatures.scalarBlockLayout = VK_TRUE;
+        //features12.pNext = &scalarBlockLayoutFeatures;
 
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature { };
         dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
@@ -163,6 +179,11 @@ bool Contains(T&& container, U&& element) {
         sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
         sync2Features.synchronization2 = VK_TRUE;
         dynamicRenderingFeature.pNext = &sync2Features;
+
+        VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT dynRndrUnusedAttachments { };
+        dynRndrUnusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
+        dynRndrUnusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
+        sync2Features.pNext = &dynRndrUnusedAttachments;
 
         //First add pointers to the queue creation info and device features structs:
 
@@ -175,11 +196,11 @@ bool Contains(T&& container, U&& element) {
         {
 
             std::uint32_t propCount = 0;
-            VK_CHECK(vkEnumerateDeviceExtensionProperties(adp->GetHandle(), nullptr, &propCount, nullptr));
+            VK_CHECK(ctx.GetFnTable().vkEnumerateDeviceExtensionProperties(adp->GetHandle(), nullptr, &propCount, nullptr));
 
             if (propCount != 0) {
                 std::vector<VkExtensionProperties> props(propCount);
-                VK_CHECK(vkEnumerateDeviceExtensionProperties(
+                VK_CHECK(ctx.GetFnTable().vkEnumerateDeviceExtensionProperties(
                     adp->GetHandle(), nullptr, &propCount, props.data()));
 
                 
@@ -191,7 +212,20 @@ bool Contains(T&& container, U&& element) {
             }
         }
 
-        std::vector<const char*> devExtensions{};
+
+        std::vector<const char*> devExtensions{
+            //Prefill required extensions
+            VkDevExtNames::VK_KHR_SYNCHRONIZATION2,
+            VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE,
+            VkDevExtNames::VK_KHR_DYNAMIC_RENDERING,
+            VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME,
+            VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE,
+            VkDevExtNames::VK_KHR_CREATE_RENDERPASS2,
+            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+            VkDevExtNames::VK_KHR_MAINTENANCE1,
+        };
+
+
         auto _AddExtIfPresent = [&](const char* extName) {
             if (Contains(availableDevExts, extName))
             {
@@ -201,24 +235,24 @@ bool Contains(T&& container, U&& element) {
             return false;
         };
 
-        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE)) {
-            throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
-        }
+        //if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE)) {
+        //    throw std::exception("VkDevice creation failed. Timeline semaphore not supported");
+        //}
+        //
+        //if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING) ||
+        //   !_AddExtIfPresent(VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE) ||
+        //   !_AddExtIfPresent(VkDevExtNames::VK_KHR_CREATE_RENDERPASS2)
+        //) {
+        //    throw std::exception("VkDevice creation failed. dynamic rendering not supported");
+        //}
+        //
+        //if(!_AddExtIfPresent(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
+        //    throw std::exception("VkDevice creation failed. synchronization2 not supported");
+        //}
 
-        if(!_AddExtIfPresent(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING) ||
-           !_AddExtIfPresent(VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE) ||
-           !_AddExtIfPresent(VkDevExtNames::VK_KHR_CREATE_RENDERPASS2)
-        ) {
-            throw std::exception("VkDevice creation failed. dynamic rendering not supported");
-        }
 
-        if(!_AddExtIfPresent(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
-            throw std::exception("VkDevice creation failed. synchronization2 not supported");
-        }
-
-
-        if (options.debug)
-            dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_MARKER);
+        //if (options.debug)
+        //    dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_UTILS);
 
         dev->_features.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
         if (options.preferStandardClipSpaceYDirection) {
@@ -227,7 +261,7 @@ bool Contains(T&& container, U&& element) {
         dev->_features.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
         dev->_features.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
 
-        if (ctx->GetFeatures().hasDrvProp2Ext) {
+        if (ctx.GetCaps().hasDrvProp2Ext) {
             dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
         }
 
@@ -237,7 +271,7 @@ bool Contains(T&& container, U&& element) {
         createInfo.ppEnabledExtensionNames = devExtensions.data();
 
         createInfo.pEnabledFeatures = &deviceFeatures;
-        VK_CHECK(vkCreateDevice(adp->GetHandle(), &createInfo, nullptr, &dev->_dev));
+        VK_CHECK(ctx.GetFnTable().vkCreateDevice(adp->GetHandle(), &createInfo, nullptr, &dev->_dev));
 
         volkLoadDeviceTable(&dev->_fnTable, dev->_dev);
 
@@ -270,13 +304,14 @@ bool Contains(T&& container, U&& element) {
                                                     qInfo.computeQueueFamily.value(),
                                                     rawComputeQ);
         }
-
+        auto apiVer = adp->GetAdapterInfo().apiVersion;
+        
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
-        allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
+        allocatorInfo.vulkanApiVersion = VK_MAKE_API_VERSION(0, apiVer.major, apiVer.minor, apiVer.patch);
         allocatorInfo.physicalDevice = adp->GetHandle();
         allocatorInfo.device = dev->_dev;
-        allocatorInfo.instance = adp->GetCtx()->GetHandle();
+        allocatorInfo.instance = adp->GetCtx().GetHandle();
 
         VmaVulkanFunctions fn{};
         fn.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
@@ -334,7 +369,7 @@ bool Contains(T&& container, U&& element) {
 
 
         VkPhysicalDeviceProperties deviceProps{};
-        vkGetPhysicalDeviceProperties(adp->GetHandle(), &deviceProps);
+        ctx.GetFnTable().vkGetPhysicalDeviceProperties(adp->GetHandle(), &deviceProps);
 
         dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
         dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
@@ -873,7 +908,7 @@ bool Contains(T&& container, U&& element) {
             if(it == _currentState.textures.end()) {
                 currLayout = cpuTimeline.textures[texture];
             } else {
-                auto& state = it->second;
+                currLayout = it->second;
             }
             //Acquire resource on this timeline
             texture->NotifyUsageOn(this);

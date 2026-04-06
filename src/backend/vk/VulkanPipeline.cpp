@@ -802,7 +802,7 @@ public:
             remapper.SetStage(alloy::IShader::Stage::Vertex);
 
             alloy::vk::SPIRVBlob spvBlob;
-            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            auto cvtRes = alloy::vk::DXIL2SPV(*dev, dxil, compiler_args, remapper, spvBlob);
             VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
 
             VkShaderModuleCreateInfo shaderModuleCI {};
@@ -835,7 +835,7 @@ public:
             remapper.SetStage(alloy::IShader::Stage::Fragment);
 
             alloy::vk::SPIRVBlob spvBlob;
-            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            auto cvtRes = alloy::vk::DXIL2SPV(*dev, dxil, compiler_args, remapper, spvBlob);
             VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
 
             VkShaderModuleCreateInfo shaderModuleCI {};
@@ -1045,7 +1045,7 @@ public:
             remapper.SetStage(alloy::IShader::Stage::Compute);
 
             alloy::vk::SPIRVBlob spvBlob;
-            auto cvtRes = alloy::vk::DXIL2SPV(dxil, compiler_args, remapper, spvBlob);
+            auto cvtRes = alloy::vk::DXIL2SPV(*dev, dxil, compiler_args, remapper, spvBlob);
             VK_ASSERT(cvtRes == alloy::vk::ShaderConverterResult::Success);
 
             VkShaderModuleCreateInfo shaderModuleCI {};

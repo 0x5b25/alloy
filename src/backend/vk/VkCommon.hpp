@@ -43,6 +43,7 @@ struct VkInstExtNames {
     constexpr static const char* VK_EXT_DEBUG_REPORT = "VK_EXT_debug_report";
     constexpr static const char* VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES2 = "VK_KHR_get_physical_device_properties2";
     constexpr static const char* VK_KHR_PORTABILITY_SUBSET = "VK_KHR_portability_subset";
+    constexpr static auto VK_EXT_DEBUG_UTILS = "VK_EXT_debug_utils";
     //static const char* VK_KHR_SWAPCHAIN;
 };
 
@@ -59,7 +60,8 @@ struct VkDevExtNames {
     //static const char* VK_KHR_DYNAMIC_RENDERING;
 
     constexpr static auto VK_KHR_SWAPCHAIN = "VK_KHR_swapchain";
-    constexpr static auto VK_EXT_DEBUG_MARKER = "VK_EXT_debug_marker";
+    //constexpr static auto VK_EXT_DEBUG_MARKER = "VK_EXT_debug_marker";
+
     constexpr static auto VK_KHR_MAINTENANCE1 = "VK_KHR_maintenance1";
     constexpr static auto VK_KHR_GET_MEMORY_REQ2 = "VK_KHR_get_memory_requirements2";
     constexpr static auto VK_KHR_DEDICATED_ALLOCATION = "VK_KHR_dedicated_allocation";

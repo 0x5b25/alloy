@@ -697,6 +697,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
             desc.format = alloy::PixelFormat::R8_G8_B8_A8_UNorm;
 
             fontTex = gd->GetResourceFactory().CreateTexture(desc);
+            fontTex->SetDebugName("ImGUI text atlas");
         }
 
         //Create sampler

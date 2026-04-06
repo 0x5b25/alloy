@@ -1,14 +1,18 @@
 #include "VkSurfaceUtil.hpp"
 
 #include "alloy/common/Macros.h"
+#include "VulkanContext.hpp"
 
 #include <cassert>
 
 
 namespace alloy::VK::priv{
 
-SurfaceContainer CreateSurface(VkInstance instance, alloy::SwapChainSource* swapchainSource) {
+SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, alloy::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
+
+	auto hInst = ctx.GetHandle();
+	auto& fnTable = ctx.GetFnTable();
 
 	switch (swapchainSource->tag) {
 		case alloy::SwapChainSource::Tag::Opaque:{
@@ -24,7 +28,7 @@ SurfaceContainer CreateSurface(VkInstance instance, alloy::SwapChainSource* swap
 			surfaceCI.hwnd = (HWND)win32Source->hWnd;
 			surfaceCI.hinstance = (HINSTANCE)win32Source->hInstance;
 			VkSurfaceKHR surface;
-			VkResult result = vkCreateWin32SurfaceKHR(instance, &surfaceCI, nullptr, &surface);
+			VkResult result = fnTable.vkCreateWin32SurfaceKHR(hInst, &surfaceCI, nullptr, &surface);
 			
 			return {surface, true};
 		}
