@@ -221,11 +221,15 @@ int AppRunner::Run(IApp* pUserApp) {
 
             auto& pass = commandList->BeginRenderPass(passAction);
 
+            commandList->PushDebugGroup("Draw scene", {0.5, 0.9, 0.4, 1.0});
 
             pUserApp->OnRenderFrame(pass);
 
-            ImGui_ImplAlloy_RenderDrawData(draw_data, pass);
+            commandList->PopDebugGroup();
 
+            commandList->PushDebugGroup("Draw ImGui", {0.3, 0.4, 0.8, 1.0});
+            ImGui_ImplAlloy_RenderDrawData(draw_data, pass);
+            commandList->PopDebugGroup();
 
             commandList->EndPass();
             commandList->End();
@@ -253,7 +257,7 @@ void AppRunner::SetupAlloyEnv() {
     alloy::IContext::Options ctxOpt{};
     ctxOpt.debug = true;
 
-    auto ctx = alloy::IContext::Create(alloy::Backend::DX12, ctxOpt);
+    auto ctx = alloy::IContext::Create(alloy::Backend::Vulkan, ctxOpt);
     auto adp = ctx->EnumerateAdapters().front();
     
     alloy::IGraphicsDevice::Options devOpt{};

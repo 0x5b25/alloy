@@ -108,98 +108,6 @@ HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAda
 
 namespace alloy::dxc {
 
-    void D3D12DevCaps::ReadFromDevice(ID3D12Device* pdev)
-    {
-        D3D_FEATURE_LEVEL checklist[] = {
-            D3D_FEATURE_LEVEL_11_0,
-            D3D_FEATURE_LEVEL_11_1,
-            D3D_FEATURE_LEVEL_12_0,
-            D3D_FEATURE_LEVEL_12_1,
-            D3D_FEATURE_LEVEL_12_2,
-        };
-
-        D3D12_FEATURE_DATA_FEATURE_LEVELS levels = {
-            _countof(checklist),
-            checklist
-        };
-
-        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &levels, sizeof(levels)))){
-            feature_level = levels.MaxSupportedFeatureLevel;
-        }
-
-        D3D12_FEATURE_DATA_SHADER_MODEL shader_model{};
-        shader_model.HighestShaderModel = D3D_SHADER_MODEL_6_7;
-        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shader_model, sizeof(shader_model)))){
-            this->shader_model = shader_model.HighestShaderModel;
-        }
-
-        D3D12_FEATURE_DATA_ROOT_SIGNATURE root_sig{};
-        root_sig.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
-        if(SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &root_sig, sizeof(root_sig)))){
-            root_sig_version = root_sig.HighestVersion;
-        }
-
-
-        pdev->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE1, &architecture, sizeof(architecture));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &options1, sizeof(options1));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options2, sizeof(options2));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &options3, sizeof(options3));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS4, &options4, sizeof(options4));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options7, sizeof(options7));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &options12, sizeof(options12));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS13, &options13, sizeof(options13));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS14, &options14, sizeof(options14));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS15, &options15, sizeof(options15));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS16, &options16, sizeof(options16));
-        pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS17, &options17, sizeof(options17));
-        if (FAILED(pdev->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS19, &options19, sizeof(options19)))) {
-            options19.MaxSamplerDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
-            options19.MaxSamplerDescriptorHeapSizeWithStaticSamplers = options19.MaxSamplerDescriptorHeapSize;
-            options19.MaxViewDescriptorHeapSize = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
-        }
-        {
-            D3D12_FEATURE_DATA_FORMAT_SUPPORT a4b4g4r4_support = {
-                DXGI_FORMAT_A4B4G4R4_UNORM
-            };
-            support_a4b4g4r4 =
-             SUCCEEDED(pdev->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &a4b4g4r4_support, sizeof(a4b4g4r4_support)));
-        }
-
-        //Query usable sample qualities
-        maxMSAASampleCount = 1;
-        for(uint32_t sampleCount : {32, 16, 8, 4, 2}) {
-            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS queryData {
-                .Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
-                .SampleCount = sampleCount
-            };
-            pdev->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS
-                , &queryData, sizeof(queryData)
-            );
-
-            if(queryData.NumQualityLevels != 0) {
-                maxMSAASampleCount = sampleCount;
-                break;
-            }
-        }
-
-        D3D12_COMMAND_QUEUE_DESC queue_desc = {
-           /*.Type =*/ D3D12_COMMAND_LIST_TYPE_DIRECT,
-           /*.Priority =*/ D3D12_COMMAND_QUEUE_PRIORITY_NORMAL,
-           /*.Flags =*/ D3D12_COMMAND_QUEUE_FLAG_NONE,
-           /*.NodeMask =*/ 0,
-        };
- 
-        ID3D12CommandQueue *cmdqueue;
-        pdev->CreateCommandQueue(&queue_desc,
-                                 IID_ID3D12CommandQueue,
-                                 (void **)&cmdqueue);
- 
-        uint64_t ts_freq;
-        cmdqueue->GetTimestampFrequency(&ts_freq);
-        timestamp_period = 1000000000.0f / ts_freq;
-        cmdqueue->Release();
-    }
 
     DXCAutoFence::DXCAutoFence()
         : _fence(nullptr)
@@ -377,7 +285,7 @@ namespace alloy::dxc {
         const common::sp<DXCAdapter>& adp,
         const IGraphicsDevice::Options &options
     ) {
-
+        auto& devCaps = adp->GetCaps();
         //Enumeration done. create the selected device
         ComPtr<ID3D12Device> device;
         {
@@ -435,11 +343,6 @@ namespace alloy::dxc {
         dev->_waitIdleFence.Init(std::move(waitIdleFence));
         dev->_alloc = allocator;
 
-        //dev->_adpInfo = {};
-        dev->_dxcFeat = {};
-        dev->_dxcFeat.ReadFromDevice(dev->_dev);
-
-
         D3D12MA::Pool* sysMemUploadPool = nullptr,
                      * sysMemReadbackPool = nullptr,
                      * devLocalPool = nullptr;
@@ -456,12 +359,14 @@ namespace alloy::dxc {
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
 
             HRESULT hr = allocator->CreatePool(&poolDesc, &sysMemUploadPool);
+            sysMemUploadPool->SetName(L"System upload heap");
             if (FAILED(hr)) {
 
             }
 
             poolDesc.HeapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
             hr = allocator->CreatePool(&poolDesc, &sysMemReadbackPool);
+            sysMemReadbackPool->SetName(L"System readback heap");
             if (FAILED(hr)) {
 
             }
@@ -469,7 +374,7 @@ namespace alloy::dxc {
 
         //Non-UMA device normally has a device local host visible memory
         //Create a heap targeting that
-        if (!dev->_dxcFeat.SupportUMA() && dev->_dxcFeat.SupportReBAR()) {
+        if (!devCaps.SupportUMA() && devCaps.SupportReBAR()) {
             D3D12MA::POOL_DESC poolDesc = {};
             poolDesc.HeapProperties.Type = D3D12_HEAP_TYPE_CUSTOM;
             // For CPU readback use D3D12_CPU_PAGE_PROPERTY_WRITE_BACK
@@ -481,6 +386,7 @@ namespace alloy::dxc {
             poolDesc.HeapFlags = D3D12_HEAP_FLAG_CREATE_NOT_ZEROED;
         
             HRESULT hr = allocator->CreatePool(&poolDesc, &devLocalPool);
+            devLocalPool->SetName(L"Device local visible heap");
             if (FAILED(hr)) {
         
             }
@@ -558,7 +464,7 @@ namespace alloy::dxc {
         dev->_commonFeat.independentBlend = true;
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
-        dev->_commonFeat.shaderFloat64 = dev->_dxcFeat.options.DoublePrecisionFloatShaderOps;   
+        dev->_commonFeat.shaderFloat64 = devCaps.options.DoublePrecisionFloatShaderOps;   
         return dev;
     }
 

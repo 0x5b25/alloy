@@ -95,7 +95,7 @@ void MeshRenderer::_CreateObjRenderPipeline() {
     pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleList;
 
     using VL = alloy::VertexLayout;
-    pipelineDescription.shaderSet.vertexLayouts = { {} };
+    pipelineDescription.shaderSet.vertexLayouts = { };
 
     //struct Vertex {
     //    float3 position : POSITION;

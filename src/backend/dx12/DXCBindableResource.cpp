@@ -4,6 +4,7 @@
 #include "D3DTypeCvt.hpp"
 #include "DXCDevice.hpp"
 #include "DXCTexture.hpp"
+#include "DXCContext.hpp"
 
 #include <stdexcept>
 #include <d3d12.h>
@@ -14,6 +15,7 @@ namespace alloy::dxc
     common::sp<IResourceLayout> DXCResourceLayout::Make(const common::sp<DXCDevice> &dev, const Description &desc)
     {
         auto pDev = dev->GetDevice();
+        auto& d3d12Dll = dev->GetContext().GetD3D12Dll();
 
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
@@ -115,7 +117,7 @@ namespace alloy::dxc
                           | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT;
 
         Microsoft::WRL::ComPtr<ID3DBlob> signature;
-        auto hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+        auto hr = d3d12Dll.pfnD3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
         if (FAILED(hr))
         {
             return nullptr;

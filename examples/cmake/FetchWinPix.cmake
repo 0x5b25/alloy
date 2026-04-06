@@ -48,15 +48,20 @@ endif()
 set(PIX_RUNTIME_ROOT_DIR "${PIX_RUNTIME_SRC}")
 set(PIX_RUNTIME_BIN_DIR "${PIX_RUNTIME_ROOT_DIR}/bin/${PIX_RUNTIME_ARCH}")
 
+# Add include directories
+set(PIX_RUNTIME_INCLUDE_DIR "${PIX_RUNTIME_ROOT_DIR}/Include")
+
+add_library(WinPixHeaders INTERFACE)
+target_include_directories(WinPixHeaders INTERFACE "${PIX_RUNTIME_INCLUDE_DIR}")
+
 add_library(WinPixEventRuntime SHARED IMPORTED GLOBAL)
 set_target_properties(WinPixEventRuntime 
     PROPERTIES 
         IMPORTED_LOCATION ${PIX_RUNTIME_BIN_DIR}
         IMPORTED_IMPLIB ${PIX_RUNTIME_BIN_DIR}/WinPixEventRuntime.lib)
 
-# Add include directories
-set(PIX_RUNTIME_INCLUDE_DIR "${PIX_RUNTIME_ROOT_DIR}/Include")
-target_include_directories(WinPixEventRuntime INTERFACE "${PIX_RUNTIME_INCLUDE_DIR}")
+#target_include_directories(WinPixEventRuntime INTERFACE "${PIX_RUNTIME_INCLUDE_DIR}")
+target_link_libraries(WinPixEventRuntime INTERFACE WinPixHeaders)
 
 # Set paths to the DLLs
 #set(AGILITY_Core_DLL "${PIX_RUNTIME_ROOT_DIR}/bin/${PIX_RUNTIME_ARCH}/D3D12Core.dll" PARENT_SCOPE)

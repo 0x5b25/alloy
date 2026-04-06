@@ -13,11 +13,14 @@
 #include "DXCBindableResource.hpp"
 #include "d3d12.h"
 
-#define USE_PIX
-#include <WinPixEventRuntime/pix3.h>
+#include "D3DPixEventEncoder.hpp"
+
+//#define USE_PIX
+//#include <WinPixEventRuntime/pix3.h>
 
 namespace alloy::dxc
 {
+
 
     constexpr D3D12_RESOURCE_STATES RESOURCE_STATE_ALL_WRITE_BITS =
         D3D12_RESOURCE_STATE_RENDER_TARGET          |
@@ -86,7 +89,8 @@ namespace alloy::dxc
     //#define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentPass == nullptr))
     #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
 
-    
+#pragma region CmdEncBase
+
     ID3D12GraphicsCommandList1* DXCCmdEncBase::GetCmdList() const {
         return static_cast<ID3D12GraphicsCommandList1*>(cmdList->GetHandle());
     }
@@ -250,28 +254,27 @@ namespace alloy::dxc
     //Sadly this can't be made constexpr due to std::floor can't be constexpr
     static uint32_t Color4fToPixColor(const Color4f& c4f) {
 
-        uint8_t r = std::floor(c4f.r * 255);
-        uint8_t g = std::floor(c4f.g * 255);
-        uint8_t b = std::floor(c4f.b * 255);
-        
-        return PIX_COLOR(r, g, b);
+        uint32_t r = std::floor(c4f.r * 255);
+        uint32_t g = std::floor(c4f.g * 255);
+        uint32_t b = std::floor(c4f.b * 255);
+        return 0xff000000u | (r << 16) | (g << 8) | b;
     }
     
     void DXCCmdEncBase::PushDebugGroup(const std::string& name, uint32_t color) {
         recordedCmds.emplace_back([this, name, color]() {
-            PIXBeginEvent(GetCmdList(), color, name.c_str());
+            EncodePIXBeginEvent(GetCmdList(), color, name);
         });
     }
 
     void DXCCmdEncBase::PopDebugGroup() {
         recordedCmds.emplace_back([this]() {
-            PIXEndEvent(GetCmdList());
+            EncodePIXEndEvent(GetCmdList());
         });
     }
 
     void DXCCmdEncBase::InsertDebugMarker(const std::string& name, uint32_t color) {
         recordedCmds.emplace_back([this, name, color]() {
-            PIXSetMarker(GetCmdList(), color, name.c_str());
+            EncodePIXMarker(GetCmdList(), color, name);
         });
     }
 
@@ -281,6 +284,11 @@ namespace alloy::dxc
         }
         recordedCmds.clear();
     }
+
+#pragma endregion
+
+
+#pragma region RenderCmdEnc
 
     DXCRenderCmdEnc::DXCRenderCmdEnc(
         DXCDevice *dev, 
@@ -699,79 +707,6 @@ namespace alloy::dxc
         });
     }
 
-    void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
-
-        auto dxcPipeline = PtrCast<DXCComputePipeline>(pipeline.get());
-        assert(dxcPipeline != _currentPipeline);
-        resources.insert(pipeline);
-
-        recordedCmds.emplace_back([dxcPipeline, this]() {
-            dxcPipeline->CmdBindPipeline(GetCmdList());
-        });
-
-        //ensure resource set counts
-        //auto setCnt = vkPipeline->GetResourceSetCount();
-        //if (setCnt > _resourceSets.size()) {
-        //    _resourceSets.resize(setCnt, {});
-        //}
-
-        //Mark current pipeline
-        _currentPipeline = dxcPipeline;
-    }
-        
-    void DXCComputeCmdEnc::SetComputeResourceSet(const common::sp<IResourceSet>& rs){
-        CHK_PIPELINE_SET();
-        //assert(slot < _resourceSets.size());
-
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
-
-        resources.insert(rs);
-
-        auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
-
-        RegisterResourceSet(d3dkrs);
-
-        recordedCmds.emplace_back([d3dkrs, this]() {
-            auto& heaps = d3dkrs->GetHeaps();
-            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
-
-            for(uint32_t i = 0; i < heaps.size(); i++) {
-                GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
-            }
-        });
-    }
-
-        
-    void DXCComputeCmdEnc::SetPushConstants(
-        std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
-        std::uint32_t destOffsetIn32BitValues
-    ) {
-        CHK_PIPELINE_SET();
-        //assert(slot < _resourceSets.size());
-
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
-
-        auto argBase = dxcLayout->GetHeapCount();
-
-        std::vector<uint32_t> dataCopy(data.begin(), data.end());
-
-        recordedCmds.emplace_back([
-            pushConstantIndex, 
-            argBase, 
-            data = std::move(dataCopy), 
-            destOffsetIn32BitValues, 
-            this
-        ]() {
-            GetCmdList()->SetComputeRoot32BitConstants(
-                pushConstantIndex + argBase,
-                data.size(),
-                data.data(),
-                destOffsetIn32BitValues
-            );
-        });
-    }
-
 
     void DXCRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport){
         //dx12 requires all viewports set as an atomic operation.
@@ -890,6 +825,9 @@ namespace alloy::dxc
             GetCmdList()->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         });
     }
+
+#pragma endregion RenderCmdEnc
+
     
 #if 0
     void DXCRenderCmdEnc::DrawIndirect(
@@ -925,6 +863,80 @@ namespace alloy::dxc
     }
 #endif
     
+#pragma region ComputeCmdEnc
+
+    void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
+
+        auto dxcPipeline = PtrCast<DXCComputePipeline>(pipeline.get());
+        assert(dxcPipeline != _currentPipeline);
+        resources.insert(pipeline);
+
+        recordedCmds.emplace_back([dxcPipeline, this]() {
+            dxcPipeline->CmdBindPipeline(GetCmdList());
+        });
+
+        //ensure resource set counts
+        //auto setCnt = vkPipeline->GetResourceSetCount();
+        //if (setCnt > _resourceSets.size()) {
+        //    _resourceSets.resize(setCnt, {});
+        //}
+
+        //Mark current pipeline
+        _currentPipeline = dxcPipeline;
+    }
+        
+    void DXCComputeCmdEnc::SetComputeResourceSet(const common::sp<IResourceSet>& rs){
+        CHK_PIPELINE_SET();
+        //assert(slot < _resourceSets.size());
+
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
+        resources.insert(rs);
+
+        auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
+
+        RegisterResourceSet(d3dkrs);
+
+        recordedCmds.emplace_back([d3dkrs, this]() {
+            auto& heaps = d3dkrs->GetHeaps();
+            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+
+            for(uint32_t i = 0; i < heaps.size(); i++) {
+                GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            }
+        });
+    }
+
+        
+    void DXCComputeCmdEnc::SetPushConstants(
+        std::uint32_t pushConstantIndex,
+        const std::span<uint32_t>& data,
+        std::uint32_t destOffsetIn32BitValues
+    ) {
+        CHK_PIPELINE_SET();
+        //assert(slot < _resourceSets.size());
+
+        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+
+        auto argBase = dxcLayout->GetHeapCount();
+
+        std::vector<uint32_t> dataCopy(data.begin(), data.end());
+
+        recordedCmds.emplace_back([
+            pushConstantIndex, 
+            argBase, 
+            data = std::move(dataCopy), 
+            destOffsetIn32BitValues, 
+            this
+        ]() {
+            GetCmdList()->SetComputeRoot32BitConstants(
+                pushConstantIndex + argBase,
+                data.size(),
+                data.data(),
+                destOffsetIn32BitValues
+            );
+        });
+    }
 
     void DXCComputeCmdEnc::Dispatch(
         std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
@@ -965,6 +977,12 @@ namespace alloy::dxc
         //vkCmdDispatchIndirect(_cmdBuf, vkBuffer->GetHandle(), offset);
     };
 #endif
+
+
+#pragma endregion ComputeCmdEnc
+
+
+#pragma region XferCmdEnc
 
 #if 0
     static uint32_t _ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
@@ -1195,6 +1213,11 @@ namespace alloy::dxc
     void DXCTransferCmdEnc::GenerateMipmaps(const common::sp<ITexture>& texture){
         ///#TODO: remove this function as mipmap generation needs more flexiblity in infcanvas
     }
+
+#pragma endregion XferCmdEnc
+
+
+#pragma region CmdList
 
     DXCCommandList::~DXCCommandList(){
         for(auto* p : _passes) {
@@ -1782,6 +1805,8 @@ namespace alloy::dxc
         auto pixColor = Color4fToPixColor(color);
         _currentPass->InsertDebugMarker(name, pixColor);
     };
+
+#pragma endregion CmdList
 
     static void _PopulateTextureBarrier(const alloy::TextureBarrierResource& desc,
                                               D3D12_TEXTURE_BARRIER& barrier

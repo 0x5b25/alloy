@@ -18,14 +18,14 @@
 #include <mutex>
 
 #include "VkDescriptorPoolMgr.hpp"
+#include "VulkanContext.hpp"
 #include "VulkanResourceFactory.hpp"
 
 #define VK_DEV_CALL(dev, expr) (dev->GetFnTable(). expr )
+#define VK_INST_CALL(dev, expr) (dev->GetContext().GetFnTable(). expr )
 
 namespace alloy::vk
 {
-    //class _VkCtx;
-    class VulkanAdapter;
     class VulkanBuffer;
     class VulkanTexture;
     class VulkanDevice;
@@ -277,6 +277,8 @@ namespace alloy::vk
         virtual const IGraphicsDevice::Features& GetFeatures() const override { return _commonFeat; }
         virtual IPhysicalAdapter& GetAdapter() const override;
 
+        VulkanContext& GetContext() const { return _adp->GetCtx(); }
+
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
         //const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
@@ -365,14 +367,14 @@ namespace alloy::vk
 
         virtual void SetDebugName(const std::string & name) override {
             // Check for a valid function pointer
-	        if (_dev->GetFeatures().commandListDebugMarkers)
+	        if (_dev->GetContext().GetCaps().hasDebugUtilExt)
 	        {
-	        	VkDebugMarkerObjectNameInfoEXT nameInfo = {};
-	        	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
-	        	nameInfo.objectType = VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
-	        	nameInfo.object = (uint64_t)_buffer;
+	        	VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+	        	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+	        	nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
+	        	nameInfo.objectHandle = (uint64_t)_buffer;
 	        	nameInfo.pObjectName = name.c_str();
-                _dev->GetFnTable().vkDebugMarkerSetObjectNameEXT(_dev->LogicalDev(), &nameInfo);
+                VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
 	        }
 
             _debugName = name;

@@ -23,13 +23,17 @@
 
 #include <string>
 
+namespace alloy::vk{
+	class VulkanContext;
+}
+
 namespace alloy::VK::priv{
 	struct SurfaceContainer{
 		VkSurfaceKHR surface;
 		bool isOwnSurface;//Is this surface managed by us
 	};
 
-	SurfaceContainer CreateSurface(VkInstance instance, alloy::SwapChainSource* swapchainSource);
+	SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, alloy::SwapChainSource* swapchainSource);
 
 	std::string GetSurfaceExtension(alloy::SwapChainSource* swapchainSource);
 }

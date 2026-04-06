@@ -38,12 +38,12 @@ Mesh BuildBoxMesh(float length, float width, float height) {
         );
         constexpr auto vertCnt = 6;
         const Vertex verts[vertCnt] = {
-            {vertPos[v0], uv[v0], normal, tangent, bitangent},
-            {vertPos[v2], uv[v2], normal, tangent, bitangent},
-            {vertPos[v1], uv[v1], normal, tangent, bitangent},
-            {vertPos[v1], uv[v1], normal, tangent, bitangent},
-            {vertPos[v2], uv[v2], normal, tangent, bitangent},
-            {vertPos[v3], uv[v3], normal, tangent, bitangent}
+            {vertPos[v0], uv[0], normal, tangent, bitangent},
+            {vertPos[v2], uv[2], normal, tangent, bitangent},
+            {vertPos[v1], uv[1], normal, tangent, bitangent},
+            {vertPos[v1], uv[1], normal, tangent, bitangent},
+            {vertPos[v2], uv[2], normal, tangent, bitangent},
+            {vertPos[v3], uv[3], normal, tangent, bitangent}
         };
 
         vertices.insert(vertices.end(), verts, verts+vertCnt);

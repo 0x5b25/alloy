@@ -13,22 +13,46 @@
 
 using namespace alloy;
 
-#ifdef USE_PIX
 
-void SetupCaptureEvent(common::sp<IGraphicsDevice> gd) {}
+#ifdef USE_PIX
+using PFN_PIXBeginCapture2
+    = HRESULT (WINAPI *) (DWORD , _In_opt_ const PPIXCaptureParameters );
+using PFN_PIXEndCapture
+    = HRESULT (WINAPI *) (BOOL);
+
+static PFN_PIXBeginCapture2 pfnPIXBeginCapture2 = nullptr;
+static PFN_PIXEndCapture pfnPIXEndCapture = nullptr;
+
+void SetupCaptureEvent(common::sp<IGraphicsDevice> gd) {
+    auto hPixRuntimeDll = LoadLibraryA("WinPixEventRuntime.dll");
+    if(hPixRuntimeDll) {
+        pfnPIXBeginCapture2 
+            = (PFN_PIXBeginCapture2)GetProcAddress(hPixRuntimeDll, "PIXBeginCapture2");
+        pfnPIXEndCapture 
+            = (PFN_PIXEndCapture)GetProcAddress(hPixRuntimeDll, "PIXEndCapture");
+
+        if (pfnPIXBeginCapture2 && pfnPIXEndCapture) {
+            std::cout << "PIX debug enabled.\n";
+        }  
+    }
+
+}
 
 void StartCapture() {
-    PIXCaptureParameters params {};
-    params.GpuCaptureParameters.FileName = L"Capture";
-    PIXBeginCapture(PIX_CAPTURE_GPU, &params);
+    if(pfnPIXBeginCapture2) {
+        PIXCaptureParameters params {};
+        params.GpuCaptureParameters.FileName = L"Capture";
+        pfnPIXBeginCapture2(PIX_CAPTURE_GPU, &params);
+    }
 }
 
 void StopCapture() {
-    PIXEndCapture(false);
+    if(pfnPIXEndCapture)
+        pfnPIXEndCapture(false);
 }
-#else
+#elif defined(USE_RENDERDOC)
 
-RENDERDOC_API_1_1_2* rdoc_api = nullptr;
+static RENDERDOC_API_1_1_2* rdoc_api = nullptr;
 void SetupCaptureEvent(common::sp<IGraphicsDevice> gd) {
 
     if (rdoc_api != nullptr){ return; }
@@ -84,6 +108,12 @@ void StartCapture() {
 void StopCapture() {
     if (rdoc_api) rdoc_api->EndFrameCapture(NULL, NULL);
 }
+
+#else
+
+void SetupCaptureEvent(alloy::common::sp<alloy::IGraphicsDevice> gd) { }
+void StartCapture() { }
+void StopCapture() { }
 
 #endif
 

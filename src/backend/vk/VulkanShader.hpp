@@ -12,6 +12,9 @@
 #include <functional>
 
 namespace alloy::vk {
+
+    class VulkanDevice;
+
     enum ShaderConverterResult {
         Success,
         VKD3D_ERROR_INVALID_SHADER,
@@ -145,7 +148,8 @@ namespace alloy::vk {
 
     };
 
-    ShaderConverterResult DXIL2SPV(const std::span<uint8_t>& dxil,
+    ShaderConverterResult DXIL2SPV(VulkanDevice& device,
+                                   const std::span<uint8_t>& dxil,
                                    const ConverterCompilerArgs& compiler_args,
                                    SPVRemapper& remapper,
                                    SPIRVBlob& spirv);

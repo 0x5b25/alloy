@@ -82,6 +82,8 @@ namespace alloy::vk
         //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
         ResourceStates _requestedStates, _finalStates;
 
+        void _EndCurrentActivePass();
+        void _BeginDummyPassIfNoActivePass();
 
     public:
         VulkanCommandList(
@@ -230,6 +232,10 @@ namespace alloy::vk
         );
 
         void RegisterResourceSet(VulkanResourceSet* rs);
+        
+        void PushDebugGroup(const std::string& name, const Color4f&);
+        void PopDebugGroup();
+        void InsertDebugMarker(const std::string& name, const Color4f&);
 
     };
 

@@ -7,6 +7,7 @@
 #include "VkTypeCvt.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
+#include "VulkanContext.hpp"
 //#include "VulkanResourceBarrier.hpp"
 
 #include <ranges>
@@ -157,6 +158,55 @@ namespace alloy::vk{
             }
         }
     }
+    
+    void VkCmdEncBase::PushDebugGroup(const std::string& name, const Color4f& color) {
+        if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
+
+        recordedCmds.emplace_back([this, name, color](VkCommandBuffer cmdList){
+            VkDebugUtilsLabelEXT markerInfo = {};
+            markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+            markerInfo.pLabelName = name.c_str();
+            markerInfo.color[0] = color.r;
+            markerInfo.color[1] = color.g;
+            markerInfo.color[2] = color.b;
+            markerInfo.color[3] = color.a;
+
+            VK_INST_CALL(dev, vkCmdBeginDebugUtilsLabelEXT(
+                cmdList, 
+                &markerInfo));
+
+        });
+    }
+
+    void VkCmdEncBase::PopDebugGroup() {
+        if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
+
+        recordedCmds.emplace_back([this](VkCommandBuffer cmdList){
+            VK_INST_CALL(dev, vkCmdEndDebugUtilsLabelEXT(cmdList));
+
+        });
+
+    }
+
+    void VkCmdEncBase::InsertDebugMarker(const std::string& name, const Color4f& color) {
+        if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
+
+        recordedCmds.emplace_back([this, name, color](VkCommandBuffer cmdList){
+            VkDebugUtilsLabelEXT markerInfo = {};
+            markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+            markerInfo.pLabelName = name.c_str();
+            markerInfo.color[0] = color.r;
+            markerInfo.color[1] = color.g;
+            markerInfo.color[2] = color.b;
+            markerInfo.color[3] = color.a;
+
+            VK_INST_CALL(dev, vkCmdInsertDebugUtilsLabelEXT(
+                cmdList, 
+                &markerInfo));
+
+        });
+    }
+    
 #if 0
     void _DevResRegistry::ModifyTexUsage(
         const sp<Texture>& tex,
@@ -305,11 +355,28 @@ namespace alloy::vk{
 
     }
     void VulkanCommandList::End(){
-        if(_currentPass != nullptr) {
-            assert(false);
-        }
+        //if(_currentPass != nullptr) {
+        //    assert(false);
+        //}
+        _EndCurrentActivePass();
 
         VK_DEV_CALL(_dev, vkEndCommandBuffer(_cmdBuf));
+    }
+
+    void VulkanCommandList::_EndCurrentActivePass() {
+        if(_currentPass) {
+            EndPass();
+        }
+    }
+
+    void VulkanCommandList::_BeginDummyPassIfNoActivePass() {
+        if(!_currentPass) {
+            //Begin a dummy pass for misc command recording
+            auto dummyPass = new VkCmdEncBase(_dev.get(), _cmdBuf);
+            //auto* pNewEnc = new _DXCDummyPass(_dev.get(), this);
+            _passes.push_back(dummyPass);
+            _currentPass = dummyPass;
+        }
     }
 
     void VkRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
@@ -1309,11 +1376,20 @@ namespace alloy::vk{
 #endif
     }
 
-    void VulkanCommandList::PushDebugGroup(const std::string& name, const Color4f&) {};
+    void VulkanCommandList::PushDebugGroup(const std::string& name, const Color4f& color) {
+        _BeginDummyPassIfNoActivePass();
+        _currentPass->PushDebugGroup(name, color);
+    };
 
-    void VulkanCommandList::PopDebugGroup() {};
+    void VulkanCommandList::PopDebugGroup() {
+        _BeginDummyPassIfNoActivePass();
+        _currentPass->PopDebugGroup();
+    };
 
-    void VulkanCommandList::InsertDebugMarker(const std::string& name, const Color4f&) {};
+    void VulkanCommandList::InsertDebugMarker(const std::string& name, const Color4f& color) {
+        _BeginDummyPassIfNoActivePass();
+        _currentPass->InsertDebugMarker(name, color);
+    };
 
     
     void VulkanCommandList::Barrier(const std::vector<alloy::BarrierDescription>& barriers) {
@@ -1338,6 +1414,9 @@ namespace alloy::vk{
     void VulkanCommandList::TransitionTextureToDefaultLayout(
         const std::vector<common::sp<ITexture>>& textures
     ) {
+        //#TODO: revisit this function once we have unified auto state tracking
+        // between dx12 & vulkan
+        assert(false);
         CHK_RENDERPASS_ENDED();
         
         auto* dummyPass = new VkCmdEncBase(_dev.get(), _cmdBuf);
@@ -1376,7 +1455,7 @@ namespace alloy::vk{
             
             VulkanCommandList::TextureState state{};
             state.access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            if(ctAct.loadAction == LoadAction::Load)
+            if(ctAct.loadAction != alloy::LoadAction::DontCare)
                 state.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
             state.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             state.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1403,15 +1482,14 @@ namespace alloy::vk{
             state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT 
                         | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
-            if(fb.depthTargetAction->storeAction != alloy::StoreAction::DontCare)
-            {
-                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-                             | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            } else {
-                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+            //Always writable
+            state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            if(fb.depthTargetAction->loadAction != alloy::LoadAction::DontCare) {
+                //Either clear or load means content is readable
+                state.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             }
+
+            state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             RegisterTexUsage(vkDepthTex, state);
 
             if(fb.depthTargetAction->msaaResolveTarget) {
@@ -1630,7 +1708,8 @@ namespace alloy::vk{
     }
 
     IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(const RenderPassAction& actions) {
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         
         //auto vkfb = common::SPCast<VulkanFrameBufferBase>(fb);
         
@@ -1647,7 +1726,8 @@ namespace alloy::vk{
     }
     
     IComputeCommandEncoder& VulkanCommandList::BeginComputePass() {
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         
         auto* pNewEnc = new VkComputeCmdEnc(_dev.get(), _cmdBuf);
         //Record render pass
@@ -1659,7 +1739,8 @@ namespace alloy::vk{
     }
     
     ITransferCommandEncoder& VulkanCommandList::BeginTransferPass() {
-        CHK_RENDERPASS_ENDED();
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
         
         auto* pNewEnc = new VkTransferCmdEnc(_dev.get(), _cmdBuf);
         //Record render pass

@@ -214,10 +214,13 @@ namespace alloy::vk
         return true;
     }
     
-    ShaderConverterResult DXIL2SPV(const std::span<uint8_t>& dxil,
+    ShaderConverterResult DXIL2SPV(VulkanDevice& device,
+                                   const std::span<uint8_t>& dxil,
                                    const ConverterCompilerArgs& compiler_args,
                                    SPVRemapper& remapper,
                                    SPIRVBlob& spirv) {
+        
+        const auto& devLimit = device.GetAdapter().GetAdapterInfo().limits;
         
         //dxil_spv_converter converter = nullptr;
         //dxil_spv_parsed_blob blob = nullptr;
@@ -268,6 +271,19 @@ namespace alloy::vk
             if (dxil_spv_converter_add_option(converter.converter, &compute_shader_derivatives.base) != DXIL_SPV_SUCCESS)
             {
                 //ERR("dxil-spirv does not support COMPUTE_SHADER_DERIVATIVES.\n");
+                ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+                assert(false);
+                break;
+            }
+
+            dxil_spv_option_ssbo_alignment ssbo_alignment {
+                .base = { DXIL_SPV_OPTION_SSBO_ALIGNMENT },
+                .alignment = (uint32_t)devLimit.minStructuredBufferStride
+            };
+
+            if (dxil_spv_converter_add_option(converter.converter, &ssbo_alignment.base) != DXIL_SPV_SUCCESS)
+            {
+                //ERR("dxil-spirv does not support ssbo_alignment.\n");
                 ret = VKD3D_ERROR_NOT_IMPLEMENTED;
                 assert(false);
                 break;

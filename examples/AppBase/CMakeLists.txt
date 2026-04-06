@@ -21,5 +21,5 @@ target_link_libraries(AppBase
         imgui
         Veldrid
     PRIVATE
-        WinPixEventRuntime        
+        WinPixHeaders
 )
