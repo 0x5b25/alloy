@@ -154,6 +154,7 @@ namespace alloy::dxc
 
         DXCDevice* dev;
         DXCCommandList* cmdList;
+        DXCPipelineBase* currentPipeline;
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
 
@@ -229,7 +230,9 @@ namespace alloy::dxc
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
 
         
-        DXCGraphicsPipeline* _currentPipeline;
+        DXCGraphicsPipeline* GetPipeline() {
+            return static_cast<DXCGraphicsPipeline*>(currentPipeline);
+        }
 
         RenderPassAction _fb;
 
@@ -283,6 +286,16 @@ namespace alloy::dxc
             const common::sp<IBuffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
+        
+        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override {
+            //Need CommandEncoder6 to support mesh shader
+            assert(false);
+        }
+        virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override {
+            //Need CommandEncoder6 to support mesh shader
+            assert(false);
+        }
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     
@@ -333,6 +346,16 @@ namespace alloy::dxc
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
+    };
+
+    class DXCRenderCmdEnc6 : public DXCRenderCmdEnc {
+
+        DXCRenderCmdEnc6(
+            DXCDevice *dev,
+            DXCCommandList6 *cmdList,
+            const RenderPassAction &act
+        );
+
     };
 
     struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {

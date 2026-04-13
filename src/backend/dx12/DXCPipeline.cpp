@@ -20,6 +20,7 @@
 
 //Local headers
 #include "D3DTypeCvt.hpp"
+#include "D3DPipelineStateStream.hpp"
 #include "D3DCommon.hpp"
 
 //#include "spirv/nir_spirv.h"
@@ -751,6 +752,210 @@ namespace alloy::dxc
         //
         //pCmdList->IASetPrimitiveTopology(_primTopo);
         //pCmdList->OMSetBlendFactor(_blendConstants);
+    }
+
+
+    common::sp<IMeshShaderPipeline> DXCMeshShaderPipeline::Make(
+        const common::sp<DXCDevice>& dev,
+        const MeshShaderPipelineDescription& desc
+    ) {
+        ComPtr<ID3D12Device2> pDev2;
+
+        auto pDev = dev->GetDevice();
+        if(FAILED(pDev->QueryInterface(IID_PPV_ARGS(&pDev2)))) {
+            //#TODO: log "Query ID3DDevice2 interface failed. Mesh shader not supported."
+            return nullptr;
+        }
+
+        PipelineStateStream psoStream;
+        //Flags;                  < D3D12_PIPELINE_STATE_FLAGS,       D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS>
+        auto& psoFlags = psoStream.Append<D3D12_PIPELINE_STATE_FLAGS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS>();
+        psoFlags = D3D12_PIPELINE_STATE_FLAG_NONE;
+
+        //NodeMask;               < UINT,                             D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_NODE_MASK>
+        auto& psoNodeMask = psoStream.Append<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_NODE_MASK>();
+        psoNodeMask = 0;
+
+        //pRootSignature;         < ID3D12RootSignature*,             D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE>
+        auto& psoRootSig = psoStream.Append<ID3D12RootSignature*, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE>();
+        auto dxcResLayout = PtrCast<DXCResourceLayout>(desc.resourceLayout.get());
+        psoRootSig = dxcResLayout->GetHandle();
+        
+        //Looks like it's for hull/geometry shaders. Might not be needed
+        auto& psoPrimTopo = psoStream.Append<D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY>();
+        psoPrimTopo = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+
+        
+        auto _FillShaderDesc = [&]<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE shaderType>(
+            const common::sp<IShader>& shader
+        ) -> void {
+            auto dxcShader = static_cast<DXCShader*>(shader.get());
+
+            auto& shaderDesc = psoStream.Append<D3D12_SHADER_BYTECODE, shaderType>();
+
+            shaderDesc.BytecodeLength = dxcShader->GetByteCode().size();
+            shaderDesc.pShaderBytecode = dxcShader->GetByteCode().data();
+        };
+        
+        //AS;                     < D3D12_SHADER_BYTECODE,            D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS>
+        //MS;                     < D3D12_SHADER_BYTECODE,            D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS>
+        //PS;                     < D3D12_SHADER_BYTECODE,            D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS>
+        
+        //Optiona shader
+        if(desc.taskShader) {
+            _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS>(desc.taskShader);
+        }
+        
+        _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS>(desc.meshShader);
+        _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS>(desc.fragmentShader);
+        
+        //BlendState;             
+        {
+            auto& blendState = psoStream.Append<D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND>();
+            //For BlendFactor::BlendFactor: 
+            //The blend factor is the blend factor set with 
+            //ID3D12GraphicsCommandList::OMSetBlendFactor. No pre-blend operation.
+
+            /*void OMSetBlendFactor(
+              [in, optional] const FLOAT [4] BlendFactor
+            );*/
+            auto& blendFactor = desc.attachmentState.blendConstant;
+
+            // BOOL AlphaToCoverageEnable;
+            //Enable support for different blend order for each render targets
+            blendState.IndependentBlendEnable = 1;
+            auto attachmentsCount = desc.attachmentState.colorAttachments.size();
+
+            assert(attachmentsCount <= 8);
+
+            for (int i = 0; i < attachmentsCount; i++)
+            {
+                auto vdDesc = desc.attachmentState.colorAttachments[i];
+                auto& attachmentState = blendState.RenderTarget[i];
+
+                attachmentState.SrcBlend = VdToD3DBlendFactor(vdDesc.sourceAlphaFactor);
+                attachmentState.DestBlend = VdToD3DBlendFactor(vdDesc.destinationColorFactor);
+                attachmentState.BlendOp = VdToD3DBlendOp(vdDesc.colorFunction);
+                attachmentState.SrcBlendAlpha = VdToD3DBlendFactor(vdDesc.sourceAlphaFactor);
+                attachmentState.DestBlendAlpha = VdToD3DBlendFactor(vdDesc.destinationAlphaFactor);
+                attachmentState.BlendOpAlpha = VdToD3DBlendOp(vdDesc.alphaFunction);
+                attachmentState.RenderTargetWriteMask = VdToD3DColorWriteMask(vdDesc.colorWriteMask);
+                attachmentState.BlendEnable = vdDesc.blendEnabled;
+            }
+
+            blendState.AlphaToCoverageEnable = desc.attachmentState.alphaToCoverageEnabled;
+        }
+        
+        //DepthStencilState;
+        {
+            auto& vdDssDesc = desc.depthStencilState;
+            auto& dssState = psoStream.Append<D3D12_DEPTH_STENCIL_DESC1, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL1>();
+            
+
+            dssState.DepthEnable = vdDssDesc.depthTestEnabled;
+            dssState.DepthFunc = VdToD3DCompareOp(vdDssDesc.depthComparison);
+            dssState.DepthWriteMask = vdDssDesc.depthWriteEnabled 
+                        ? D3D12_DEPTH_WRITE_MASK::D3D12_DEPTH_WRITE_MASK_ALL
+                        : D3D12_DEPTH_WRITE_MASK::D3D12_DEPTH_WRITE_MASK_ZERO;
+
+            dssState.StencilEnable = vdDssDesc.stencilTestEnabled;
+            dssState.StencilReadMask = vdDssDesc.stencilReadMask;
+            dssState.StencilWriteMask = vdDssDesc.stencilWriteMask;
+
+            
+            dssState.FrontFace.StencilFailOp = VdToD3DStencilOp(vdDssDesc.stencilFront.fail);
+            dssState.FrontFace.StencilPassOp = VdToD3DStencilOp(vdDssDesc.stencilFront.pass);
+            dssState.FrontFace.StencilDepthFailOp = VdToD3DStencilOp(vdDssDesc.stencilFront.depthFail);
+            dssState.FrontFace.StencilFunc = VdToD3DCompareOp(vdDssDesc.stencilFront.comparison);
+
+            dssState.BackFace.StencilFailOp = VdToD3DStencilOp(vdDssDesc.stencilBack.fail);
+            dssState.BackFace.StencilPassOp = VdToD3DStencilOp(vdDssDesc.stencilBack.pass);
+            dssState.BackFace.StencilDepthFailOp = VdToD3DStencilOp(vdDssDesc.stencilBack.depthFail);
+            dssState.BackFace.StencilFunc = VdToD3DCompareOp(vdDssDesc.stencilBack.comparison);
+        }
+
+        //RasterizerState;
+        {
+            auto& rsDesc = desc.rasterizerState;
+            auto& rsCI = psoStream.Append<D3D12_RASTERIZER_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER>();
+
+            rsCI.CullMode = VdToD3DCullMode(rsDesc.cullMode);
+            rsCI.FillMode = VdToD3DPolygonMode(rsDesc.fillMode);
+            rsCI.DepthClipEnable = rsDesc.depthClipEnabled;
+            rsCI.FrontCounterClockwise = rsDesc.frontFace != RasterizerStateDescription::FrontFace::Clockwise;
+        }
+         
+        //SampleMask & SampleDesc;
+        {
+            auto& sampleMask = psoStream.Append<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK>();
+            sampleMask = 0xffffffff; //This has to do with multi-sampling. 0xffffffff means point sampling is used. 
+            auto& msState = psoStream.Append<DXGI_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC>();
+
+            switch(desc.attachmentState.sampleCount) {
+                default:
+                case SampleCount::x1:  msState.Count = 1; break;
+                case SampleCount::x2:  msState.Count = 2; break;
+                case SampleCount::x4:  msState.Count = 4; break;
+                case SampleCount::x8:  msState.Count = 8; break;
+                case SampleCount::x16: msState.Count = 16; break;
+                case SampleCount::x32: msState.Count = 32; break;
+            }
+            msState.Quality = 0;//TODO: Query quality support for device:
+            
+        }
+
+        //Output formats
+        auto color_count = desc.attachmentState.colorAttachments.size();
+        if (color_count > 0) {
+            
+            auto& rtvFormats = psoStream.Append<D3D12_RT_FORMAT_ARRAY, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS>();
+            rtvFormats.NumRenderTargets = color_count;
+
+            for (uint32_t i = 0; i < color_count; i++) {
+                rtvFormats.RTFormats[i] 
+                  = VdToD3DPixelFormat(
+                      desc.attachmentState.colorAttachments[i].format,
+                      false);
+            }
+        }
+
+        if (desc.attachmentState.depthStencilAttachment.has_value()) {
+            auto& dsvFormat = psoStream.Append<DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT>();
+            
+            dsvFormat = VdToD3DPixelFormat(
+                desc.attachmentState.depthStencilAttachment->depthStencilFormat,
+                true);
+        }
+        
+        //CachedPSO;              < D3D12_CACHED_PIPELINE_STATE,      D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CACHED_PSO>
+        //ViewInstancingDesc;     < D3D12_VIEW_INSTANCING_DESC,       D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VIEW_INSTANCING
+
+
+        auto streamDesc = static_cast<D3D12_PIPELINE_STATE_STREAM_DESC>(psoStream);
+
+
+        ComPtr<ID3D12PipelineState> pipelineState;
+        ThrowIfFailed(pDev2->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&pipelineState)));
+
+        
+        auto rawPipe = new DXCMeshShaderPipeline(dev, desc);
+        rawPipe->_pso = std::move(pipelineState);
+        
+        dxcResLayout->ref();
+        rawPipe->_rootSig = common::sp(dxcResLayout);
+        
+        return common::sp(rawPipe);
+    }
+
+    
+    void DXCMeshShaderPipeline::CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) {
+
+        pCmdList->SetPipelineState(_pso.Get());
+
+        pCmdList->SetGraphicsRootSignature(_rootSig->GetHandle());
+
+        //pCmdList->IASetPrimitiveTopology(_primTopo);
+        pCmdList->OMSetBlendFactor(_blendConstants);
     }
 
 } // namespace alloy

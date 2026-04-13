@@ -113,4 +113,33 @@ namespace alloy::dxc
         
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
     };
+
+
+    class DXCMeshShaderPipeline : public IMeshShaderPipeline, public DXCPipelineBase{
+        MeshShaderPipelineDescription _desc;
+
+        //Array of blend factors, one for each RGBA component.
+        //TODO: [Vk] replace after VK_DYNAMIC_STATE_BLEND_CONSTANTS is in place
+        float _blendConstants[4];
+        
+        DXCMeshShaderPipeline(
+            const common::sp<DXCDevice>& dev,
+            const MeshShaderPipelineDescription& desc
+        ) 
+            : DXCPipelineBase(dev)
+            , _desc(desc)
+        {}
+
+    public:
+        virtual ~DXCMeshShaderPipeline() override { }
+
+
+        static common::sp<IMeshShaderPipeline> Make(
+            const common::sp<DXCDevice>& dev,
+            const MeshShaderPipelineDescription& desc
+        );
+    
+        virtual void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
+    };
+
 }
