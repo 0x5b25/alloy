@@ -31,6 +31,7 @@ namespace alloy::dxc
                 memcpy(pNewBuffer, _pBuffer, _size);
                 free(_pBuffer);
             }
+            _capacity = newCap;
             _pBuffer = pNewBuffer;
         }
 
@@ -87,6 +88,8 @@ namespace alloy::dxc
 
             auto blockSize = ALIGN(sizeof(InnerStructType) + sizeof(Tag));
             auto pBlock = (Block*)_AllocBack(blockSize);
+            //Run a default ctor
+            new(pBlock)Block{};
             pBlock->tag = Tag;
             return pBlock->data;
         }

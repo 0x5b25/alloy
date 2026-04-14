@@ -11,22 +11,10 @@ function(compile_shader TARGET_NAME)
 
     # Map short type names to entry point names
     macro(_get_entry_point TYPE OUT_VAR)
-        if(${TYPE} STREQUAL "vs")
-            set(${OUT_VAR} "VSMain")
-        elseif(${TYPE} STREQUAL "ps")
-            set(${OUT_VAR} "PSMain")
-        elseif(${TYPE} STREQUAL "cs")
-            set(${OUT_VAR} "CSMain")
-        elseif(${TYPE} STREQUAL "gs")
-            set(${OUT_VAR} "GSMain")
-        elseif(${TYPE} STREQUAL "hs")
-            set(${OUT_VAR} "HSMain")
-        elseif(${TYPE} STREQUAL "ds")
-            set(${OUT_VAR} "DSMain")
-        else()
-            string(TOUPPER "${TYPE}" _UP)
-            set(${OUT_VAR} "${_UP}Main")
-        endif()
+        string(REGEX MATCH "([a-z]+)_([0-9_]+)" _ ${TYPE})
+        
+        string(TOUPPER "${CMAKE_MATCH_1}" _UP)
+        set(${OUT_VAR} "${_UP}Main")
     endmacro()
 
     set(HLSL_COMPILER ${DXC_EXECUTABLE_DIR}/Debug/dxc)
@@ -68,7 +56,7 @@ function(compile_shader TARGET_NAME)
                         OUTPUT ${_RESULT}
                         COMMAND ${HLSL_COMPILER}
                             -E ${_ENTRY}
-                            -T ${_TYPE}_6_0
+                            -T ${_TYPE}
                             -Fh ${_RESULT}
                             ${_DBG_FLAGS}
                             ${_SRC}

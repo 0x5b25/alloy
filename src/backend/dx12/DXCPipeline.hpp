@@ -52,6 +52,10 @@ namespace alloy::dxc
 
         const common::sp<DXCResourceLayout>& GetPipelineLayout() const { return _rootSig; }
 
+
+        virtual const void* GetPipelineType() const = 0;
+
+
     };
 
 
@@ -87,6 +91,14 @@ namespace alloy::dxc
 
         const GraphicsPipelineDescription& GetDesc() const {return _desc;}
 
+        
+        static const void* GetTypeKey() {
+            return (const void*)&DXCGraphicsPipeline::Make;
+        }
+
+        virtual const void* GetPipelineType() const override { return GetTypeKey(); }
+
+
     };
 
     
@@ -112,6 +124,13 @@ namespace alloy::dxc
         );
         
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
+
+        static const void* GetTypeKey() {
+            return (const void*)&DXCComputePipeline::Make;
+        }
+
+        virtual const void* GetPipelineType() const override { return GetTypeKey(); }
+
     };
 
 
@@ -140,6 +159,29 @@ namespace alloy::dxc
         );
     
         virtual void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
+        
+
+        static const void* GetTypeKey() {
+            return (const void*)&DXCMeshShaderPipeline::Make;
+        }
+
+        virtual const void* GetPipelineType() const override { return GetTypeKey(); }
+
     };
+
+
+
+
+    inline bool IsGfxPipeline(const DXCPipelineBase& pipe) {
+        return pipe.GetPipelineType() == DXCGraphicsPipeline::GetTypeKey();
+    }
+    
+    inline bool IsComputePipeline(const DXCPipelineBase& pipe) {
+        return pipe.GetPipelineType() == DXCComputePipeline::GetTypeKey();
+    }
+
+    inline bool IsMeshShaderPipeline(const DXCPipelineBase& pipe) {
+        return pipe.GetPipelineType() == DXCMeshShaderPipeline::GetTypeKey();
+    }
 
 }

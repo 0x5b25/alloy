@@ -50,6 +50,9 @@ namespace alloy
         virtual common::sp<IComputePipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) = 0;
 
+        virtual common::sp<IMeshShaderPipeline> CreateMeshShaderPipeline(
+            const MeshShaderPipelineDescription& description) = 0;
+
         virtual common::sp<ITexture> WrapNativeTexture(
             void* nativeHandle,
             const ITexture::Description& description) = 0;

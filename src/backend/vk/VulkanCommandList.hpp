@@ -291,6 +291,14 @@ namespace alloy::vk
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
 
+        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override {
+            //Need CommandEncoder6 to support mesh shader
+            assert(false);
+        }
+        virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override {
+            //Need CommandEncoder6 to support mesh shader
+            assert(false);
+        }
         
         virtual void EndPass() override;
     };

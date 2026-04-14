@@ -43,6 +43,9 @@ namespace alloy::vk{
         common::sp<IComputePipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) override;
 
+        virtual common::sp<IMeshShaderPipeline> CreateMeshShaderPipeline(
+            const MeshShaderPipelineDescription& description) override;
+
         common::sp<IShader> CreateShader(
             const IShader::Description& desc,
             const std::span<const std::uint8_t>& spv

@@ -61,6 +61,13 @@ namespace alloy::vk
         return VulkanComputePipeline::Make(_CreateNewDevHandle(), description);
     }
 
+    common::sp<IMeshShaderPipeline> VulkanResourceFactory::CreateMeshShaderPipeline(
+        const MeshShaderPipelineDescription& description
+    ) {
+        assert(false);
+        return nullptr;
+    }
+
     common::sp<ITexture> VulkanResourceFactory::WrapNativeTexture(
         void* nativeHandle,
         const ITexture::Description& description

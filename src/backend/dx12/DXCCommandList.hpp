@@ -175,6 +175,7 @@ namespace alloy::dxc
                       DXCCommandList* cmdList) 
             : dev(dev)
             , cmdList(cmdList)
+            , currentPipeline(nullptr)
         { }
 
         virtual ~DXCCmdEncBase() {}
@@ -182,8 +183,11 @@ namespace alloy::dxc
         //End commandpass will write commands into command list
         virtual void EndPass();
 
-        
         ID3D12GraphicsCommandList1* GetCmdList() const;
+        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() {
+            assert(false);
+            return nullptr;
+        }
 
         //Claim expected resource states
         void RegisterBufferUsage(
@@ -229,7 +233,6 @@ namespace alloy::dxc
 
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
 
-        
         DXCGraphicsPipeline* GetPipeline() {
             return static_cast<DXCGraphicsPipeline*>(currentPipeline);
         }
@@ -243,6 +246,8 @@ namespace alloy::dxc
         );
 
         virtual ~DXCRenderCmdEnc() {}
+
+        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
         virtual void EndPass() override;
 
@@ -304,11 +309,15 @@ namespace alloy::dxc
 
     struct DXCComputeCmdEnc : public IComputeCommandEncoder, public DXCCmdEncBase {
         
-        DXCComputePipeline* _currentPipeline;
+        DXCComputePipeline* GetPipeline() {
+            return static_cast<DXCComputePipeline*>(currentPipeline);
+        }
 
         DXCComputeCmdEnc(DXCDevice* dev, DXCCommandList* cmdList)
             : DXCCmdEncBase{ dev, cmdList }
         { }
+
+        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
@@ -346,16 +355,6 @@ namespace alloy::dxc
         
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
-    };
-
-    class DXCRenderCmdEnc6 : public DXCRenderCmdEnc {
-
-        DXCRenderCmdEnc6(
-            DXCDevice *dev,
-            DXCCommandList6 *cmdList,
-            const RenderPassAction &act
-        );
-
     };
 
     struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {
@@ -412,8 +411,6 @@ namespace alloy::dxc
 
     class DXCCommandList6 : public DXCCommandList {
 
-        ID3D12GraphicsCommandList6* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList6*>(_cmdList); }
-
     public:
         DXCCommandList6(
             const common::sp<DXCDevice>& dev,
@@ -422,14 +419,38 @@ namespace alloy::dxc
         ) 
             : DXCCommandList(dev, pAllocator, pList)
         {}
+        ID3D12GraphicsCommandList6* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList6*>(_cmdList); }
 
+
+        //Returns DXCRenderCmdEnc6 that supports mesh shader
+        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction& actions) override;
 
     };
 
+    
+    struct DXCRenderCmdEnc6 : public DXCRenderCmdEnc {
+
+        DXCMeshShaderPipeline* GetPipeline() {
+            return static_cast<DXCMeshShaderPipeline*>(currentPipeline);
+        }
+
+        DXCRenderCmdEnc6(
+            DXCDevice *dev,
+            DXCCommandList6 *cmdList,
+            const RenderPassAction &act
+        );
+
+        ~DXCRenderCmdEnc6();
+        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
+
+        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override;
+
+        virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override;
+
+    };
 
     class DXCCommandList7 : public DXCCommandList6 {
 
-        ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
     public:
         DXCCommandList7(
             const common::sp<DXCDevice>& dev,
@@ -439,7 +460,7 @@ namespace alloy::dxc
             : DXCCommandList6(dev, pAllocator, pList)
         {}
 
-        
+        ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
         
         virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
     };

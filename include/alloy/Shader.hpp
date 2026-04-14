@@ -39,12 +39,10 @@ namespace alloy
 		enum class Stage {
 			// The vertex shader stage.
 			Vertex,
-			// The geometry shader stage.
-			Geometry,
-			// The tessellation control (or hull) shader stage.
-			TessellationControl,
-			// The tessellation evaluation (or domain) shader stage.
-			TessellationEvaluation,
+			// The task/amplification shader stage.
+			Task,
+			// The mesh shader stage.
+			Mesh,
 			// The fragment (or pixel) shader stage.
 			Fragment,
 			// The compute shader stage.

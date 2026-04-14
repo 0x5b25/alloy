@@ -87,7 +87,31 @@ namespace alloy::dxc
 
     #define CHK_RENDERPASS_BEGUN() DEBUGCODE(assert(_currentPass != nullptr))
     //#define CHK_RENDERPASS_ENDED() DEBUGCODE(assert(_currentPass == nullptr))
-    #define CHK_PIPELINE_SET() DEBUGCODE(assert(_currentPipeline != nullptr))
+    #define CHK_GFX_PIPELINE_SET()                 \
+        DEBUGCODE(                                 \
+            assert(                                \
+                currentPipeline != nullptr         \
+                && IsGfxPipeline(*currentPipeline) \
+            )                                      \
+        )
+    
+    
+    #define CHK_COMPUTE_PIPELINE_SET()             \
+        DEBUGCODE(                                 \
+            assert(                                \
+                currentPipeline != nullptr         \
+                && IsComputePipeline(*currentPipeline) \
+            )                                      \
+        )
+
+    
+    #define CHK_MESH_PIPELINE_SET()                \
+        DEBUGCODE(                                 \
+            assert(                                \
+                currentPipeline != nullptr         \
+                && IsMeshShaderPipeline(*currentPipeline) \
+            )                                      \
+        )
 
 #pragma region CmdEncBase
 
@@ -296,7 +320,6 @@ namespace alloy::dxc
         const RenderPassAction &act
     )
         : DXCCmdEncBase{dev, cmdList}
-        , _currentPipeline(nullptr)
         , _fb(act)
     {
         for (auto& ctAct : _fb.colorTargetActions)
@@ -457,6 +480,12 @@ namespace alloy::dxc
         });
     }
 
+    
+    DXCResourceLayout* DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline() {
+        CHK_GFX_PIPELINE_SET();
+        return GetPipeline()->GetPipelineLayout().get();
+    }
+
     void DXCRenderCmdEnc::EndPass() {
         DXCCmdEncBase::EndPass();
         //Inject MSAA resolve
@@ -570,7 +599,7 @@ namespace alloy::dxc
     void DXCRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
 
         auto dxcPipeline = PtrCast<DXCGraphicsPipeline>(pipeline.get());
-        assert(dxcPipeline != _currentPipeline);
+        assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
         resources.insert(pipeline);
 
         recordedCmds.emplace_back([dxcPipeline, this]() {
@@ -584,7 +613,7 @@ namespace alloy::dxc
         //}
 
         //Mark current pipeline
-        _currentPipeline = dxcPipeline;
+        currentPipeline = dxcPipeline;
     }
     
     void DXCRenderCmdEnc::SetVertexBuffer(
@@ -596,11 +625,11 @@ namespace alloy::dxc
         //);
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
         
-        CHK_PIPELINE_SET();
+        CHK_GFX_PIPELINE_SET();
         
         resources.insert(buffer);
 
-        auto gfxPipeline = PtrCast<DXCGraphicsPipeline>(_currentPipeline);
+        auto gfxPipeline = GetPipeline();
         auto& pipeDesc = gfxPipeline->GetDesc();
 
         auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
@@ -649,11 +678,9 @@ namespace alloy::dxc
 
     
     void DXCRenderCmdEnc::SetGraphicsResourceSet(const common::sp<IResourceSet>& rs){
-        CHK_PIPELINE_SET();
-        //assert(slot < _resourceSets.size());
-
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
-
+#ifdef VLD_DEBUG
+        GetResourceLayoutForCurrentPipeline();
+#endif
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
@@ -681,10 +708,9 @@ namespace alloy::dxc
         const std::span<uint32_t>& data,
         std::uint32_t destOffsetIn32BitValues
     ) {
-        CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
 
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+        auto dxcLayout = GetResourceLayoutForCurrentPipeline();
 
         auto argBase = dxcLayout->GetHeapCount();
 
@@ -808,6 +834,7 @@ namespace alloy::dxc
         std::uint32_t vertexCount, std::uint32_t instanceCount,
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
+        CHK_GFX_PIPELINE_SET();
         //PreDrawCommand();
         recordedCmds.emplace_back([this, vertexCount, instanceCount, vertexStart, instanceStart]() {
             GetCmdList()->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
@@ -819,6 +846,7 @@ namespace alloy::dxc
         std::uint32_t indexStart, std::uint32_t vertexOffset, 
         std::uint32_t instanceStart
     ){
+        CHK_GFX_PIPELINE_SET();
         //PreDrawCommand();
         //vkCmdDrawIndexed(_cmdBuf, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         recordedCmds.emplace_back([this, indexCount, instanceCount, indexStart, vertexOffset, instanceStart]() {
@@ -828,7 +856,6 @@ namespace alloy::dxc
 
 #pragma endregion RenderCmdEnc
 
-    
 #if 0
     void DXCRenderCmdEnc::DrawIndirect(
         const sp<Buffer>& indirectBuffer, 
@@ -862,13 +889,39 @@ namespace alloy::dxc
         //vkCmdDrawIndexedIndirect(_cmdBuf, vkBuffer->GetHandle(), offset, drawCount, stride);
     }
 #endif
+
+#pragma region RenderCmdEnc6
+
+    DXCRenderCmdEnc6::DXCRenderCmdEnc6(
+        DXCDevice *dev,
+        DXCCommandList6 *cmdList,
+        const RenderPassAction &act
+    ) 
+        : DXCRenderCmdEnc(dev, cmdList, act)
+    {
+
+    }
+
     
-#pragma region ComputeCmdEnc
+    DXCRenderCmdEnc6::~DXCRenderCmdEnc6() {
 
-    void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
+    }
 
-        auto dxcPipeline = PtrCast<DXCComputePipeline>(pipeline.get());
-        assert(dxcPipeline != _currentPipeline);
+    DXCResourceLayout* DXCRenderCmdEnc6::GetResourceLayoutForCurrentPipeline() {
+        assert(currentPipeline != nullptr);
+        if(IsMeshShaderPipeline(*currentPipeline)) {
+            return static_cast<DXCMeshShaderPipeline*>(currentPipeline)->GetPipelineLayout().get();
+        }
+
+        return DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline();
+    }
+
+    void DXCRenderCmdEnc6::SetPipeline(const common::sp<IMeshShaderPipeline>& pipeline) {
+
+        assert(dev->GetDevCaps().SupportMeshShader());
+        
+        auto dxcPipeline = PtrCast<DXCMeshShaderPipeline>(pipeline.get());
+        assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
         resources.insert(pipeline);
 
         recordedCmds.emplace_back([dxcPipeline, this]() {
@@ -882,15 +935,56 @@ namespace alloy::dxc
         //}
 
         //Mark current pipeline
-        _currentPipeline = dxcPipeline;
+        currentPipeline = dxcPipeline;
+    }
+
+    void DXCRenderCmdEnc6::DispatchMesh( std::uint32_t groupCountX, 
+                                         std::uint32_t groupCountY,
+                                         std::uint32_t groupCountZ)
+    {
+        assert(dev->GetDevCaps().SupportMeshShader());
+        CHK_MESH_PIPELINE_SET();
+
+        recordedCmds.emplace_back([this, groupCountX, groupCountY, groupCountZ]() {
+            auto cmdList6 = static_cast<DXCCommandList6*>(cmdList);
+            cmdList6->GetCmdList()->DispatchMesh(groupCountX, groupCountY, groupCountZ);
+        });
+
+    }
+#pragma endregion
+    
+#pragma region ComputeCmdEnc
+
+    DXCResourceLayout* DXCComputeCmdEnc::GetResourceLayoutForCurrentPipeline() {
+        CHK_COMPUTE_PIPELINE_SET();
+        return GetPipeline()->GetPipelineLayout().get();
+    }
+
+    void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
+
+        auto dxcPipeline = PtrCast<DXCComputePipeline>(pipeline.get());
+        assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
+        resources.insert(pipeline);
+
+        recordedCmds.emplace_back([dxcPipeline, this]() {
+            dxcPipeline->CmdBindPipeline(GetCmdList());
+        });
+
+        //ensure resource set counts
+        //auto setCnt = vkPipeline->GetResourceSetCount();
+        //if (setCnt > _resourceSets.size()) {
+        //    _resourceSets.resize(setCnt, {});
+        //}
+
+        //Mark current pipeline
+        currentPipeline = dxcPipeline;
     }
         
     void DXCComputeCmdEnc::SetComputeResourceSet(const common::sp<IResourceSet>& rs){
-        CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
-
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
-
+#ifdef VLD_DEBUG
+        GetResourceLayoutForCurrentPipeline();
+#endif
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
@@ -913,10 +1007,9 @@ namespace alloy::dxc
         const std::span<uint32_t>& data,
         std::uint32_t destOffsetIn32BitValues
     ) {
-        CHK_PIPELINE_SET();
         //assert(slot < _resourceSets.size());
 
-        auto dxcLayout = _currentPipeline->GetPipelineLayout();
+        auto dxcLayout = GetResourceLayoutForCurrentPipeline();
 
         auto argBase = dxcLayout->GetHeapCount();
 
@@ -941,6 +1034,7 @@ namespace alloy::dxc
     void DXCComputeCmdEnc::Dispatch(
         std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
     ){
+        CHK_COMPUTE_PIPELINE_SET();
         //PreDispatchCommand();
         //vkCmdDispatch(_cmdBuf, groupCountX, groupCountY, groupCountZ);
         recordedCmds.emplace_back([this, groupCountX, groupCountY, groupCountZ]() {
@@ -1839,6 +1933,23 @@ namespace alloy::dxc
         barrier.Subresources.NumArraySlices = 0;
         barrier.Subresources.FirstPlane = 0;
         barrier.Subresources.NumPlanes = 0;
+    }
+
+    IRenderCommandEncoder& DXCCommandList6::BeginRenderPass(const RenderPassAction& actions) {
+        //CHK_RENDERPASS_ENDED();
+        _EndCurrentActivePass();
+        ////Record render pass
+
+        //auto dxcfb = common::SPCast<DXCFrameBufferBase>(fb);
+
+        DXCRenderCmdEnc* pNewEnc = new DXCRenderCmdEnc6(_dev.get(), this, actions);
+
+        ///#TODO: really support render passes using ID3D12GraphicsCommandList4::BeginRenderPass.
+        _passes.push_back(pNewEnc);
+        _currentPass = pNewEnc;
+        //
+
+        return *pNewEnc;
     }
 
     void DXCCommandList7::Barrier(const std::vector<alloy::BarrierDescription>& descs) {
