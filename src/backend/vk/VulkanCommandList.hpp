@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 
 #include "VulkanPipeline.hpp"
 #include "VulkanBindableResource.hpp"
@@ -29,7 +30,7 @@ namespace alloy::vk
     struct _CmdPoolContainer;
     class VkCmdEncBase;
 
-    
+
     class VulkanCommandList : public ICommandList{
 
     public:
@@ -97,7 +98,7 @@ namespace alloy::vk
         //static sp<CommandList> Make(const sp<VulkanDevice>& dev);
         const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
         VulkanDevice* GetDevice() const { return _dev.get(); }
-        
+
         virtual void Begin() override;
         virtual void End() override;
 
@@ -107,7 +108,7 @@ namespace alloy::vk
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 
         virtual void EndPass() override;
-            
+
 
         virtual void PushDebugGroup(const std::string& name, const Color4f&) override;
 
@@ -115,7 +116,7 @@ namespace alloy::vk
 
         virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
 
-        
+
         virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;
         void TransitionTextureToDefaultLayout(
             const std::vector<common::sp<ITexture>>& textures
@@ -126,7 +127,7 @@ namespace alloy::vk
         const ResourceStates& GetFinalResourceStates() const {
             return _finalStates;
         }
-        
+
 
     };
 
@@ -202,6 +203,11 @@ namespace alloy::vk
         VulkanDevice* dev;
         VkCommandBuffer cmdList;
 
+        std::variant< std::monostate,
+                      VulkanGraphicsPipeline*,
+                      VulkanComputePipeline*,
+                      VulkanMeshShaderPipeline* > currentPipeline;
+
         std::unordered_set<common::sp<common::RefCntBase>> resources;
 
         VulkanCommandList::ResourceStates firstState, lastState;
@@ -209,7 +215,7 @@ namespace alloy::vk
         std::vector<std::function<void(VkCommandBuffer)>> recordedCmds;
 
         VkCmdEncBase(VulkanDevice* dev,
-                     VkCommandBuffer cmdList) 
+                     VkCommandBuffer cmdList)
             : dev(dev)
             , cmdList(cmdList) {}
 
@@ -232,7 +238,7 @@ namespace alloy::vk
         );
 
         void RegisterResourceSet(VulkanResourceSet* rs);
-        
+
         void PushDebugGroup(const std::string& name, const Color4f&);
         void PopDebugGroup();
         void InsertDebugMarker(const std::string& name, const Color4f&);
@@ -241,7 +247,7 @@ namespace alloy::vk
 
     struct VkRenderCmdEnc : public IRenderCommandEncoder, public VkCmdEncBase {
         using super = VkCmdEncBase;
-        VulkanGraphicsPipeline* _currentPipeline;
+
         RenderPassAction _fb;
 
         VkRenderCmdEnc(VulkanDevice* dev,
@@ -252,11 +258,11 @@ namespace alloy::vk
 
         virtual void SetVertexBuffer(
             std::uint32_t index, const common::sp<BufferRange>& buffer) override;
-    
+
         virtual void SetIndexBuffer(
             const common::sp<BufferRange>& buffer, IndexFormat format) override;
 
-        
+
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
 
         virtual void SetPushConstants(
@@ -274,40 +280,33 @@ namespace alloy::vk
         virtual void Draw(
             std::uint32_t vertexCount, std::uint32_t instanceCount,
             std::uint32_t vertexStart, std::uint32_t instanceStart) override;
-        
+
         virtual void DrawIndexed(
-            std::uint32_t indexCount, std::uint32_t instanceCount, 
-            std::uint32_t indexStart, std::uint32_t vertexOffset, 
+            std::uint32_t indexCount, std::uint32_t instanceCount,
+            std::uint32_t indexStart, std::uint32_t vertexOffset,
             std::uint32_t instanceStart) override;
 #if 0
         virtual void DrawIndirect(
-            const common::sp<IBuffer>& indirectBuffer, 
+            const common::sp<IBuffer>& indirectBuffer,
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 
         virtual void DrawIndexedIndirect(
-            const common::sp<IBuffer>& indirectBuffer, 
+            const common::sp<IBuffer>& indirectBuffer,
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
 
-        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override {
-            //Need CommandEncoder6 to support mesh shader
-            assert(false);
-        }
-        virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override {
-            //Need CommandEncoder6 to support mesh shader
-            assert(false);
-        }
-        
+        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override;
+        virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override;
+
         virtual void EndPass() override;
     };
 
-    
+
     struct VkComputeCmdEnc : public IComputeCommandEncoder, public VkCmdEncBase {
-        
+
         using super = VkCmdEncBase;
-        VulkanComputePipeline* _currentPipeline;
 
         VkComputeCmdEnc(VulkanDevice* dev, VkCommandBuffer cmdList)
             : VkCmdEncBase{ dev, cmdList }
@@ -318,7 +317,7 @@ namespace alloy::vk
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
-        
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
             const std::span<uint32_t>& data,
@@ -346,13 +345,13 @@ namespace alloy::vk
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
 #endif
 
-        
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     };
 
     struct VkTransferCmdEnc : public ITransferCommandEncoder, public VkCmdEncBase {
-        
+
         using super = VkCmdEncBase;
 
         VkTransferCmdEnc(VulkanDevice* dev, VkCommandBuffer cmdList)
@@ -363,7 +362,7 @@ namespace alloy::vk
             const common::sp<BufferRange>& source,
             const common::sp<BufferRange>& destination,
             std::uint32_t sizeInBytes) override;
-                
+
 
         virtual void CopyBufferToTexture(
             const common::sp<BufferRange>& src,
@@ -404,10 +403,19 @@ namespace alloy::vk
         virtual void UpdateFence(const common::sp<IFence>&) override {}
     };
 
+    template<typename T>
+    inline const void* GetTypeTag() { assert(false); return nullptr; }
 
+    template<> inline const void* GetTypeTag<VulkanGraphicsPipeline>() {
+        return (void*)&VulkanGraphicsPipeline::Make;
+    }
 
-    
+    template<> inline const void* GetTypeTag<VulkanComputePipeline>() {
+        return (void*)&VulkanComputePipeline::Make;
+    }
+
+    template<> inline const void* GetTypeTag<VulkanMeshShaderPipeline>() {
+        return (void*)&VulkanMeshShaderPipeline::Make;
+    }
 
 } // namespace alloy
-
-

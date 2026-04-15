@@ -17,6 +17,7 @@
 
 #include "VkSurfaceUtil.hpp"
 #include "VkCommon.hpp"
+#include "VkStructStream.hpp"
 #include "VulkanContext.hpp"
 #include "VulkanCommandList.hpp"
 #include "VulkanSwapChain.hpp"
@@ -41,7 +42,7 @@ bool Contains(T&& container, U&& element) {
     {
         _fnTable.vkDeviceWaitIdle(_dev);
 
-        
+
         delete _gfxQ;
         delete _copyQ;
         delete _computeQ;
@@ -138,57 +139,6 @@ bool Contains(T&& container, U&& element) {
             queueCreateInfos[i].pQueuePriorities = &queuePriorities[i];
         }
 
-        VkDeviceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
-        VkPhysicalDeviceFeatures deviceFeatures{};
-        ctx.GetFnTable().vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
-
-        
-        VkPhysicalDeviceVulkan11Features features11 { };
-        features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
-        features11.shaderDrawParameters = true; //Not sure, required by dxil-spirv
-        createInfo.pNext = &features11;
-
-        VkPhysicalDeviceVulkan12Features features12 { };
-        features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        features12.timelineSemaphore = true;
-
-        if(devCaps.supportBindless) {
-            features12.descriptorIndexing = true;
-            features12.descriptorBindingPartiallyBound = true;
-        }
-
-        if(devCaps.SupportScalarBlockLayout()) {
-            features12.scalarBlockLayout = true;
-        }
-        
-        features11.pNext = &features12;
-
-        //VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutFeatures { };
-        //scalarBlockLayoutFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
-        //scalarBlockLayoutFeatures.scalarBlockLayout = VK_TRUE;
-        //features12.pNext = &scalarBlockLayoutFeatures;
-
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature { };
-        dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-        dynamicRenderingFeature.dynamicRendering = VK_TRUE,
-        features12.pNext = &dynamicRenderingFeature;
-
-        VkPhysicalDeviceSynchronization2Features sync2Features{};
-        sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        sync2Features.synchronization2 = VK_TRUE;
-        dynamicRenderingFeature.pNext = &sync2Features;
-
-        VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT dynRndrUnusedAttachments { };
-        dynRndrUnusedAttachments.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT;
-        dynRndrUnusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
-        sync2Features.pNext = &dynRndrUnusedAttachments;
-
-        //First add pointers to the queue creation info and device features structs:
-
-        createInfo.pQueueCreateInfos = queueCreateInfos.data();
-        createInfo.queueCreateInfoCount = queueCreateInfos.size();
 
         //Requested device extensions
         //First, get all available extensions
@@ -203,7 +153,7 @@ bool Contains(T&& container, U&& element) {
                 VK_CHECK(ctx.GetFnTable().vkEnumerateDeviceExtensionProperties(
                     adp->GetHandle(), nullptr, &propCount, props.data()));
 
-                
+
                 for (int i = 0; i < propCount; i++)
                 {
                     auto& prop = props[i];
@@ -212,19 +162,88 @@ bool Contains(T&& container, U&& element) {
             }
         }
 
-
         std::vector<const char*> devExtensions{
             //Prefill required extensions
-            VkDevExtNames::VK_KHR_SYNCHRONIZATION2,
+
             VkDevExtNames::VK_KHR_TIMELINE_SEMAPHORE,
-            VkDevExtNames::VK_KHR_DYNAMIC_RENDERING,
-            VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME,
-            VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE,
-            VkDevExtNames::VK_KHR_CREATE_RENDERPASS2,
+
             VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
             VkDevExtNames::VK_KHR_MAINTENANCE1,
         };
 
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+
+        //First add pointers to the queue creation info and device features structs:
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.queueCreateInfoCount = queueCreateInfos.size();
+
+        VkPhysicalDeviceFeatures deviceFeatures{};
+        ctx.GetFnTable().vkGetPhysicalDeviceFeatures(adp->GetHandle(), &deviceFeatures);
+
+        StructStream featureStructs{};
+
+        auto& features11 = featureStructs.Append<VkPhysicalDeviceVulkan11Features,
+                                                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES>();
+
+        features11.shaderDrawParameters = true; //Not sure, required by dxil-spirv
+
+        auto& features12 = featureStructs.Append<VkPhysicalDeviceVulkan12Features,
+                                                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES>();
+
+        features12.timelineSemaphore = true;
+
+        if(devCaps.supportBindless) {
+            features12.descriptorIndexing = true;
+            features12.descriptorBindingPartiallyBound = true;
+        }
+
+        if(devCaps.SupportScalarBlockLayout()) {
+            features12.scalarBlockLayout = true;
+        }
+
+        //VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutFeatures { };
+        //scalarBlockLayoutFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES;
+        //scalarBlockLayoutFeatures.scalarBlockLayout = VK_TRUE;
+        //features12.pNext = &scalarBlockLayoutFeatures;
+        {
+            devExtensions.push_back(VkDevExtNames::VK_KHR_DYNAMIC_RENDERING);
+            //Companion extensions required by dynamic rendering
+            devExtensions.push_back(VkDevExtNames::VK_KHR_DEPTH_STENCIL_RESOLVE);
+            devExtensions.push_back(VkDevExtNames::VK_KHR_CREATE_RENDERPASS2);
+
+            auto& dynamicRenderingFeature
+                = featureStructs.Append<VkPhysicalDeviceDynamicRenderingFeaturesKHR,
+                                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR>();
+            dynamicRenderingFeature.dynamicRendering = VK_TRUE;
+
+            devExtensions.push_back(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME);
+            auto& dynRndrUnusedAttachments
+                = featureStructs.Append<VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT,
+                                        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_FEATURES_EXT>();
+            dynRndrUnusedAttachments.dynamicRenderingUnusedAttachments = VK_TRUE;
+        }
+
+        {
+            devExtensions.push_back(VkDevExtNames::VK_KHR_SYNCHRONIZATION2);
+            auto& sync2Features
+                = featureStructs.Append<VkPhysicalDeviceSynchronization2Features,
+                                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES>();
+            sync2Features.synchronization2 = VK_TRUE;
+        }
+
+
+        if(devCaps.SupportMeshShader()) {
+            devExtensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+            auto& meshShaderFeature
+                = featureStructs.Append<VkPhysicalDeviceMeshShaderFeaturesEXT,
+                                        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT>();
+
+            meshShaderFeature.taskShader = VK_TRUE;
+            meshShaderFeature.meshShader = VK_TRUE;
+        }
+
+        createInfo.pNext = featureStructs.Front<void*>();
 
         auto _AddExtIfPresent = [&](const char* extName) {
             if (Contains(availableDevExts, extName))
@@ -305,7 +324,7 @@ bool Contains(T&& container, U&& element) {
                                                     rawComputeQ);
         }
         auto apiVer = adp->GetAdapterInfo().apiVersion;
-        
+
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.vulkanApiVersion = VK_MAKE_API_VERSION(0, apiVer.major, apiVer.minor, apiVer.patch);
@@ -334,9 +353,9 @@ bool Contains(T&& container, U&& element) {
         fn.vkMapMemory = dev->_fnTable.vkMapMemory;
         fn.vkUnmapMemory = dev->_fnTable.vkUnmapMemory;
         if (dev->_features.supportsGetMemReq2 && dev->_features.supportsDedicatedAlloc) {
-            fn.vkGetBufferMemoryRequirements2KHR 
+            fn.vkGetBufferMemoryRequirements2KHR
                 = dev->_fnTable.vkGetBufferMemoryRequirements2KHR;
-            fn.vkGetImageMemoryRequirements2KHR 
+            fn.vkGetImageMemoryRequirements2KHR
                 = dev->_fnTable.vkGetImageMemoryRequirements2KHR;
         }
         allocatorInfo.pVulkanFunctions = &fn;
@@ -400,7 +419,7 @@ bool Contains(T&& container, U&& element) {
         return _copyQ;
     }
 
-    
+
     IPhysicalAdapter& VulkanDevice::GetAdapter() const {
         return *_adp;
     }
@@ -410,11 +429,11 @@ bool Contains(T&& container, U&& element) {
     //    assert(cmd != nullptr);
     //    auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
     //    auto rawCmdBuf = vkCmd->GetHandle();
-    //        
+    //
     //    VkSubmitInfo info {};
     //    info.commandBufferCount = 1;
     //    info.pCommandBuffers = &rawCmdBuf;
-    //   
+    //
     //    VK_CHECK(vkQueueSubmit(
     //        _queueGraphics, 1, &info, nullptr
     //    ));
@@ -423,10 +442,10 @@ bool Contains(T&& container, U&& element) {
     ISwapChain::State VulkanDevice::PresentToSwapChain(
         ISwapChain* sc
     ) {
-        
+
         VulkanSwapChain* vkSC = PtrCast<VulkanSwapChain>(sc);
         auto tex = vkSC->GetCurrentColorTarget()->GetTextureObject().get();
-        
+
         auto sem = _gfxQ->PrepareTextureForPresent(PtrCast<VulkanTexture>(tex));
 
         VkSwapchainKHR deviceSwapchain = vkSC->GetHandle();
@@ -480,10 +499,10 @@ bool Contains(T&& container, U&& element) {
         const common::sp<VulkanDevice>& dev,
         const IBuffer::Description& desc
     ) {
-        
+
         auto& usage = desc.usage;
 
-        VkBufferUsageFlags usages = VK_BUFFER_USAGE_TRANSFER_SRC_BIT 
+        VkBufferUsageFlags usages = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
             | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if ((desc.usage.vertexBuffer))
         {
@@ -510,7 +529,7 @@ bool Contains(T&& container, U&& element) {
         //bool isStaging = desc.usage.staging;
         //bool hostVisible = isStaging || desc.usage.dynamic;
 
-        
+
 
         VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         bufferInfo.size = desc.sizeInBytes;
@@ -520,7 +539,7 @@ bool Contains(T&& container, U&& element) {
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
         switch (desc.hostAccess)
-        {        
+        {
         case HostAccess::SystemMemoryPreferWrite:
             //Assume non-cached write combine
             allocInfo.requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -546,19 +565,19 @@ bool Contains(T&& container, U&& element) {
         }
 
         /*if(hostVisible){
-            allocInfo.requiredFlags |= 
-                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 
+            allocInfo.requiredFlags |=
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                 | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
         }else{
-            allocInfo.requiredFlags |= 
+            allocInfo.requiredFlags |=
                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         }
 
         if(isStaging){
             allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-            // Use "host cached" memory for staging when available, 
+            // Use "host cached" memory for staging when available,
             // for better performance of GPU -> CPU transfers
-            allocInfo.preferredFlags |= 
+            allocInfo.preferredFlags |=
                 VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
         }*/
 
@@ -603,7 +622,7 @@ bool Contains(T&& container, U&& element) {
     {
         _dev->GetFnTable().vkDestroySemaphore(_dev->LogicalDev(), _timelineSem, nullptr);
     }
-    
+
     uint64_t VulkanFence::GetSignaledValue() {
         uint64_t value;
         _dev->GetFnTable().vkGetSemaphoreCounterValueKHR(_dev->LogicalDev(), _timelineSem, &value);
@@ -723,7 +742,7 @@ bool Contains(T&& container, U&& element) {
         cbufInfo.commandBufferCount = 1;
         cbufInfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         VkCommandBuffer cbuf;
-        VK_CHECK(VK_DEV_CALL(mgr->_dev, 
+        VK_CHECK(VK_DEV_CALL(mgr->_dev,
             vkAllocateCommandBuffers(mgr->_dev->LogicalDev(), &cbufInfo, &cbuf)));
         return cbuf;
 
@@ -733,7 +752,7 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(mgr->_dev,
             vkFreeCommandBuffers(mgr->_dev->LogicalDev(), pool, 1, &buf));
     }
-    
+
     void _CmdPoolMgr::_ReleaseCmdPoolHolder(_CmdPoolContainer* holder) {
         std::scoped_lock _lock{ _m_cmdPool };
         VK_DEV_CALL(_dev, vkResetCommandPool(_dev->LogicalDev(), holder->pool, 0));
@@ -797,8 +816,8 @@ bool Contains(T&& container, U&& element) {
         , _cmdPoolMgr(dev, queueFamily)
         , _q(q)
         , _lastSubmittedFence(0)
-    { 
-        
+    {
+
         VkSemaphoreTypeCreateInfo timelineCreateInfo {};
         timelineCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
         timelineCreateInfo.pNext = NULL;
@@ -814,7 +833,7 @@ bool Contains(T&& container, U&& element) {
             vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &_submissionFence)));
 
         createInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        
+
         VK_CHECK(VK_DEV_CALL(dev,
             vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &_presentFence)));
     }
@@ -870,7 +889,7 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
     }
 
-    
+
     void VulkanCommandQueue::_RecycleTransitionCmdBufs() {
         uint64_t value;
         _dev->GetFnTable().vkGetSemaphoreCounterValueKHR(
@@ -887,7 +906,7 @@ bool Contains(T&& container, U&& element) {
         }
 
     }
-    
+
     void VulkanCommandQueue::_TransitResourceStatesBeforeSubmit(
         const VulkanCommandList& cmdList
     ) {
@@ -954,7 +973,7 @@ bool Contains(T&& container, U&& element) {
 
 
         TransitionCmdBuf container {};
-        
+
         auto cmdPool = _cmdPoolMgr.GetOnePool();
         auto cmdBuf = cmdPool->AllocateBuffer();
         container.cmdBuf = cmdBuf;
@@ -982,7 +1001,7 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
     }
 
-    
+
     void VulkanCommandQueue::_MarkResourceStatesAfterSubmit(
         const VulkanCommandList& cmdList
     ) {
@@ -992,7 +1011,7 @@ bool Contains(T&& container, U&& element) {
         }
     }
 
-    
+
     VkSemaphore VulkanCommandQueue::PrepareTextureForPresent(VulkanTexture* tex) {
         VkImageLayout currState {};
         auto it = _currentState.textures.find(tex);
@@ -1020,12 +1039,12 @@ bool Contains(T&& container, U&& element) {
             barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texDesc.mipLevels, 0, texDesc.arrayLayers };
 
             auto stagesBefore = VK_PIPELINE_STAGE_NONE_KHR;//vk_stage_flags_from_d3d12_barrier(currState.stage, currState.access);
-            
+
 
             _RecycleTransitionCmdBufs();
 
             TransitionCmdBuf container {};
-            
+
             _lastSubmittedFence++;
             auto cmdPool = _cmdPoolMgr.GetOnePool();
             auto cmdBuf = cmdPool->AllocateBuffer();
@@ -1080,7 +1099,7 @@ bool Contains(T&& container, U&& element) {
 
             VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
         }
-    
+
         //_currentState.textures[tex].stage = PipelineStage::None;
         //_currentState.textures[tex].access = ResourceAccess::None;
         _currentState.textures[tex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -1095,7 +1114,7 @@ bool Contains(T&& container, U&& element) {
         auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
         _TransitResourceStatesBeforeSubmit(*vkCmd);
         _MarkResourceStatesAfterSubmit(*vkCmd);
-        
+
         auto rawCmdBuf = vkCmd->GetHandle();
 
 
@@ -1104,7 +1123,7 @@ bool Contains(T&& container, U&& element) {
         timelineInfo.pNext = NULL;
         timelineInfo.signalSemaphoreValueCount = 1;
         timelineInfo.pSignalSemaphoreValues = &_lastSubmittedFence;
-            
+
         VkSubmitInfo submitInfo {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.pNext = &timelineInfo;
@@ -1112,7 +1131,7 @@ bool Contains(T&& container, U&& element) {
         submitInfo.pCommandBuffers = &rawCmdBuf;
         submitInfo.signalSemaphoreCount  = 1;
         submitInfo.pSignalSemaphores = &_submissionFence;
-       
+
         VK_CHECK(VK_DEV_CALL(_dev, vkQueueSubmit(
             _q, 1, &submitInfo, nullptr
         )));
@@ -1127,9 +1146,8 @@ bool Contains(T&& container, U&& element) {
         auto cmdBuf = new VulkanCommandList(common::sp(_dev), vkCmdBuf, std::move(cmdPool));
 
         return common::sp<ICommandList>(cmdBuf);
-    
+
     }
 
     //sp<_CmdPoolContainer> _CmdPoolMgr::GetOnePool() { return _AcquireCmdPoolHolder(); }
 }
-

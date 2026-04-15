@@ -34,8 +34,11 @@ namespace alloy::vk
         VkPhysicalDeviceVulkan13Features features13;
         VkPhysicalDeviceVulkan14Features features14;
 
+        VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
+
         bool SupportScalarBlockLayout() const { return features12.scalarBlockLayout; }
-        bool supportMeshShader;
+        bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
+                                             && meshShaderFeatures.taskShader != 0; }
         bool supportRayTracing;
         bool supportBindless;
 
@@ -49,8 +52,8 @@ namespace alloy::vk
 
     public:
         struct QueueFamilyInfo {
-            
-            uint32_t graphicsQueueFamily; 
+
+            uint32_t graphicsQueueFamily;
             bool graphicsQueueSupportsCompute;
             std::optional<uint32_t> computeQueueFamily;
             std::optional<uint32_t> transferQueueFamily;
@@ -82,7 +85,7 @@ namespace alloy::vk
 
         virtual common::sp<IGraphicsDevice> RequestDevice(
             const IGraphicsDevice::Options& options) override;
-    
+
         VkPhysicalDevice GetHandle() const {return _handle;}
         VulkanContext& GetCtx() const {return *_ctx.get();}
         const VulkanDevCaps& GetCaps() const { return _caps; }
@@ -90,7 +93,7 @@ namespace alloy::vk
         const QueueFamilyInfo& GetQueueFamilyInfo() const {return _qFamily;}
     };
 
-    
+
     class VulkanContext : public IContext{
 
     public:
@@ -114,7 +117,7 @@ namespace alloy::vk
             };
             std::uint32_t value;
         };
-    
+
     private:
         //Helper class to init/deinit volk library
         class VolkCtx {
@@ -151,7 +154,7 @@ namespace alloy::vk
         VkInstance _instance;
 
         Capabilities _caps;
-        
+
         VolkInstanceTable _fnTable;
 
         VulkanContext(VkInstance instance):
@@ -161,7 +164,7 @@ namespace alloy::vk
         //#TODO: Figure out proper way to do handle creation when
         //multiple context exists
         VkDebugReportCallbackEXT _debugCallbackHandle;
-        
+
         static VkBool32 _DbgCbStatic(
             VkDebugReportFlagsEXT                       msgFlags,
             VkDebugReportObjectTypeEXT                  objectType,

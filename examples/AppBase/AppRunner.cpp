@@ -11,7 +11,7 @@
 #if defined(VLD_PLATFORM_WIN32)
 
     //#include <Windows.h>
-    
+
     #define GLFW_EXPOSE_NATIVE_WIN32
     #include <GLFW/glfw3native.h>
 
@@ -26,7 +26,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include "Utility/ImGuiAlloyBackend.hpp"
 
-TimeServiceImpl::TimeServiceImpl(float fixedUpdatePerSecond) 
+TimeServiceImpl::TimeServiceImpl(float fixedUpdatePerSecond)
     : _ticksPerSec(Clock::period::den)
     , _ticksPerFixedUpdate(std::round((double)_ticksPerSec / fixedUpdatePerSecond))
     , _startTime(Clock::now())
@@ -82,7 +82,7 @@ alloy::PixelFormat RenderServiceImpl::GetFrameBufferColorFormat() {
     return alloy::PixelFormat::B8_G8_R8_A8_UNorm;
 }
 alloy::PixelFormat RenderServiceImpl::GetFrameBufferDepthStencilFormat() {
-    return alloy::PixelFormat::D24_UNorm_S8_UInt;
+    return _runner->_dsFormat;
 }
 alloy::SampleCount RenderServiceImpl::GetFrameBufferSampleCount() {
     return _runner->_msaaSampleCnt;
@@ -97,7 +97,7 @@ AppRunner :: AppRunner (unsigned width,
     , _wndWidth(0)
     , _wndHeight(0)
 {
-    
+
 
     //startup
     if (glfwInit() != GLFW_TRUE)
@@ -154,9 +154,9 @@ int AppRunner::Run(IApp* pUserApp) {
 
         BeginFrame();
         pUserApp->OnFrameBegin(_fenceVal);
-        
+
         //Logic update
-        
+
         loops = 0;
         while( _timeSvc.GetCurrentTick() > prevFixedUpdateTick && loops < MAX_FRAMESKIP) {
             pUserApp->FixedUpdate();
@@ -170,7 +170,7 @@ int AppRunner::Run(IApp* pUserApp) {
         pUserApp->Update( /*interpolation*/ );
 
         pUserApp->OnDrawGui();
-        
+
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
 
@@ -184,7 +184,7 @@ int AppRunner::Run(IApp* pUserApp) {
         auto cmdQ = _dev->GetGfxCommandQueue();
         auto commandList = cmdQ->CreateCommandList();
         {
-            
+
             bool msaaEnabled = _msaaSampleCnt > alloy::SampleCount::x1;
             commandList->Begin();
 
@@ -202,8 +202,8 @@ int AppRunner::Run(IApp* pUserApp) {
 
             auto& dtAct = passAction.depthTargetAction.emplace();
             dtAct.loadAction = alloy::LoadAction::Clear;
-            dtAct.storeAction = alloy::StoreAction::DontCare;
-            dtAct.clearDepth = 10.f;
+            dtAct.storeAction = alloy::StoreAction::Store;
+            dtAct.clearDepth = 0.999f;
             if(msaaEnabled) {
                 dtAct.target = tgt.depthStencil;
                 dtAct.msaaResolveTarget = fbDesc.depthAttachment;
@@ -213,7 +213,7 @@ int AppRunner::Run(IApp* pUserApp) {
             }
 
             auto& stAct = passAction.stencilTargetAction.emplace();
-            stAct.loadAction = alloy::LoadAction::Load;
+            stAct.loadAction = alloy::LoadAction::Clear;
             stAct.storeAction = alloy::StoreAction::Store;
             stAct.target = tgt.depthStencil;
             stAct.clearStencil = 0xA;
@@ -236,12 +236,12 @@ int AppRunner::Run(IApp* pUserApp) {
         }
 
         auto fenceVal = ++_fenceVal;
-        
+
         cmdQ->SubmitCommand(commandList.get());
         cmdQ->EncodeSignalEvent(_submissionFence.get(), fenceVal);
 
         _submission = commandList;
-        
+
         _dev->PresentToSwapChain(_swapChain.get());
     }
 
@@ -249,17 +249,17 @@ int AppRunner::Run(IApp* pUserApp) {
 }
 
 void AppRunner::SetupAlloyEnv() {
-    
+
     /*******************************
      * Create device
      *******************************/
-    
+
     alloy::IContext::Options ctxOpt{};
     ctxOpt.debug = true;
 
     auto ctx = alloy::IContext::Create(alloy::Backend::Vulkan, ctxOpt);
     auto adp = ctx->EnumerateAdapters().front();
-    
+
     alloy::IGraphicsDevice::Options devOpt{};
     devOpt.debug = true;
     devOpt.preferStandardClipSpaceYDirection = true;
@@ -286,12 +286,12 @@ void AppRunner::SetupAlloyEnv() {
     }
 
     auto& factory = _dev->GetResourceFactory();
-    
+
 
     /*******************************
      * Create swap chain
      *******************************/
-    
+
 #if defined(VLD_PLATFORM_WIN32)
     auto hWnd = glfwGetWin32Window(_window);
     auto hInst = GetModuleHandle(NULL);
@@ -311,7 +311,7 @@ void AppRunner::SetupAlloyEnv() {
     swapChainDesc.source = &scSrc;
     swapChainDesc.initialWidth = w;
     swapChainDesc.initialHeight = h;
-    swapChainDesc.depthFormat = alloy::PixelFormat::D24_UNorm_S8_UInt;
+    swapChainDesc.depthFormat = _dsFormat;
     swapChainDesc.backBufferCnt = 2;
     _swapChain = factory.CreateSwapChain(swapChainDesc);
 
@@ -360,7 +360,7 @@ void AppRunner::CreatePerFrameResources() {
     //Destroy old targets
     ReleasePerFrameResources();
     //_nextFrameIdx = 0;
-    
+
     auto w = _swapChain->GetWidth();
     auto h = _swapChain->GetHeight();
 
@@ -387,7 +387,7 @@ void AppRunner::CreatePerFrameResources() {
         tex->SetDebugName(std::format("MSAAColorTgt_frame"));
     }
 
-    msaaTgtDesc.format = alloy::PixelFormat::D24_UNorm_S8_UInt;
+    msaaTgtDesc.format = alloy::PixelFormat::D32_Float_S8_UInt;
     msaaTgtDesc.usage.renderTarget = 0;
     msaaTgtDesc.usage.depthStencil = 1;
     {
@@ -416,7 +416,7 @@ void AppRunner::ResizeSwapChainIfNecessary() {
     }
 }
 
-uint32_t AppRunner::GetLastCompletedCommandIndex() const { 
+uint32_t AppRunner::GetLastCompletedCommandIndex() const {
     return _submissionFence->GetSignaledValue();
 }
 
@@ -446,4 +446,3 @@ void AppRunner::LockAndHideCursor() {
 IAppRunner* IAppRunner::Create(unsigned width, unsigned height, const std::string& wndName) {
     return new AppRunner(width, height, wndName);
 }
-
