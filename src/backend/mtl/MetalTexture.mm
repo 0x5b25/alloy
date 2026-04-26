@@ -22,21 +22,31 @@ namespace alloy::mtl  {
         const ITexture::Description& desc
     ) {
         @autoreleasepool {
-            
-            
+
+
             MTLTextureDescriptor* mtlDesc = [[MTLTextureDescriptor new] autorelease];
-            
-            
+
+
             // Indicate that each pixel has a blue, green, red, and alpha channel, where each channel is
             // an 8-bit unsigned normalized value (i.e. 0 maps to 0.0 and 255 maps to 1.0)
             mtlDesc.pixelFormat = AlToMtlPixelFormat(desc.format);
-            
+
+            // MSAA should only be used in 2d textures
+            assert(desc.sampleCount == SampleCount::x1 ||
+                   desc.type == ITexture::Description::Type::Texture2D);
+
+            //#TODO: MetalShaderConverter 3.0 added support for non-array textures.
             switch (desc.type) {
                 case ITexture::Description::Type::Texture1D : mtlDesc.textureType = MTLTextureType1DArray; break;
-                case ITexture::Description::Type::Texture2D : mtlDesc.textureType = MTLTextureType2DArray; break;
+                case ITexture::Description::Type::Texture2D : {
+                    if(desc.sampleCount == SampleCount::x1)
+                        mtlDesc.textureType = MTLTextureType2DArray;
+                    else
+                        mtlDesc.textureType = MTLTextureType2DMultisampleArray;
+                } break;
                 case ITexture::Description::Type::Texture3D : mtlDesc.textureType = MTLTextureType3D; break;
             }
-            
+
             mtlDesc.width = desc.width;
             mtlDesc.height = desc.height;
             mtlDesc.depth = desc.depth;
@@ -50,18 +60,23 @@ namespace alloy::mtl  {
                 case SampleCount::x16:mtlDesc.sampleCount = 16; break;
                 case SampleCount::x32:mtlDesc.sampleCount = 32; break;
             }
-            
+
             switch(desc.hostAccess) {
-                case HostAccess::PreferSystemMemory:
+                case HostAccess::SystemMemoryPreferWrite:
                 case HostAccess::PreferDeviceMemory:
                     mtlDesc.storageMode = MTLStorageModeShared;
+                    mtlDesc.cpuCacheMode = MTLCPUCacheModeWriteCombined;
+                    break;
+                case HostAccess::SystemMemoryPreferRead:
+                    mtlDesc.storageMode = MTLStorageModeShared;
+                    mtlDesc.cpuCacheMode = MTLCPUCacheModeDefaultCache;
                     break;
                 case HostAccess::None:
                 default:
                     mtlDesc.storageMode = MTLStorageModePrivate;
                     break;
             }
-            
+
             if(desc.usage.renderTarget || desc.usage.depthStencil)
                 mtlDesc.usage |= MTLTextureUsageRenderTarget;
             if(desc.usage.sampled)
@@ -69,14 +84,14 @@ namespace alloy::mtl  {
             if(desc.usage.storage)
                 mtlDesc.usage |= MTLTextureUsageShaderRead
                                | MTLTextureUsageShaderRead;
-            
-            
+
+
             // Create the texture from the device by using the descriptor
             id<MTLTexture> texture = [dev->GetHandle() newTextureWithDescriptor:mtlDesc];
-            
-            
+
+
             return common::sp(new MetalTexture(dev, desc, texture));
-            
+
         }
 
     }
@@ -111,8 +126,8 @@ namespace alloy::mtl  {
                 .origin = MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z),
                 .size = MTLSizeMake(writeSize.width, writeSize.height, writeSize.depth)
             };
-            
-            
+
+
             [_tex replaceRegion:region
                     mipmapLevel:mipLevel
                           slice:arrayLayer
@@ -135,8 +150,8 @@ namespace alloy::mtl  {
                 .origin = MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z),
                 .size = MTLSizeMake(readSize.width, readSize.height, readSize.depth)
             };
-            
-            
+
+
             [_tex getBytes:dst
                bytesPerRow:dstRowPitch
              bytesPerImage:dstDepthPitch
@@ -160,7 +175,7 @@ namespace alloy::mtl  {
         }
     }
 
-    
+
 
     common::sp<MetalSampler> MetalSampler::Make(const common::sp<MetalDevice> &dev,
                                      const ISampler::Description &desc)
@@ -175,27 +190,27 @@ namespace alloy::mtl  {
                     return MTLSamplerAddressModeRepeat;
             }
         };
-        
+
         @autoreleasepool {
             auto mtlDesc = [[MTLSamplerDescriptor new] autorelease];
 
             mtlDesc.sAddressMode = _AlToMtlAddressMode(desc.addressModeU);
             mtlDesc.tAddressMode = _AlToMtlAddressMode(desc.addressModeV);
             mtlDesc.rAddressMode = _AlToMtlAddressMode(desc.addressModeW);
-            
+
             mtlDesc.maxAnisotropy = desc.maximumAnisotropy;
             mtlDesc.lodMaxClamp = desc.maximumLod;
             mtlDesc.lodMinClamp = desc.minimumLod;
-            
+
             switch(desc.borderColor) {
-                    
+
                 case Description::BorderColor::OpaqueBlack: mtlDesc.borderColor = MTLSamplerBorderColorOpaqueBlack; break;
                 case Description::BorderColor::OpaqueWhite: mtlDesc.borderColor = MTLSamplerBorderColorOpaqueWhite; break;
                 case Description::BorderColor::TransparentBlack:
                 default:
                     mtlDesc.borderColor = MTLSamplerBorderColorTransparentBlack; break;
             }
-            
+
             {
                 using SamplerFilter = typename ISampler::Description::SamplerFilter;
                 switch (desc.filter)
@@ -249,7 +264,7 @@ namespace alloy::mtl  {
                         break;
                 }
             }
-            
+
             if(desc.comparisonKind) {
                 switch( *desc.comparisonKind ) {
                     case ComparisonKind::Never:         mtlDesc.compareFunction = MTLCompareFunctionNever; break;
@@ -262,11 +277,11 @@ namespace alloy::mtl  {
                     case ComparisonKind::NotEqual:      mtlDesc.compareFunction = MTLCompareFunctionNotEqual; break;
                 }
             }
-            
+
             mtlDesc.supportArgumentBuffers = true;
-            
+
             auto mtlSampler = [dev->GetHandle() newSamplerStateWithDescriptor:mtlDesc];
-            
+
             return common::sp(new MetalSampler(dev, desc, mtlSampler));
         }
     }

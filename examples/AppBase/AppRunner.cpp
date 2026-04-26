@@ -97,8 +97,6 @@ AppRunner :: AppRunner (unsigned width,
     , _wndWidth(0)
     , _wndHeight(0)
 {
-
-
     //startup
     if (glfwInit() != GLFW_TRUE)
         throw std::runtime_error("GLFW init failed");
@@ -257,7 +255,7 @@ void AppRunner::SetupAlloyEnv() {
     alloy::IContext::Options ctxOpt{};
     ctxOpt.debug = true;
 
-    auto ctx = alloy::IContext::Create(alloy::Backend::Vulkan, ctxOpt);
+    auto ctx = alloy::IContext::Create(alloy::Backend::Metal, ctxOpt);
     auto adp = ctx->EnumerateAdapters().front();
 
     alloy::IGraphicsDevice::Options devOpt{};
@@ -298,7 +296,7 @@ void AppRunner::SetupAlloyEnv() {
     alloy::Win32SwapChainSource scSrc{ hWnd, nullptr };
 #elif defined(VLD_PLATFORM_MACOS)
     //Get the NSWindow
-    auto hWnd = glfwGetCocoaWindow(window);
+    auto hWnd = glfwGetCocoaWindow(_window);
     alloy::NSWindowSwapChainSource scSrc(hWnd);
 #endif
 
@@ -334,7 +332,8 @@ void AppRunner::SetupImGui() {
     ImGui_ImplAlloy_InitInfo rbInitInfo {
         .device = _dev,
         .msaaSampleCount = _msaaSampleCnt,
-        .renderTargetFormat = alloy::PixelFormat::B8_G8_R8_A8_UNorm
+        .renderTargetFormat = alloy::PixelFormat::B8_G8_R8_A8_UNorm,
+        .depthStencilFormat = _dsFormat
     };
 
     ImGui_ImplAlloy_Init(rbInitInfo);
@@ -401,10 +400,10 @@ void AppRunner::CreatePerFrameResources() {
 
 void AppRunner::ResizeSwapChainIfNecessary() {
     int currWidth, currHeight;
-    glfwGetWindowSize(_window, &currWidth, &currHeight);
+    glfwGetFramebufferSize(_window, &currWidth, &currHeight);
     if( (currWidth != _wndWidth) || (currHeight != _wndHeight) ) {
         while (currWidth == 0 || currHeight == 0) {
-            glfwGetWindowSize(_window, &currWidth, &currHeight);
+            glfwGetFramebufferSize(_window, &currWidth, &currHeight);
             glfwWaitEvents();
         }
         _dev->WaitForIdle();

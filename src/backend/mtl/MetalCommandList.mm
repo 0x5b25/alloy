@@ -20,7 +20,7 @@ MetalCommandList::MetalCommandList(const common::sp<MetalDevice>& dev,
     , _cmdBuf(buffer)
     , _currEncoder(nullptr)
 {
-    
+
 }
 
 MetalCommandList::~MetalCommandList() {
@@ -32,9 +32,9 @@ MetalCommandList::~MetalCommandList() {
         for(auto* pass : _passes) {
             delete pass;
         }
-        
+
         //auto refCnt = [_cmdBuf retainCount];
-    
+
     }
 }
 
@@ -75,27 +75,83 @@ MetalRenderCmdEnc::MetalRenderCmdEnc(
         //[_mtlEnc release];
     }
 
-void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
-    resources.insert(pipeline);
-    auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
-    _drawResources.boundPipeline = common::ref_sp(mtlPipeline);
-    mtlPipeline->BindToCmdBuf(_mtlEnc);
 
-    auto layout = mtlPipeline->GetPipelineLayout();
-    
-    if(layout) {
-        auto argBufferSize = layout->GetRootSigSizeInBytes();
-        _drawResources.argBuffer.resize(argBufferSize);
-    } else {
-        _drawResources.argBuffer.clear();
+    void MetalRenderCmdEnc::SetPipelineBase(MetalGfxPipelineBase* mtlPipeline) {
+        _drawResources.boundPipeline = mtlPipeline;
+        mtlPipeline->BindToCmdBuf(_mtlEnc);
+
+        auto layout = mtlPipeline->GetPipelineLayout();
+
+        if(layout) {
+            auto argBufferSize = layout->GetRootSigSizeInBytes();
+            _drawResources.argBuffer.resize(argBufferSize);
+        } else {
+            _drawResources.argBuffer.clear();
+        }
+    }
+
+    void MetalRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline) {
+        resources.insert(pipeline);
+        auto mtlPipeline = static_cast<MetalGfxPipeline*>(pipeline.get());
+        SetPipelineBase(mtlPipeline);
+    }
+
+
+    void MetalRenderCmdEnc::SetPipeline(const common::sp<IMeshShaderPipeline>& pipeline) {
+        resources.insert(pipeline);
+        auto mtlPipeline = static_cast<MetalMeshShaderPipeline*>(pipeline.get());
+        SetPipelineBase(mtlPipeline);
+    }
+
+
+    void MetalRenderCmdEnc::DispatchMesh(std::uint32_t groupCountX,
+                                         std::uint32_t groupCountY,
+                                         std::uint32_t groupCountZ)
+    {
+        auto& registry = _drawResources;
+        assert(registry.boundPipeline != nullptr);
+        assert(IsMeshShaderPipeline(*registry.boundPipeline));
+
+        @autoreleasepool {
+
+            auto mtlPipeline = static_cast<MetalMeshShaderPipeline*>(registry.boundPipeline);
+
+
+            if(!_drawResources.argBuffer.empty()) {
+                auto data = _drawResources.argBuffer.data();
+                auto size = _drawResources.argBuffer.size();
+                [_mtlEnc setObjectBytes:data
+                                 length:size
+                                atIndex:kIRArgumentBufferBindPoint];
+                [_mtlEnc setMeshBytes:data
+                               length:size
+                              atIndex:kIRArgumentBufferBindPoint];
+                [_mtlEnc setFragmentBytes:data
+                                   length:size
+                                  atIndex:kIRArgumentBufferBindPoint];
+            }
+
+            auto meshShaderWGSize = mtlPipeline->GetMeshShaderWorkgroupSize();
+            auto taskShaderWGSize = mtlPipeline->GetTaskShaderWorkgroupSize();
+
+            [_mtlEnc    drawMeshThreadgroups:MTLSizeMake(groupCountX,
+                                                         groupCountY,
+                                                         groupCountZ)
+                 threadsPerObjectThreadgroup:MTLSizeMake(taskShaderWGSize.width,
+                                                         taskShaderWGSize.height,
+                                                         taskShaderWGSize.depth)
+                   threadsPerMeshThreadgroup:MTLSizeMake(meshShaderWGSize.width,
+                                                         meshShaderWGSize.height,
+                                                         meshShaderWGSize.depth)];
     }
 }
+
 
 
 void MetalRenderCmdEnc::SetVertexBuffer(std::uint32_t index, const common::sp<BufferRange>& buffer) {
     //TODO: Check max limit of index
     //@autoreleasepool {
-        
+
         resources.insert(buffer);
         _drawResources.boundVertexBuffers[index] = buffer;
         //auto mtlBuffer = static_cast<MetalBuffer*>(buffer->GetBufferObject());
@@ -107,7 +163,7 @@ void MetalRenderCmdEnc::SetVertexBuffer(std::uint32_t index, const common::sp<Bu
 
 
 void MetalRenderCmdEnc::SetIndexBuffer(const common::sp<BufferRange>& buffer, IndexFormat format) {
-    
+
     resources.insert(buffer);
     _drawResources.boundIndexBuffer = buffer;
     _drawResources.boundIndexBufferFormat = format;
@@ -121,12 +177,12 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
     const common::sp<IResourceSet>& rs
 ) {
     assert(_drawResources.boundPipeline != nullptr);
-    
+
     @autoreleasepool {
         resources.insert(rs);
-        
+
         auto mtlRS = common::PtrCast<MetalResourceSet>(rs.get());
-        
+
         auto usedRes = mtlRS->GetUseResources();
         [_mtlEnc useResources:usedRes.data()
                         count:usedRes.size()
@@ -135,7 +191,7 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
         ];
 
         id<MTLSamplerState> sampler;
-        
+
         auto layout = _drawResources.boundPipeline->GetPipelineLayout();
 
         auto pHeap =(uint64_t*)_drawResources.argBuffer.data();
@@ -152,7 +208,7 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
 
         //[_mtlEnc useResource:sampler usage:MTLResourceUsageRead];
         //[_mtlEnc useResources:(id<MTLResource>  _Nonnull const * _Nonnull) count:(NSUInteger) usage:(MTLResourceUsage) stages:(MTLRenderStages)]
-        
+
         //[_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
         //[_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
     }
@@ -207,16 +263,16 @@ void MetalRenderCmdEnc::SetFullViewports() {
             .minDepth = 0,
             .maxDepth = (float)desc.depth
         };
-        
+
         vps.push_back(vp);
     }
-    
+
     SetViewports(vps);
 }
 
 
 void MetalRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects) {
-    
+
     std::vector<MTLScissorRect> mtlRects { };
     mtlRects.reserve(rects.size());
     for(auto& r : rects) {
@@ -227,7 +283,7 @@ void MetalRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects) {
         mtlR.width = r.width;
         mtlR.height = r.height;
     }
-    
+
     [_mtlEnc setScissorRects:mtlRects.data() count:mtlRects.size()];
 }
 
@@ -241,114 +297,135 @@ void MetalRenderCmdEnc::SetFullScissorRects() {
             .width = desc.width,
             .height = desc.height,
         };
-        
+
         rects.push_back(rect);
     }
-    
+
     SetScissorRects(rects);
 }
 
 void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
-                                     std::uint32_t instanceCount,
-                                     std::uint32_t vertexStart, 
-                                     std::uint32_t instanceStart) {
-    assert(_drawResources.boundPipeline != nullptr);
-    //assert(registry.boundIndexBuffer != nullptr);
-    
-    @autoreleasepool {
-
-        auto mtlPipeline = static_cast<MetalGfxPipeline*>(_drawResources.boundPipeline.get());
-
-        //auto& bufferRange = registry.boundIndexBuffer;
-        //auto mtlBuffer = static_cast<AllocationImpl*>(bufferRange->GetBufferObject());
-        if(!_drawResources.argBuffer.empty()) {
-            auto data = _drawResources.argBuffer.data();
-            auto size = _drawResources.argBuffer.size();
-            [_mtlEnc setVertexBytes:data 
-                             length:size
-                            atIndex:kIRArgumentBufferBindPoint];
-            [_mtlEnc setFragmentBytes:data 
-                             length:size
-                            atIndex:kIRArgumentBufferBindPoint];
-        }
-        
-   
-        IRRuntimeDrawPrimitives(_mtlEnc,
-                                mtlPipeline->GetPrimitiveTopology(),
-                                vertexStart,
-                                vertexCount,
-                                instanceCount,
-                                instanceStart);
-
-        //[_mtlEnc drawPrimitives:mtlPipeline->GetPrimitiveTopology() 
-        //            vertexStart:vertexStart
-        //            vertexCount:vertexCount
-        //          instanceCount:instanceCount
-        //           baseInstance:instanceStart];
-    }
-}
-
-void MetalRenderCmdEnc::DrawIndexed(
-    std::uint32_t indexCount, std::uint32_t instanceCount,
-    std::uint32_t indexStart, std::uint32_t vertexOffset,
-                                           std::uint32_t instanceStart) {
+                              std::uint32_t instanceCount,
+                              std::uint32_t vertexStart,
+                              std::uint32_t instanceStart)
+{
 
     auto& registry = _drawResources;
     assert(registry.boundPipeline != nullptr);
-    assert(registry.boundIndexBuffer != nullptr);
-    
+    assert(IsGfxPipeline(*_drawResources.boundPipeline));
+
     @autoreleasepool {
-
-        auto mtlPipeline = static_cast<MetalGfxPipeline*>(registry.boundPipeline.get());
-
-        auto& bufferRange = registry.boundIndexBuffer;
-        auto mtlBuffer = static_cast<MetalBuffer*>(bufferRange->GetBufferObject());
-        
+        auto mtlPipeline = static_cast<MetalGfxPipeline*>(_drawResources.boundPipeline);
         auto vertLayout = mtlPipeline->GetVertexLayouts();
-        
+
         std::vector<IRRuntimeVertexBuffer> vertArgBuf {vertLayout.size()};
         std::vector<id<MTLResource>> usedRes;
-        
+
         for(int i = 0; i < vertLayout.size(); i++) {
             auto& vertBuf = registry.boundVertexBuffers[i];
             auto offset = vertBuf->GetShape().GetOffsetInBytes();
             auto mtlBuf = common::PtrCast<MetalBuffer>(vertBuf->GetBufferObject());
             auto rawBuf = mtlBuf->GetHandle();
             usedRes.emplace_back(rawBuf);
-            
-            
+
             auto& thisVertLayout = vertLayout[i];
             auto& thisVertArg = vertArgBuf[i];
-            
+
             thisVertArg.addr = [rawBuf gpuAddress] + offset;
             thisVertArg.stride = thisVertLayout.stride;
             thisVertArg.length = mtlBuf->GetDesc().sizeInBytes - offset;
         }
-        
-        
+
         [_mtlEnc useResources:usedRes.data()
                         count:usedRes.size()
                         usage:MTLResourceUsageRead
                        stages:MTLRenderStageVertex];
-        
+
         [_mtlEnc setVertexBytes:vertArgBuf.data()
                          length:vertArgBuf.size() * sizeof(IRRuntimeVertexBuffer)
                         atIndex:kIRVertexBufferBindPoint];
-        
+
         if(!_drawResources.argBuffer.empty()) {
             auto data = _drawResources.argBuffer.data();
             auto size = _drawResources.argBuffer.size();
-            [_mtlEnc setVertexBytes:data 
+            [_mtlEnc setVertexBytes:data
                              length:size
                             atIndex:kIRArgumentBufferBindPoint];
-            [_mtlEnc setFragmentBytes:data 
+            [_mtlEnc setFragmentBytes:data
                              length:size
                             atIndex:kIRArgumentBufferBindPoint];
         }
-        
-        
+
+        IRRuntimeDrawPrimitives(_mtlEnc,
+                                mtlPipeline->GetPrimitiveTopology(),
+                                vertexStart,
+                                vertexCount,
+                                instanceCount,
+                                instanceStart);
+    }
+}
+
+void MetalRenderCmdEnc::DrawIndexed(
+    std::uint32_t indexCount, std::uint32_t instanceCount,
+    std::uint32_t indexStart, std::uint32_t vertexOffset,
+                              std::uint32_t instanceStart) {
+
+    auto& registry = _drawResources;
+    assert(registry.boundPipeline != nullptr);
+    assert(registry.boundIndexBuffer != nullptr);
+
+    @autoreleasepool {
+
+        auto mtlPipeline = static_cast<MetalGfxPipeline*>(registry.boundPipeline);
+
+        auto& bufferRange = registry.boundIndexBuffer;
+        auto mtlBuffer = static_cast<MetalBuffer*>(bufferRange->GetBufferObject());
+
+        auto vertLayout = mtlPipeline->GetVertexLayouts();
+
+        std::vector<IRRuntimeVertexBuffer> vertArgBuf {vertLayout.size()};
+        std::vector<id<MTLResource>> usedRes;
+
+        for(int i = 0; i < vertLayout.size(); i++) {
+            auto& vertBuf = registry.boundVertexBuffers[i];
+            auto offset = vertBuf->GetShape().GetOffsetInBytes();
+            auto mtlBuf = common::PtrCast<MetalBuffer>(vertBuf->GetBufferObject());
+            auto rawBuf = mtlBuf->GetHandle();
+            usedRes.emplace_back(rawBuf);
+
+
+            auto& thisVertLayout = vertLayout[i];
+            auto& thisVertArg = vertArgBuf[i];
+
+            thisVertArg.addr = [rawBuf gpuAddress] + offset;
+            thisVertArg.stride = thisVertLayout.stride;
+            thisVertArg.length = mtlBuf->GetDesc().sizeInBytes - offset;
+        }
+
+
+        [_mtlEnc useResources:usedRes.data()
+                        count:usedRes.size()
+                        usage:MTLResourceUsageRead
+                       stages:MTLRenderStageVertex];
+
+        [_mtlEnc setVertexBytes:vertArgBuf.data()
+                         length:vertArgBuf.size() * sizeof(IRRuntimeVertexBuffer)
+                        atIndex:kIRVertexBufferBindPoint];
+
+        if(!_drawResources.argBuffer.empty()) {
+            auto data = _drawResources.argBuffer.data();
+            auto size = _drawResources.argBuffer.size();
+            [_mtlEnc setVertexBytes:data
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+            [_mtlEnc setFragmentBytes:data
+                             length:size
+                            atIndex:kIRArgumentBufferBindPoint];
+        }
+
+
         auto indexElemSize = FormatHelpers::GetSizeInBytes(registry.boundIndexBufferFormat);
-        
+
         IRRuntimeDrawIndexedPrimitives(_mtlEnc,
                                        mtlPipeline->GetPrimitiveTopology(),
                                        indexCount,
@@ -358,48 +435,110 @@ void MetalRenderCmdEnc::DrawIndexed(
                                        instanceCount,
                                        vertexOffset,
                                        instanceStart);
-
-        //[_mtlEnc drawIndexedPrimitives:mtlPipeline->GetPrimitiveTopology()
-        //         indexCount:indexCount
-        //         indexType: AlToMtlIndexFormat(registry.boundIndexBufferFormat)
-        //         indexBuffer:mtlBuffer->GetHandle()
-        //         indexBufferOffset:bufferRange->GetShape().GetOffsetInBytes()
-        //         instanceCount:instanceCount
-        //         baseVertex:vertexOffset
-        //         baseInstance:instanceStart];
     }
 }
 
 
-void MetalComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>&) {
-    
-}
+    void MetalComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline) {
+        resources.insert(pipeline);
+        auto mtlPipeline = static_cast<MetalComputePipeline*>(pipeline.get());
+        _compResources.boundPipeline = mtlPipeline;
+        mtlPipeline->BindToCmdBuf(_mtlEnc);
 
-void MetalComputeCmdEnc::SetComputeResourceSet(
-    const common::sp<IResourceSet>& rs
-/*const std::vector<std::uint32_t>& dynamicOffsets*/) {
-    
-}
+        auto layout = mtlPipeline->GetPipelineLayout();
+
+        if(layout) {
+            auto argBufferSize = layout->GetRootSigSizeInBytes();
+            _compResources.argBuffer.resize(argBufferSize);
+        } else {
+            _compResources.argBuffer.clear();
+        }
+    }
+
+    void MetalComputeCmdEnc::SetComputeResourceSet(
+        const common::sp<IResourceSet>& rs
+    ) {
+
+        assert(_compResources.boundPipeline != nullptr);
+
+        @autoreleasepool {
+            resources.insert(rs);
+
+            auto mtlRS = common::PtrCast<MetalResourceSet>(rs.get());
+
+            auto usedRes = mtlRS->GetUseResources();
+            [_mtlEnc useResources:usedRes.data()
+                        count:usedRes.size()
+                        usage:MTLResourceUsageRead | MTLResourceUsageWrite
+            ];
+
+            auto layout = _compResources.boundPipeline->GetPipelineLayout();
+
+            auto pHeap =(uint64_t*)_compResources.argBuffer.data();
+            auto shResVA = mtlRS->GetShaderResHeapGPUVA();
+            auto sampVA = mtlRS->GetSamplerHeapGPUVA();
+            if(shResVA) {
+                *pHeap = shResVA;
+                pHeap++;
+            }
+            if(sampVA) {
+                *pHeap = sampVA;
+                pHeap++;
+            }
+
+            //[_mtlEnc useResource:sampler usage:MTLResourceUsageRead];
+            //[_mtlEnc useResources:(id<MTLResource>  _Nonnull const * _Nonnull) count:(NSUInteger) usage:(MTLResourceUsage) stages:(MTLRenderStages)]
+
+            //[_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
+            //[_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
+        }
+    }
+
+    void MetalComputeCmdEnc::SetPushConstants(
+        std::uint32_t pushConstantIndex,
+        const std::span<uint32_t>& data,
+        std::uint32_t destOffsetIn32BitValues
+    ) {
+        @autoreleasepool {
+            auto layout = _compResources.boundPipeline->GetPipelineLayout();
+            auto& pcs = layout->GetPushConstants();
+            assert(pushConstantIndex < pcs.size());
+            auto& pc = pcs[pushConstantIndex];
+            assert(pc.sizeInDwords >= destOffsetIn32BitValues + data.size());
+            auto offset = pc.offsetInDwords * sizeof(uint32_t);
+
+            memcpy(&_compResources.argBuffer[offset], data.data(), data.size() * sizeof(uint32_t));
+        }
+    }
 
 
-void MetalComputeCmdEnc::SetPushConstants(
-    std::uint32_t pushConstantIndex,
-    const std::span<uint32_t>& data,
-    std::uint32_t destOffsetIn32BitValues
-                                          ) {
-    
-}
+    void MetalComputeCmdEnc::Dispatch(std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) {
+
+        auto& registry = _compResources;
+        assert(registry.boundPipeline != nullptr);
+
+        @autoreleasepool {
+
+            auto mtlPipeline = registry.boundPipeline;
+
+            std::vector<id<MTLResource>> usedRes;
+
+            if(!_compResources.argBuffer.empty()) {
+                auto data = _compResources.argBuffer.data();
+                auto size = _compResources.argBuffer.size();
+                [_mtlEnc setBytes:data
+                       length:size
+                      atIndex:kIRArgumentBufferBindPoint];
+            }
+
+            auto wgSize = mtlPipeline->GetWorkgroupSize();
 
 
-/// <summary>
-/// Dispatches a compute operation from the currently-bound compute state of this Pipeline.
-/// </summary>
-/// <param name="groupCountX">The X dimension of the compute thread groups that are dispatched.</param>
-/// <param name="groupCountY">The Y dimension of the compute thread groups that are dispatched.</param>
-/// <param name="groupCountZ">The Z dimension of the compute thread groups that are dispatched.</param>
-void MetalComputeCmdEnc::Dispatch(std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ) {
-    
-}
+            [_mtlEnc dispatchThreadgroups:MTLSizeMake(groupCountX, groupCountY, groupCountZ)
+                    threadsPerThreadgroup:MTLSizeMake(wgSize.width, wgSize.height, wgSize.depth)];
+
+        }
+    }
 
 
 IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction& action)
@@ -409,14 +548,14 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
     //RegisterObjInUse(renderPass);
 
     @autoreleasepool{
-        MTLRenderPassDescriptor* pass = [[MTLRenderPassDescriptor renderPassDescriptor] autorelease];
+        MTLRenderPassDescriptor* pass = [[MTLRenderPassDescriptor new] autorelease];
 
         for(unsigned i = 0; i < action.colorTargetActions.size(); i++) {
             const auto& ctAct = action.colorTargetActions[i];
 
             auto* mtlColorTgt = pass.colorAttachments[i];
 
-            mtlColorTgt.clearColor = MTLClearColorMake(ctAct.clearColor.r, 
+            mtlColorTgt.clearColor = MTLClearColorMake(ctAct.clearColor.r,
                                                        ctAct.clearColor.g,
                                                        ctAct.clearColor.b,
                                                        ctAct.clearColor.a);
@@ -424,11 +563,11 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
             bool hasMSAATarget = ctAct.msaaResolveTarget != nullptr;
 
             switch(ctAct.storeAction) {
-                case StoreAction::DontCare: 
+                case StoreAction::DontCare:
                     mtlColorTgt.storeAction = hasMSAATarget ? MTLStoreActionMultisampleResolve
-                                                            : MTLStoreActionDontCare; 
+                                                            : MTLStoreActionDontCare;
                     break;
-                case StoreAction::Store: 
+                case StoreAction::Store:
                     mtlColorTgt.storeAction = hasMSAATarget ? MTLStoreActionStoreAndMultisampleResolve
                                                             : MTLStoreActionStore;
                     break;
@@ -456,20 +595,20 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
         }
 
         if(action.depthTargetAction) {
-            
+
             const auto& dtAct = action.depthTargetAction.value();
-            
+
             bool hasMSAATarget = dtAct.msaaResolveTarget != nullptr;
 
             auto* mtlDT = pass.depthAttachment;
             mtlDT.clearDepth = dtAct.clearDepth;
-            
+
             switch(action.depthTargetAction->storeAction) {
                 case StoreAction::DontCare:
                     mtlDT.storeAction = hasMSAATarget ? MTLStoreActionMultisampleResolve
                                                       : MTLStoreActionDontCare;
                     break;
-                case StoreAction::Store: 
+                case StoreAction::Store:
                     mtlDT.storeAction = hasMSAATarget ? MTLStoreActionStoreAndMultisampleResolve
                                                       : MTLStoreActionStore;
                     break;
@@ -506,7 +645,7 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
         if(action.stencilTargetAction) {
             auto* mtlST = pass.stencilAttachment;
             mtlST.clearStencil = action.stencilTargetAction->clearStencil;
-            
+
             switch(action.stencilTargetAction->storeAction) {
                 case StoreAction::DontCare: mtlST.storeAction = MTLStoreActionDontCare; break;
                 case StoreAction::Store: mtlST.storeAction = MTLStoreActionStore; break;
@@ -523,18 +662,18 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
             mtlST.level = action.stencilTargetAction->target->GetTexture().GetDesc().baseMipLevel;
             mtlST.slice = action.stencilTargetAction->target->GetTexture().GetDesc().baseArrayLayer;
         }
-    
+
         //RenderPassImpl* mtlRndrPass = static_cast<RenderPassImpl*>(renderPass.get());
         id<MTLRenderCommandEncoder> rawEnc
             = [[_cmdBuf renderCommandEncoderWithDescriptor: pass] retain];
-    
+
         MetalRenderCmdEnc* thisEncoder = new MetalRenderCmdEnc(this, rawEnc, action);
-        
+
         _passes.push_back(thisEncoder);
         _currEncoder = thisEncoder;
         return *thisEncoder;
     }
-    
+
 }
 
 
@@ -543,12 +682,12 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
         assert(_currEncoder == nullptr);
 
         @autoreleasepool {
-            MTLComputePassDescriptor* pass = [[MTLComputePassDescriptor computePassDescriptor] autorelease];
+            MTLComputePassDescriptor* pass = [[MTLComputePassDescriptor new] autorelease];
             //pass.dispatchType = MTLDispatchTypeSerial;
-            
+
             id<MTLComputeCommandEncoder> rawEnc
                 = [[_cmdBuf computeCommandEncoderWithDescriptor:pass] retain];
-        
+
             auto thisEncoder = new MetalComputeCmdEnc(this, rawEnc);
 
             _passes.push_back(thisEncoder);
@@ -559,15 +698,15 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
 
 
     ITransferCommandEncoder& MetalCommandList::BeginTransferPass(){
-        
+
         assert(_currEncoder == nullptr);
 
         @autoreleasepool {
-            MTLBlitPassDescriptor* pass = [[MTLBlitPassDescriptor blitPassDescriptor] autorelease];
+            MTLBlitPassDescriptor* pass = [[MTLBlitPassDescriptor new] autorelease];
 
             id<MTLBlitCommandEncoder> rawEnc
                 = [[_cmdBuf blitCommandEncoderWithDescriptor:pass] retain];
-        
+
             auto thisEncoder = new MetalTransferCmdEnc(this, rawEnc);
 
             _passes.push_back(thisEncoder);
@@ -579,7 +718,7 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
 
 
 void MetalRenderCmdEnc::WaitForFenceBeforeStages(const common::sp<IFence>& fence, const PipelineStages& stages) {
-#if 0   
+#if 0
     resources.push_back(fence);
 
     auto fenceImpl = static_cast<FenceImpl*>(fence.get());
@@ -628,7 +767,7 @@ void MetalTransferCmdEnc::CopyBuffer(
     auto srcBufferImpl = static_cast<MetalBuffer*>(source->GetBufferObject());
     auto dstBufferImpl = static_cast<MetalBuffer*>(destination->GetBufferObject());
     [_mtlEnc    copyFromBuffer:srcBufferImpl->GetHandle()
-                  sourceOffset:source->GetShape().GetOffsetInBytes() 
+                  sourceOffset:source->GetShape().GetOffsetInBytes()
                       toBuffer:dstBufferImpl->GetHandle()
              destinationOffset:destination->GetShape().GetOffsetInBytes()
                           size:sizeInBytes
@@ -636,7 +775,7 @@ void MetalTransferCmdEnc::CopyBuffer(
 }
 
 
-                
+
     //TODO: should we adjust to resource views?
     void MetalTransferCmdEnc::CopyBufferToTexture(
         const common::sp<BufferRange>& source,
@@ -649,22 +788,22 @@ void MetalTransferCmdEnc::CopyBuffer(
         const Size3D& copySize
     ) {
 
-        
+
         resources.insert(source);
         resources.insert(destination);
 
         auto mtlBufSrc = static_cast<MetalBuffer*>(source->GetBufferObject());
         auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
 
-        [_mtlEnc   copyFromBuffer:(id<MTLBuffer>)mtlBufSrc->GetHandle() 
-                        sourceOffset:(NSUInteger)source->GetShape().GetOffsetInBytes() 
-                sourceBytesPerRow:(NSUInteger)sourceBytesPerRow 
-                sourceBytesPerImage:(NSUInteger)sourceBytesPerImage 
-                        sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)  
-                        toTexture:(id<MTLTexture>)mtlTexDst->GetHandle() 
-                    destinationSlice:(NSUInteger)dstBaseArrayLayer 
-                    destinationLevel:(NSUInteger)dstMipLevel 
-                destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
+        [_mtlEnc   copyFromBuffer:(id<MTLBuffer>)mtlBufSrc->GetHandle()
+                        sourceOffset:(NSUInteger)source->GetShape().GetOffsetInBytes()
+                sourceBytesPerRow:(NSUInteger)sourceBytesPerRow
+                sourceBytesPerImage:(NSUInteger)sourceBytesPerImage
+                        sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
+                        toTexture:(id<MTLTexture>)mtlTexDst->GetHandle()
+                    destinationSlice:(NSUInteger)dstBaseArrayLayer
+                    destinationLevel:(NSUInteger)dstMipLevel
+                destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z)
         ];
     }
 
@@ -678,21 +817,21 @@ void MetalTransferCmdEnc::CopyBuffer(
         std::uint32_t dstBytesPerImage,
         const Size3D& copySize
     ) {
-        
+
         resources.insert(source);
         resources.insert(destination);
 
         auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
         auto mtlBufDst = static_cast<MetalBuffer*>(destination->GetBufferObject());
 
-        [_mtlEnc    copyFromTexture:(id<MTLTexture>)mtlTexSrc->GetHandle() 
-                        sourceSlice:(NSUInteger)srcBaseArrayLayer 
-                        sourceLevel:(NSUInteger)srcMipLevel 
-                       sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)  
-                         sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)   
-                           toBuffer:(id<MTLBuffer>)mtlBufDst->GetHandle() 
-                  destinationOffset:(NSUInteger)destination->GetShape().GetOffsetInBytes() 
-             destinationBytesPerRow:(NSUInteger)dstBytesPerRow 
+        [_mtlEnc    copyFromTexture:(id<MTLTexture>)mtlTexSrc->GetHandle()
+                        sourceSlice:(NSUInteger)srcBaseArrayLayer
+                        sourceLevel:(NSUInteger)srcMipLevel
+                       sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)
+                         sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
+                           toBuffer:(id<MTLBuffer>)mtlBufDst->GetHandle()
+                  destinationOffset:(NSUInteger)destination->GetShape().GetOffsetInBytes()
+             destinationBytesPerRow:(NSUInteger)dstBytesPerRow
            destinationBytesPerImage:(NSUInteger)dstBytesPerImage
         ];
     }
@@ -731,15 +870,15 @@ void MetalTransferCmdEnc::CopyBuffer(
         auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
         auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
 
-        [_mtlEnc copyFromTexture:mtlTexSrc->GetHandle() 
-                     sourceSlice:(NSUInteger)srcBaseArrayLayer 
-                     sourceLevel:(NSUInteger)srcMipLevel 
-                    sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z) 
-                      sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth) 
+        [_mtlEnc copyFromTexture:mtlTexSrc->GetHandle()
+                     sourceSlice:(NSUInteger)srcBaseArrayLayer
+                     sourceLevel:(NSUInteger)srcMipLevel
+                    sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)
+                      sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
                        toTexture:mtlTexDst->GetHandle()
-                destinationSlice:(NSUInteger)dstBaseArrayLayer 
-                destinationLevel:(NSUInteger)dstMipLevel 
-               destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z) 
+                destinationSlice:(NSUInteger)dstBaseArrayLayer
+                destinationLevel:(NSUInteger)dstMipLevel
+               destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z)
         ];
 
     }
@@ -772,7 +911,7 @@ void MetalTransferCmdEnc::CopyBuffer(
             for (std::uint32_t level = 0; level < source->GetDesc().mipLevels; level++)
             {
                 std::uint32_t mipWidth, mipHeight, mipDepth;
-                
+
                 Helpers::GetMipDimensions(source->GetDesc(), level, mipWidth, mipHeight, mipDepth);
                 CopyTexture(
                     source, 0, 0, 0, level, 0,
@@ -826,5 +965,5 @@ void MetalTransferCmdEnc::CopyBuffer(
 
         [_mtlEnc generateMipmapsForTexture:texImpl->GetHandle()];
     }
-    
+
 } // namespace alloy::mtl

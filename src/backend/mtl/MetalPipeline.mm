@@ -30,7 +30,7 @@ MTLStencilOperation _AlToMtlStencilOp(const DepthStencilStateDescription::Stenci
 
 MTLCompareFunction _AlToMtlCompareOp(const ComparisonKind& from) {
     switch (from) {
-    
+
     case ComparisonKind::Never: return MTLCompareFunctionNever;
     case ComparisonKind::Always: return MTLCompareFunctionAlways;
     case ComparisonKind::Less: return MTLCompareFunctionLess;
@@ -44,7 +44,7 @@ MTLCompareFunction _AlToMtlCompareOp(const ComparisonKind& from) {
 
 MTLBlendOperation _AlToMtlBlendOp(const alloy::AttachmentStateDescription::BlendFunction& from){
     switch (from) {
-    
+
     case AttachmentStateDescription::BlendFunction::Add: return MTLBlendOperationAdd;
     case AttachmentStateDescription::BlendFunction::Subtract: return MTLBlendOperationSubtract;
     case AttachmentStateDescription::BlendFunction::ReverseSubtract: return MTLBlendOperationReverseSubtract;
@@ -74,9 +74,30 @@ MTLBlendFactor _AlToMtlBlendFactor(const AttachmentStateDescription::BlendFactor
     }
 }
 
+    MetalGfxPipelineBase::MetalGfxPipelineBase(
+        const common::sp<MetalDevice>& dev,
+        id<MTLRenderPipelineState> pipeline,
+        const common::sp<MetalResourceLayout>& layout
+    )
+        : mtlDev(dev)
+        , mtlPipelineState(pipeline)
+        , pipelineLayout(layout)
+    { }
+
+    MetalGfxPipelineBase::~MetalGfxPipelineBase() {
+        @autoreleasepool {
+            if(mtlPipelineState != nil)
+                [mtlPipelineState release];
+        }
+    }
+
+    common::sp<MetalResourceLayout> MetalGfxPipelineBase::GetPipelineLayout() const {
+        return pipelineLayout;
+    }
+
 
 common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
-    common::sp<MetalDevice>&& dev, 
+    common::sp<MetalDevice>&& dev,
     const alloy::GraphicsPipelineDescription& desc
 ){
     auto mtlDev = dev->GetHandle();
@@ -88,7 +109,6 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         MTLRenderPipelineDescriptor* pipelineDesc = [[MTLRenderPipelineDescriptor new] autorelease];
 
         // Rasterizer State
-        
         switch (desc.rasterizerState.cullMode) {
             case RasterizerStateDescription::FaceCullMode::Back: alPipelineObj->_rasterizerState.cullMode = MTLCullModeBack; break;
             case RasterizerStateDescription::FaceCullMode::Front: alPipelineObj->_rasterizerState.cullMode = MTLCullModeFront; break;
@@ -119,7 +139,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             auto shader = static_cast<ShaderImpl*>(sh.get());
 
             switch (shader->GetDesc().stage) {
-            
+
                 case IShader::Stage::Vertex:
                     pipelineDesc.vertexFunction = shader->GetFuncHandle();
                 break;
@@ -131,36 +151,37 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
                 case IShader::Stage::Geometry:
                 case IShader::Stage::TessellationControl:
                 case IShader::Stage::TessellationEvaluation:
-                case IShader::Stage::Compute: 
+                case IShader::Stage::Compute:
                 default:
                     //Unsupported shader stages
                     assert(false);
                 break;
             }
         }
-         
+
         alPipelineObj->_shaders = desc.shaderSet.shaders;
         */
         ///#TODO: cross validate pipeline resource layout and shader resources in DXIL
         MetalResourceLayout* mtlResLayout = nullptr;
         if(desc.resourceLayout){
             // Pipeline Layout
-            alPipelineObj->_pipelineLayout
+            alPipelineObj->pipelineLayout
                 = common::SPCast<MetalResourceLayout>(desc.resourceLayout);
-            mtlResLayout = alPipelineObj->_pipelineLayout.get();
+            mtlResLayout = alPipelineObj->pipelineLayout.get();
         }
-        
+
         {
             auto shader = desc.shaderSet.fragmentShader;
             auto& shaderDesc = shader->GetDesc();
-            auto fragLib = TranspileDXILShader(mtlDev,
+            auto fragStage = TranspileDXILShader(mtlDev,
                                                IShader::Stage::Fragment,
                                                mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
                                                shaderDesc.entryPoint, shader->GetByteCode());
+            auto fragLib = fragStage.lib;
             [fragLib autorelease];
             pipelineDesc.fragmentFunction = [fragLib newFunctionWithName:fragLib.functionNames.firstObject];
         }
-        
+
         {
             auto shader = desc.shaderSet.vertexShader;
             auto& shaderDesc = shader->GetDesc();
@@ -168,13 +189,13 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
                                                  desc.shaderSet.vertexLayouts,
                                                  mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
                                                  shaderDesc.entryPoint, shader->GetByteCode());
-            
+
             [vertLib.vertexLib autorelease];
             [vertLib.stageInLib autorelease];
-            
+
             pipelineDesc.vertexFunction =
             [vertLib.vertexLib newFunctionWithName:vertLib.vertexLib.functionNames.firstObject];
-            
+
             MTLLinkedFunctions* linkedFunctions = [[MTLLinkedFunctions new] autorelease];
             linkedFunctions.functions = @[
                 [vertLib.stageInLib newFunctionWithName:vertLib.stageInLib.functionNames.firstObject]
@@ -210,7 +231,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         unsigned attributeIdx = 0;
         for(unsigned slotIdx = 0; slotIdx < desc.shaderSet.vertexLayouts.size(); slotIdx++) {
 
-            auto& slotDesc = desc.shaderSet.vertexLayouts[slotIdx]; 
+            auto& slotDesc = desc.shaderSet.vertexLayouts[slotIdx];
             for(auto& element : slotDesc.elements) {
 
                 pipelineDesc.vertexDescriptor.attributes[attributeIdx].format = AlToMtlShaderDataType(element.format);
@@ -221,7 +242,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             }
 
             switch (slotDesc.instanceStepRate) {
-            case 0: 
+            case 0:
                 pipelineDesc.vertexDescriptor.layouts[slotIdx].stepFunction= MTLVertexStepFunctionPerVertex;
                 pipelineDesc.vertexDescriptor.layouts[slotIdx].stepRate = 1;
             break;
@@ -252,7 +273,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             pipelineDesc.colorAttachments[i].rgbBlendOperation = _AlToMtlBlendOp(attachment.colorFunction);
             pipelineDesc.colorAttachments[i].alphaBlendOperation = _AlToMtlBlendOp(attachment.alphaFunction);
 
-            pipelineDesc.colorAttachments[i].sourceRGBBlendFactor 
+            pipelineDesc.colorAttachments[i].sourceRGBBlendFactor
                 = _AlToMtlBlendFactor(attachment.sourceColorFactor, false);
             pipelineDesc.colorAttachments[i].sourceAlphaBlendFactor
                 = _AlToMtlBlendFactor(attachment.sourceAlphaFactor, true);
@@ -266,7 +287,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         if(desc.attachmentState.depthStencilAttachment.has_value()) {
             pipelineDesc.depthAttachmentPixelFormat
                 = alloy::mtl::AlToMtlPixelFormat(desc.attachmentState.depthStencilAttachment.value().depthStencilFormat);
-            pipelineDesc.stencilAttachmentPixelFormat 
+            pipelineDesc.stencilAttachmentPixelFormat
                 = alloy::mtl::AlToMtlPixelFormat(desc.attachmentState.depthStencilAttachment.value().depthStencilFormat);
         }
 
@@ -281,13 +302,13 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         case PrimitiveTopology::TriangleStrip:
             pipelineDesc.inputPrimitiveTopology = MTLPrimitiveTopologyClassTriangle;
             alPipelineObj->_mtlPrimitiveTopology = MTLPrimitiveTypeTriangleStrip; break;
-        case PrimitiveTopology::LineList: 
+        case PrimitiveTopology::LineList:
             pipelineDesc.inputPrimitiveTopology = MTLPrimitiveTopologyClassLine;
             alPipelineObj->_mtlPrimitiveTopology = MTLPrimitiveTypeLine; break;
         case PrimitiveTopology::LineStrip:
             pipelineDesc.inputPrimitiveTopology = MTLPrimitiveTopologyClassLine;
             alPipelineObj->_mtlPrimitiveTopology = MTLPrimitiveTypeLineStrip; break;
-        case PrimitiveTopology::PointList: 
+        case PrimitiveTopology::PointList:
             pipelineDesc.inputPrimitiveTopology = MTLPrimitiveTopologyClassPoint;
             alPipelineObj->_mtlPrimitiveTopology = MTLPrimitiveTypePoint; break;
             break;
@@ -300,7 +321,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             success = false;
             [error release];
         } else {
-            alPipelineObj->_mtlPipelineState = pipelineState;
+            alPipelineObj->mtlPipelineState = pipelineState;
         }
     }
 
@@ -313,15 +334,15 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             depthStencilDescriptor.depthCompareFunction = MTLCompareFunctionAlways;
         }
 
-        depthStencilDescriptor.depthWriteEnabled = depthStencilDescriptor.depthWriteEnabled;
+        depthStencilDescriptor.depthWriteEnabled = desc.depthStencilState.depthWriteEnabled;// depthStencilDescriptor.depthWriteEnabled;
 
         if(desc.depthStencilState.stencilTestEnabled) {
             auto& alDssDesc = desc.depthStencilState;
 
-            MTLStencilDescriptor* frontStencilDesc = [MTLStencilDescriptor new];
+            MTLStencilDescriptor* frontStencilDesc = [[MTLStencilDescriptor new] autorelease];
             depthStencilDescriptor.frontFaceStencil = frontStencilDesc;
 
-            MTLStencilDescriptor* backStencilDesc = [MTLStencilDescriptor new];
+            MTLStencilDescriptor* backStencilDesc = [[MTLStencilDescriptor new] autorelease];
             depthStencilDescriptor.backFaceStencil = backStencilDesc;
 
             frontStencilDesc.stencilFailureOperation = _AlToMtlStencilOp(alDssDesc.stencilFront.fail);
@@ -340,7 +361,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
             backStencilDesc.writeMask = alDssDesc.stencilWriteMask;
             //backStencilDesc.reference = vdDssDesc.stencilReference;
         }
-        
+
         alPipelineObj->_mtlDepthStencilState = [mtlDev newDepthStencilStateWithDescriptor:depthStencilDescriptor];
     }
 
@@ -348,34 +369,52 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
         delete alPipelineObj;
         return nullptr;
     }
-        
+
     return common::sp(alPipelineObj);
 
     }
 }
 
-MetalGfxPipeline::~MetalGfxPipeline(){
+    MetalGfxPipeline::MetalGfxPipeline(const common::sp<MetalDevice>& dev)
+        : MetalGfxPipelineBase(dev, nullptr, nullptr)
+        , _mtlDepthStencilState(nullptr)
+    { }
 
-}
+    MetalGfxPipeline::~MetalGfxPipeline(){
+        @autoreleasepool{
+            [_mtlDepthStencilState release];
+        }
+    }
 
-    common::sp<MetalResourceLayout> MetalGfxPipeline::GetPipelineLayout() const { return _pipelineLayout; }
-
+    MetalComputePipeline::MetalComputePipeline(const common::sp<MetalDevice>& dev)
+        : _mtlDev(dev)
+        , _mtlPipelineState(nil)
+        , _meta{}
+    { }
 
     MetalComputePipeline:: ~MetalComputePipeline() {
 
     }
 
+    common::sp<MetalResourceLayout> MetalComputePipeline::GetPipelineLayout() const {
+        return _pipelineLayout;
+    }
+
     common::sp<MetalComputePipeline> MetalComputePipeline::Make(
-        common::sp<MetalDevice>&& dev, 
+        common::sp<MetalDevice>&& dev,
         const alloy::ComputePipelineDescription& desc
     ) {
         return {};
     }
 
-    void MetalGfxPipeline::BindToCmdBuf(id<MTLRenderCommandEncoder> enc) {
+    void MetalGfxPipeline::BindToCmdBuf(id<MTLCommandEncoder> encBase) {
+        assert([encBase conformsToProtocol:@protocol(MTLRenderCommandEncoder)]);
+
+        id<MTLRenderCommandEncoder> enc = (id<MTLRenderCommandEncoder>)encBase;
+
         @autoreleasepool {
             // Bind pipeline state
-            [enc setRenderPipelineState:_mtlPipelineState];
+            [enc setRenderPipelineState:mtlPipelineState];
 
             // Bind primitive topology
 
@@ -396,5 +435,305 @@ MetalGfxPipeline::~MetalGfxPipeline(){
 
       // Bind resources
     }
-} // namespace alloy::mtl
 
+
+
+    common::sp<MetalMeshShaderPipeline> MetalMeshShaderPipeline::Make(
+        common::sp<MetalDevice> &&dev,
+        const alloy::MeshShaderPipelineDescription &desc
+    ) {
+        auto mtlDev = dev->GetHandle();
+        auto alPipelineObj = new MetalMeshShaderPipeline(std::move(dev));
+        bool success = true;
+        @autoreleasepool{
+            //Create MTLRenderPipelineState
+            auto* pipelineDesc = [[MTLMeshRenderPipelineDescriptor new] autorelease];
+
+            // Rasterizer State
+            //
+            // Rasterizer State
+
+            switch (desc.rasterizerState.cullMode) {
+                case RasterizerStateDescription::FaceCullMode::Back: alPipelineObj->_rasterizerState.cullMode = MTLCullModeBack; break;
+                case RasterizerStateDescription::FaceCullMode::Front: alPipelineObj->_rasterizerState.cullMode = MTLCullModeFront; break;
+                case RasterizerStateDescription::FaceCullMode::None:alPipelineObj->_rasterizerState.cullMode = MTLCullModeNone; break;
+            }
+
+            switch (desc.rasterizerState.frontFace) {
+                case RasterizerStateDescription::FrontFace::Clockwise:
+                    alPipelineObj->_rasterizerState.frontFace = MTLWindingClockwise; break;
+                case RasterizerStateDescription::FrontFace::CounterClockwise:
+                    alPipelineObj->_rasterizerState.frontFace = MTLWindingCounterClockwise; break;
+            }
+
+            switch (desc.rasterizerState.fillMode) {
+
+            case RasterizerStateDescription::PolygonFillMode::Solid:
+                alPipelineObj->_rasterizerState.fillMode = MTLTriangleFillModeFill; break;
+            case RasterizerStateDescription::PolygonFillMode::Wireframe:
+                alPipelineObj->_rasterizerState.fillMode = MTLTriangleFillModeLines; break;
+            }
+            //rsCI.lineWidth = 1.f;
+
+            ///#TODO: cross validate pipeline resource layout and shader resources in DXIL
+            MetalResourceLayout* mtlResLayout = nullptr;
+            if(desc.resourceLayout){
+                // Pipeline Layout
+                alPipelineObj->pipelineLayout
+                    = common::SPCast<MetalResourceLayout>(desc.resourceLayout);
+                mtlResLayout = alPipelineObj->pipelineLayout.get();
+            }
+
+
+            if(desc.taskShader) {
+                auto shader = desc.taskShader;
+                auto& shaderDesc = shader->GetDesc();
+                auto taskStage = TranspileDXILShader(mtlDev,
+                                                     IShader::Stage::Task,
+                                                     mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
+                                                     shaderDesc.entryPoint, shader->GetByteCode());
+                auto taskLib = taskStage.lib;
+                [taskLib autorelease];
+                pipelineDesc.objectFunction = [taskLib newFunctionWithName:taskLib.functionNames.firstObject];
+
+                auto& metaSrc = taskStage.reflectionData.as;
+                auto& metaDst = alPipelineObj->_meta;
+                metaDst.taskShaderWGSize[0] = metaSrc.num_threads[0];
+                metaDst.taskShaderWGSize[1] = metaSrc.num_threads[1];
+                metaDst.taskShaderWGSize[2] = metaSrc.num_threads[2];
+
+                metaDst.maxPayloadSize = metaSrc.max_payload_size_in_bytes;
+            }
+
+            {
+                auto shader = desc.meshShader;
+                auto& shaderDesc = shader->GetDesc();
+                auto meshStage = TranspileDXILShader(mtlDev,
+                                                     IShader::Stage::Mesh,
+                                                     mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
+                                                     shaderDesc.entryPoint, shader->GetByteCode());
+                auto meshLib = meshStage.lib;
+                [meshLib autorelease];
+                pipelineDesc.meshFunction = [meshLib newFunctionWithName:meshLib.functionNames.firstObject];
+
+                auto& metaSrc = meshStage.reflectionData.ms;
+                auto& metaDst = alPipelineObj->_meta;
+                metaDst.meshShaderWGSize[0] = metaSrc.num_threads[0];
+                metaDst.meshShaderWGSize[1] = metaSrc.num_threads[1];
+                metaDst.meshShaderWGSize[2] = metaSrc.num_threads[2];
+
+                assert(metaDst.maxPayloadSize == 0
+                    || metaDst.maxPayloadSize == metaSrc.max_payload_size_in_bytes);
+
+                metaDst.maxPayloadSize = metaSrc.max_payload_size_in_bytes;
+                metaDst.maxPrimitiveOutputCnt = metaSrc.max_primitive_output_count;
+                metaDst.maxVertOutputCnt = metaSrc.max_vertex_output_count;
+                switch(metaSrc.primitive_topology) {
+                    case IRMeshShaderPrimitiveTopologyPoint:
+                        metaDst.primType = MTLPrimitiveTopologyClassPoint;
+                        break;
+                    case IRMeshShaderPrimitiveTopologyLine:
+                        metaDst.primType = MTLPrimitiveTopologyClassLine;
+                        break;
+                    default:
+                        assert(false);
+                    case IRMeshShaderPrimitiveTopologyTriangle:
+                        metaDst.primType = MTLPrimitiveTopologyClassTriangle;
+                        break;
+                }
+            }
+
+            {
+                auto shader = desc.fragmentShader;
+                auto& shaderDesc = shader->GetDesc();
+                auto fragStage = TranspileDXILShader(mtlDev,
+                                                     IShader::Stage::Fragment,
+                                                     mtlResLayout ? mtlResLayout->GetHandle() : nullptr,
+                                                     shaderDesc.entryPoint, shader->GetByteCode());
+
+                [fragStage.lib autorelease];
+
+                pipelineDesc.fragmentFunction =
+                    [fragStage.lib newFunctionWithName:fragStage.lib.functionNames.firstObject];
+            }
+
+            // ... continue configuring the pipeline state descriptor...
+
+            // ViewportState
+            // Vulkan spec specifies that there must be 1 viewport no matter
+            // dynamic viewport state enabled or not...
+
+                // Setup the output pixel format to match the pixel format of the metal kit view
+                //pipelineDescriptor.colorAttachments[0].pixelFormat = pixelFormat;
+                //pipelineDescriptor
+
+
+            // Multisample
+            switch(desc.attachmentState.sampleCount) {
+                default:
+                case SampleCount::x1:  pipelineDesc.rasterSampleCount = 1; break;
+                case SampleCount::x2:  pipelineDesc.rasterSampleCount = 2; break;
+                case SampleCount::x4:  pipelineDesc.rasterSampleCount = 4; break;
+                case SampleCount::x8:  pipelineDesc.rasterSampleCount = 8; break;
+                case SampleCount::x16: pipelineDesc.rasterSampleCount = 16; break;
+                case SampleCount::x32: pipelineDesc.rasterSampleCount = 32; break;
+            }
+            // Attachment States
+            pipelineDesc.alphaToCoverageEnabled = desc.attachmentState.alphaToCoverageEnabled;
+            for(unsigned i = 0; i < desc.attachmentState.colorAttachments.size(); i++) {
+                auto& attachment = desc.attachmentState.colorAttachments[i];
+                pipelineDesc.colorAttachments[i].pixelFormat = alloy::mtl::AlToMtlPixelFormat(attachment.format);
+
+                if(attachment.colorWriteMask.r) pipelineDesc.colorAttachments[i].writeMask |= MTLColorWriteMaskRed;
+                if(attachment.colorWriteMask.g) pipelineDesc.colorAttachments[i].writeMask |= MTLColorWriteMaskGreen;
+                if(attachment.colorWriteMask.b) pipelineDesc.colorAttachments[i].writeMask |= MTLColorWriteMaskBlue;
+                if(attachment.colorWriteMask.a) pipelineDesc.colorAttachments[i].writeMask |= MTLColorWriteMaskAlpha;
+
+
+                pipelineDesc.colorAttachments[i].blendingEnabled = attachment.blendEnabled;
+                pipelineDesc.colorAttachments[i].rgbBlendOperation = _AlToMtlBlendOp(attachment.colorFunction);
+                pipelineDesc.colorAttachments[i].alphaBlendOperation = _AlToMtlBlendOp(attachment.alphaFunction);
+
+                pipelineDesc.colorAttachments[i].sourceRGBBlendFactor
+                    = _AlToMtlBlendFactor(attachment.sourceColorFactor, false);
+                pipelineDesc.colorAttachments[i].sourceAlphaBlendFactor
+                    = _AlToMtlBlendFactor(attachment.sourceAlphaFactor, true);
+
+                pipelineDesc.colorAttachments[i].destinationRGBBlendFactor
+                    = _AlToMtlBlendFactor(attachment.destinationColorFactor, false);
+                pipelineDesc.colorAttachments[i].destinationAlphaBlendFactor
+                    = _AlToMtlBlendFactor(attachment.destinationAlphaFactor, true);
+            }
+
+            if(desc.attachmentState.depthStencilAttachment.has_value()) {
+                pipelineDesc.depthAttachmentPixelFormat
+                    = alloy::mtl::AlToMtlPixelFormat(desc.attachmentState.depthStencilAttachment.value().depthStencilFormat);
+                pipelineDesc.stencilAttachmentPixelFormat
+                    = alloy::mtl::AlToMtlPixelFormat(desc.attachmentState.depthStencilAttachment.value().depthStencilFormat);
+            }
+
+            alPipelineObj->_blendColor = desc.attachmentState.blendConstant;
+
+            // Input Assembly
+            // Mesh pipeline specific
+            //pipelineDesc.maxTotalThreadgroupsPerMeshGrid;
+            //pipelineDesc.maxTotalThreadsPerMeshThreadgroup;
+            //pipelineDesc.maxTotalThreadsPerObjectThreadgroup;
+            //pipelineDesc.maxVertexAmplificationCount;
+            //pipelineDesc.payloadMemoryLength;
+
+
+            NSError* error = nullptr;
+            auto pipelineState = [mtlDev newRenderPipelineStateWithMeshDescriptor:pipelineDesc
+                                                                          options:MTLPipelineOptionNone
+                                                                       reflection:nil
+                                                                            error:&error];
+
+            if(error != nullptr) {
+                success = false;
+                [error release];
+            } else {
+                alPipelineObj->mtlPipelineState = pipelineState;
+            }
+
+
+            // Depth Stencil State
+            if(success) {
+                MTLDepthStencilDescriptor* depthStencilDescriptor = [[MTLDepthStencilDescriptor new] autorelease];
+                if(desc.depthStencilState.depthTestEnabled) {
+                    depthStencilDescriptor.depthCompareFunction = _AlToMtlCompareOp(desc.depthStencilState.depthComparison);
+                } else {
+                    depthStencilDescriptor.depthCompareFunction = MTLCompareFunctionAlways;
+                }
+
+                depthStencilDescriptor.depthWriteEnabled = depthStencilDescriptor.depthWriteEnabled;
+
+                if(desc.depthStencilState.stencilTestEnabled) {
+                    auto& alDssDesc = desc.depthStencilState;
+
+                    MTLStencilDescriptor* frontStencilDesc = [MTLStencilDescriptor new];
+                    depthStencilDescriptor.frontFaceStencil = frontStencilDesc;
+
+                    MTLStencilDescriptor* backStencilDesc = [MTLStencilDescriptor new];
+                    depthStencilDescriptor.backFaceStencil = backStencilDesc;
+
+                    frontStencilDesc.stencilFailureOperation = _AlToMtlStencilOp(alDssDesc.stencilFront.fail);
+                    frontStencilDesc.depthStencilPassOperation = _AlToMtlStencilOp(alDssDesc.stencilFront.pass);
+                    frontStencilDesc.depthFailureOperation = _AlToMtlStencilOp(alDssDesc.stencilFront.depthFail);
+                    frontStencilDesc.stencilCompareFunction = _AlToMtlCompareOp(alDssDesc.stencilFront.comparison);
+                    frontStencilDesc.readMask = alDssDesc.stencilReadMask;
+                    frontStencilDesc.writeMask = alDssDesc.stencilWriteMask;
+                    //frontStencilDesc.reference = vdDssDesc.stencilReference;
+
+                    backStencilDesc.stencilFailureOperation = _AlToMtlStencilOp(alDssDesc.stencilBack.fail);
+                    backStencilDesc.depthStencilPassOperation = _AlToMtlStencilOp(alDssDesc.stencilBack.pass);
+                    backStencilDesc.depthFailureOperation = _AlToMtlStencilOp(alDssDesc.stencilBack.depthFail);
+                    backStencilDesc.stencilCompareFunction = _AlToMtlCompareOp(alDssDesc.stencilBack.comparison);
+                    backStencilDesc.readMask = alDssDesc.stencilReadMask;
+                    backStencilDesc.writeMask = alDssDesc.stencilWriteMask;
+                    //backStencilDesc.reference = vdDssDesc.stencilReference;
+                }
+
+                alPipelineObj->_mtlDepthStencilState = [mtlDev newDepthStencilStateWithDescriptor:depthStencilDescriptor];
+
+
+                if(!success) {
+                    delete alPipelineObj;
+                    return nullptr;
+                }
+
+                return common::sp(alPipelineObj);
+            }
+        }
+        return nullptr;
+    }
+
+
+    MetalMeshShaderPipeline::MetalMeshShaderPipeline(const common::sp<MetalDevice>& dev)
+        : MetalGfxPipelineBase(dev, nullptr, nullptr)
+        , _mtlDepthStencilState(nullptr)
+        , _meta{}
+    { }
+
+    MetalMeshShaderPipeline::~MetalMeshShaderPipeline() {
+
+    }
+
+    void MetalMeshShaderPipeline::BindToCmdBuf(id<MTLCommandEncoder> encBase) {
+        assert([encBase conformsToProtocol:@protocol(MTLRenderCommandEncoder)]);
+        auto enc = (id<MTLRenderCommandEncoder>)encBase;
+        @autoreleasepool {
+            // Bind pipeline state
+            [enc setRenderPipelineState:mtlPipelineState];
+
+            // Bind primitive topology
+
+            // Bind rasterizer state
+            [enc setFrontFacingWinding:_rasterizerState.frontFace];
+            [enc setCullMode:_rasterizerState.cullMode];
+            [enc setTriangleFillMode:_rasterizerState.fillMode];
+
+            // Bind blend color
+            [enc setBlendColorRed:_blendColor.r
+                            green:_blendColor.g
+                             blue:_blendColor.b
+                            alpha:_blendColor.a];
+
+            // Bind depth stencil state
+            [enc setDepthStencilState:_mtlDepthStencilState];
+        }
+
+      // Bind resources
+    }
+
+#pragma region ComputePipeline
+
+    void MetalComputePipeline::BindToCmdBuf(id<MTLComputeCommandEncoder> enc) {
+
+        @autoreleasepool{
+            [enc setComputePipelineState:_mtlPipelineState];
+        }
+    }
+
+#pragma endregion
+} // namespace alloy::mtl

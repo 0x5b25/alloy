@@ -8,10 +8,12 @@ if(WIN32)
     set(HOST_COMPILER "msvc")
     set(TARGET_OS ${HOST_OS})
     set(TARGET_COMPILER ${HOST_COMPILER})
+    set(HOST_ARCHIVE_EXT ".7z")
 elseif(APPLE)
     set(HOST_OS macos)
     set(HOST_COMPILER "appleclang")
     set(TARGET_COMPILER ${HOST_COMPILER})
+    set(HOST_ARCHIVE_EXT ".tar.xz")
 
     if(IOS)
         set(TARGET_OS ios)
@@ -26,11 +28,14 @@ elseif(UNIX)
     set(HOST_COMPILER "gcc")
     set(TARGET_OS ${HOST_OS})
     set(TARGET_COMPILER ${HOST_COMPILER})
+    set(HOST_ARCHIVE_EXT ".tar.xz")
 else()
     message(FATAL_ERROR "-unknown platform")
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} CMAKE_SYSTEM_PROCESSOR_lower)
+
+if(CMAKE_SYSTEM_PROCESSOR_lower MATCHES "arm64|aarch64")
     set(HOST_CPU_ARCH "arm64")
 else()
     set(HOST_CPU_ARCH "x86_64")
@@ -48,11 +53,14 @@ else()
     set(TARGET_CPU_ARCH ${HOST_CPU_ARCH})
 endif()
 
+message(STATUS "Host CPU is ${HOST_CPU_ARCH}")
+message(STATUS "Target CPU is ${TARGET_CPU_ARCH}")
+
 set(DXC_STATC_TARGET_TRIPLE ${TARGET_CPU_ARCH}-${TARGET_OS}-${TARGET_COMPILER})
 set(DXC_STATC_HOST_TRIPLE ${HOST_CPU_ARCH}-${HOST_OS}-${HOST_COMPILER})
 
-set(DXC_STATIC_LIB_NAME "libdxcompiler-${DXC_STATC_TARGET_TRIPLE}.7z")
-set(DXC_EXECUTABLE_NAME "dxc-${DXC_STATC_TARGET_TRIPLE}.7z")
+set(DXC_STATIC_LIB_NAME "libdxcompiler-${DXC_STATC_TARGET_TRIPLE}${HOST_ARCHIVE_EXT}")
+set(DXC_EXECUTABLE_NAME "dxc-${DXC_STATC_TARGET_TRIPLE}${HOST_ARCHIVE_EXT}")
 
 set(DXC_STATIC_LIB_URL "${DXC_STATIC_BASE_URL}/${DXC_STATIC_LIB_NAME}")
 set(DXC_EXECUTABLE_URL "${DXC_STATIC_BASE_URL}/${DXC_EXECUTABLE_NAME}")
@@ -66,7 +74,7 @@ FetchContent_Declare(
     DXC_EXECUTABLE
     URL ${DXC_EXECUTABLE_URL})
 
-    
+
 message(STATUS "Fetching libdxcompiler ${DXC_STATIC_VERSION} from ${DXC_STATIC_LIB_URL}...")
 FetchContent_MakeAvailable(DXC_STATIC_LIB)
 
@@ -84,7 +92,7 @@ endif()
 
 
 add_library(dxcompiler STATIC IMPORTED GLOBAL)
-set_target_properties(dxcompiler 
+set_target_properties(dxcompiler
     PROPERTIES
         IMPORTED_LOCATION_DEBUG ${DXC_STATIC_LIB_DIR}/lib/Debug/${DXC_STATIC_LIB_BINARY_NAME}
         IMPORTED_LOCATION ${DXC_STATIC_LIB_DIR}/lib/Release/${DXC_STATIC_LIB_BINARY_NAME}

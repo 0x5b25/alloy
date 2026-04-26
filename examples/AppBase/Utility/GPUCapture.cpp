@@ -2,10 +2,10 @@
 
 #include <iostream>
 
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 
 #ifdef USE_PIX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <WinPixEventRuntime/pix3.h>
 #else
 #include "./renderdoc_app.h"
@@ -26,14 +26,14 @@ static PFN_PIXEndCapture pfnPIXEndCapture = nullptr;
 void SetupCaptureEvent(common::sp<IGraphicsDevice> gd) {
     auto hPixRuntimeDll = LoadLibraryA("WinPixEventRuntime.dll");
     if(hPixRuntimeDll) {
-        pfnPIXBeginCapture2 
+        pfnPIXBeginCapture2
             = (PFN_PIXBeginCapture2)GetProcAddress(hPixRuntimeDll, "PIXBeginCapture2");
-        pfnPIXEndCapture 
+        pfnPIXEndCapture
             = (PFN_PIXEndCapture)GetProcAddress(hPixRuntimeDll, "PIXEndCapture");
 
         if (pfnPIXBeginCapture2 && pfnPIXEndCapture) {
             std::cout << "PIX debug enabled.\n";
-        }  
+        }
     }
 
 }
@@ -87,7 +87,7 @@ void SetupCaptureEvent(common::sp<IGraphicsDevice> gd) {
 
     if (rdoc_api) {
         std::cout << "RenderDoc debug enabled.\n";
-    }    
+    }
 
     // To start a frame capture, call StartFrameCapture.
     // You can specify NULL, NULL for the device to capture on if you have only one device and
@@ -116,4 +116,3 @@ void StartCapture() { }
 void StopCapture() { }
 
 #endif
-

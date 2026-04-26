@@ -99,7 +99,7 @@ float4 PSMain(PS_INPUT input) : SV_Target
 
 ImGuiAlloyBackend::ImGuiAlloyBackend(
     const ImGui_ImplAlloy_InitInfo& initInfo
-) 
+)
     : gd(initInfo.device)
     , _allocator(gd)
 {
@@ -137,7 +137,7 @@ void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
                                            common::sp<alloy::BufferRange> vertexBuffer,
                                            common::sp<alloy::BufferRange> indexBuffer
 ) {
-    
+
     // Setup viewport
     alloy::Viewport vp[] = {{
         .x = 0,
@@ -179,7 +179,7 @@ void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
     }
 
     //texture_handle.ptr = (UINT64)pcmd->GetTexID();
-    
+
     //command_list->SetGraphicsResourceSet(fontRS);
     //command_list->SetGraphicsRoot32BitConstants(0, 16, &vertex_constant_buffer, 0);
 
@@ -191,7 +191,7 @@ void ImGuiAlloyBackend::_SetupRenderState( ImDrawData* draw_data,
 
 
 void ImGuiAlloyBackend::RenderDrawData(
-    ImDrawData* draw_data, 
+    ImDrawData* draw_data,
     //const alloy::common::sp<alloy::IRenderTarget>& rt,
     alloy::IRenderCommandEncoder& renderPass
 ) {
@@ -214,7 +214,7 @@ void ImGuiAlloyBackend::RenderDrawData(
     // Create and grow vertex/index buffers if needed
     auto requiredVertBufferSize = draw_data->TotalVtxCount * sizeof(ImDrawVert);
     auto vertBuffer = _allocator.Allocate(requiredVertBufferSize, 4);
-    
+
     //if (!vertBuffer || vertBuffer->GetDesc().sizeInBytes < requiredVertBufferSize)
     //{
     //    vertBuffer.reset();
@@ -281,11 +281,12 @@ void ImGuiAlloyBackend::RenderDrawData(
     // (Because we merged all buffers into a single one, we maintain our own offset into them)
     int global_vtx_offset = 0;
     int global_idx_offset = 0;
-    
-    
+
+
     ImVec2 clip_off = draw_data->DisplayPos;         // (0,0) unless using multi-viewports
     ImVec2 clip_scale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
-    
+    //ImVec2 clip_scale = {1, 1};
+
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList* draw_list = draw_data->CmdLists[n];
@@ -319,10 +320,10 @@ void ImGuiAlloyBackend::RenderDrawData(
 
                 // Apply scissor/clipping rectangle
                 alloy::Rect r[] = {{
-                    clip_min.x,
-                    clip_min.y,
-                    (clip_max.x - clip_min.x),
-                    (clip_max.y - clip_min.y)}};
+                    (uint32_t)clip_min.x,
+                    (uint32_t)clip_min.y,
+                    (uint32_t)(clip_max.x - clip_min.x),
+                    (uint32_t)(clip_max.y - clip_min.y)}};
                 renderPass.SetScissorRects(r);
 
                 // Bind texture, Draw
@@ -434,6 +435,10 @@ void ImGuiAlloyBackend::_CreateRenderPipeline(const ImGui_ImplAlloy_InitInfo& in
         };
         desc.colorAttachments[0].format = initInfo.renderTargetFormat;
         //desc.depthStencilAttachment
+        
+        if(initInfo.depthStencilFormat != alloy::PixelFormat::Unknown) {
+            desc.depthStencilAttachment = {.depthStencilFormat = initInfo.depthStencilFormat};
+        }
     }
 
     // Create the rasterizer state
@@ -459,14 +464,14 @@ void ImGuiAlloyBackend::_CreateRenderPipeline(const ImGui_ImplAlloy_InitInfo& in
         //desc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
         desc.depthComparison = ComparisonKind::Always;
         desc.stencilTestEnabled = false;
-        desc.stencilFront.fail = desc.stencilFront.depthFail = desc.stencilFront.pass 
+        desc.stencilFront.fail = desc.stencilFront.depthFail = desc.stencilFront.pass
             = DepthStencilStateDescription::StencilBehavior::Operation::Keep;
         desc.stencilFront.comparison = ComparisonKind::Always;
         desc.stencilBack = desc.stencilFront;
     }
 
     pipeline = gd->GetResourceFactory().CreateGraphicsPipeline(psoDesc);
-    
+
     assert(pipeline);
 }
 
@@ -648,7 +653,7 @@ void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
         fontRS = gd->GetResourceFactory().CreateResourceSet(rsDesc);
     }
 
-    
+
 
     // Store our identifier
     io.Fonts->SetTexID((ImTextureID)fontRS.get());
@@ -735,10 +740,10 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         // Store your data, and acknowledge creation.
         tex->SetTexID((ImTextureID)resSet.release()); // Specify backend-specific ImTextureID identifier which will be stored in ImDrawCmd.
         }
-        
+
         // We don't set tex->Status to ImTextureStatus_OK to let the code fallthrough below.
         //tex->SetStatus(ImTextureStatus_OK);
-        
+
     }
     [[fallthrough]];
     case ImTextureStatus_WantUpdates:
@@ -776,7 +781,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         auto upload_buffer_size = upload_pitch_dst * upload_h;
 
         auto copyBuffer = _allocator.Allocate(upload_buffer_size, 256);
-        
+
         auto copyDst = copyBuffer->MapToCPU();
         // Copy to upload buffer
         for (int y = 0; y < upload_h; y++)
@@ -784,7 +789,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
 
         copyBuffer->UnMap();
 
-        
+
         StartCapture();
 
         auto cmdQ = gd->GetGfxCommandQueue();
@@ -793,7 +798,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         auto& pass = cmdList->BeginTransferPass();
 
         pass.CopyBufferToTexture(
-            copyBuffer, upload_pitch_dst, upload_buffer_size, 
+            copyBuffer, upload_pitch_dst, upload_buffer_size,
             pAlloyTex, {upload_x, upload_y, 0}, texViewDesc.baseMipLevel, texViewDesc.baseArrayLayer,
             {upload_w, upload_h, 1}
         );
@@ -808,7 +813,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         StopCapture();
 
         _submitFence->WaitFromCPU(_submitFenceValue);
-        
+
         // Acknowledge update
         tex->SetStatus(ImTextureStatus_OK);
     } break;
@@ -816,7 +821,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         // If you use staged rendering and have in-flight renders, changed tex->UnusedFrames > 0 check to higher count as needed e.g. > 2
         if (tex->UnusedFrames > 0)
             _DestroyTexture(tex);
-        
+
     break;
     }
 }
@@ -887,5 +892,3 @@ void ImGui_ImplAlloy_RenderDrawData(ImDrawData* draw_data, alloy::IRenderCommand
     ImGuiAlloyBackend* bd = ImGui_ImplAlloy_GetBackendData();
     bd->RenderDrawData(draw_data, renderPass);
 }
-
-

@@ -4,6 +4,10 @@ project(alloy_example
     DESCRIPTION "Example app for alloy basic functionalities"
     LANGUAGES C CXX)
 
+if(APPLE)
+    enable_language(OBJC)
+    enable_language(OBJCXX)
+endif()
 
 include(cmake/FetchDXC.cmake)
 include(cmake/CompileHLSL.cmake)

@@ -88,7 +88,7 @@ namespace alloy::mtl {
         IRObject* pDXIL = IRObjectCreateFromDXIL(dxilFragmentBytecode,
                                                  dxilFragmentSize,
                                                  IRBytecodeOwnershipNone);
-                                                 
+
         IRObject* pOutIR = IRCompilerAllocCompileAndLink(pCompiler,
                                                          NULL,
                                                          pDXIL,
@@ -132,13 +132,13 @@ namespace alloy::mtl {
 
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
-        
-        
+
+
         std::vector<IRDescriptorRange1> combinedShaderResDescTableRanges;
         std::vector<IRDescriptorRange1> samplerDescTableRanges;
-        
+
         for(unsigned i = 0; i < desc.shaderResources.size(); i++) {
-            
+
             auto& elem = desc.shaderResources[i];
             IRDescriptorRange1* pDescRange = nullptr;
 
@@ -157,7 +157,7 @@ namespace alloy::mtl {
                     pDescRange->RangeType = IRDescriptorRangeTypeUAV;
                 else
                     pDescRange->RangeType = IRDescriptorRangeTypeSRV;
-                
+
                 //pDescRange->Flags = IRDescriptorRangeFlagDataStatic;
                 combinedShaderResAccess |= elem.stages;
             }break;
@@ -172,10 +172,10 @@ namespace alloy::mtl {
             pDescRange->RegisterSpace = elem.bindingSpace; // space 0. can usually be zero
             pDescRange->NumDescriptors = elem.bindingCount;
             pDescRange->OffsetInDescriptorsFromTableStart = IRDescriptorRangeOffsetAppend;// this appends the range to the end of the root signature descriptor tables
-        
+
         }
-        
-        
+
+
         std::vector<IRRootParameter1> rootParams;
         //auto rootParamSize = sizeof(IRDescriptorTableEntry);
         //SetBytes in metal command encoder is limited to 4KB max
@@ -211,7 +211,7 @@ namespace alloy::mtl {
             rootParam.DescriptorTable.NumDescriptorRanges = samplerDescTableRanges.size();
             rootParam.DescriptorTable.pDescriptorRanges = samplerDescTableRanges.data();
             rootParam.ShaderVisibility = IRShaderVisibilityAll;
-            
+
             _rootSigSizeInBytes += 8;
             _descHeapCount++;
         }
@@ -234,9 +234,9 @@ namespace alloy::mtl {
             _rootSigSizeInBytes += rootConsts.sizeInDwords * 4;
         }
 
-        
+
         IRVersionedRootSignatureDescriptor rsDesc {};
-        
+
         rsDesc.version = IRRootSignatureVersion_1_1;
         rsDesc.desc_1_1.NumParameters = rootParams.size();
         rsDesc.desc_1_1.pParameters = rootParams.data();
@@ -244,7 +244,7 @@ namespace alloy::mtl {
                          (   IRRootSignatureFlagAllowInputAssemblerInputLayout
                           | IRRootSignatureFlagAllowStreamOutput);
 
-        
+
         IRError* pRootSigError = nullptr;
         _rootSig = IRRootSignatureCreateFromDescriptor( &rsDesc, &pRootSigError );
         if ( !_rootSig )
@@ -257,7 +257,7 @@ namespace alloy::mtl {
 
 
     MetalResourceLayout::~MetalResourceLayout() {
-        
+
         IRRootSignatureDestroy( _rootSig );
     }
 
@@ -269,11 +269,11 @@ namespace alloy::mtl {
         auto layout = common::PtrCast<MetalResourceLayout>(desc.layout.get());
         auto dev = layout->_dev;
         auto& layoutDesc = layout->GetDesc();
-        
+
         //Calculate total buffer sizes
         std::uint32_t combinedResCnt = 0, samplerCnt = 0;
-        for(auto& elem : layoutDesc.shaderResources) {
-            switch (elem.kind)
+        for(auto& elemDesc : layoutDesc.shaderResources) {
+            switch (elemDesc.kind)
             {
             case IBindableResource::ResourceKind::UniformBuffer :
             case IBindableResource::ResourceKind::StorageBuffer :
@@ -285,42 +285,42 @@ namespace alloy::mtl {
             }break;
             }
         }
-        
+
         auto combinedResHeapSize = combinedResCnt * sizeof(IRDescriptorTableEntry);
         auto samplerHeapSize = samplerCnt * sizeof(IRDescriptorTableEntry);
-        
+
         uint64_t argBufferSize = combinedResHeapSize + samplerHeapSize;
-        
+
         @autoreleasepool {
-            
+
             MTLResourceOptions mtlDesc{};
-            
+
             mtlDesc |= MTLResourceStorageModeShared;
             //| MTLResourceCPUCacheModeDefaultCache;
-            
-            
+
+
             //mtlDesc |= MTLResourceHazardTrackingModeTracked;
-            
+
             _argBuf = [dev->GetHandle() newBufferWithLength:argBufferSize options:mtlDesc];
             [_argBuf setLabel:@"_ResHeaps"];
-            
+
             auto baseAddr = [_argBuf gpuAddress];
-            
+
             auto heapArgAddr = (uint64_t*)[_argBuf contents];
             auto heapAddr = (uint64_t)baseAddr;
-            
+
             if(combinedResHeapSize > 0) {
                 _shaderResHeapGPUVA = heapAddr;
             } else {
                 _shaderResHeapGPUVA = 0;
             }
-            
+
             if(samplerHeapSize > 0) {
                 _samplerHeapGPUVA = heapAddr + combinedResHeapSize;
             } else {
                 _samplerHeapGPUVA = 0;
             }
-            
+
             //MTL::Buffer* pTextureTable = _pScratch->newBuffer(sizeof(IRDescriptorTableEntry), MTL::ResourceStorageModeShared)->autorelease();
             //auto* pEntry               = (IRDescriptorTableEntry*)pTextureTable->contents();
             //IRDescriptorTableSetTexture(pEntry, _pTexture, 0, 0);
@@ -331,14 +331,14 @@ namespace alloy::mtl {
             auto entryStartCpuAddr = ((uint64_t)[_argBuf contents]);
             auto* pCombinedResEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr);
             auto* pSamplerEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr + combinedResHeapSize);
-            
-            
+
+
             for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
-                
+
                 auto& elemDesc = layoutDesc.shaderResources[i];
                 for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
                     auto& elem = desc.boundResources[resIdx++];
-                
+
                     switch (elemDesc.kind)
                     {
                         case IBindableResource::ResourceKind::UniformBuffer :
@@ -348,10 +348,10 @@ namespace alloy::mtl {
                             auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
 
                             auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
-                            auto byteCnt = range->GetShape().elementCount;
+                            auto byteCnt = range->GetShape().GetSizeInBytes();
 
                             //DX12 requires CBVs have minimal alignment of 256Bytes
-                            assert(byteCnt % 256 == 0);
+                            assert(elemDesc.kind != IBindableResource::ResourceKind::UniformBuffer || byteCnt % 256 == 0);
 
                             IRDescriptorTableSetBuffer(pCombinedResEntry,
                                                        baseGPUAddr + range->GetShape().offsetInElements,
@@ -380,15 +380,10 @@ namespace alloy::mtl {
                         }break;
                     }
                 }
-                
             }
-            
-            
         }
     }
 
-
-    
     MetalResourceSet::~MetalResourceSet() {
         @autoreleasepool {
             [_argBuf release];
@@ -397,23 +392,23 @@ namespace alloy::mtl {
 
 
     std::vector<id<MTLResource>> MetalResourceSet::GetUseResources() const {
-        
+
         std::vector<id<MTLResource>> useRes {_argBuf};
-        
+
         auto layout = common::PtrCast<MetalResourceLayout>(description.layout.get());
         auto dev = layout->_dev;
         auto& layoutDesc = layout->GetDesc();
-        
+
         for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
-            
+
             auto& elemDesc = layoutDesc.shaderResources[i];
             auto& elem = description.boundResources[i];
-            
+
             switch (elemDesc.kind)
             {
                 case IBindableResource::ResourceKind::UniformBuffer :
                 case IBindableResource::ResourceKind::StorageBuffer : {
-                    
+
                     auto* range = PtrCast<BufferRange>(elem.get());
                     auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
                     useRes.push_back(rangedMtlBuffer->GetHandle());
@@ -423,17 +418,14 @@ namespace alloy::mtl {
                     auto* mtlTex = PtrCast<MetalTexture>(texView->GetTextureObject().get());
                     useRes.push_back(mtlTex->GetHandle());
                 }break;
-                    
+
                 case IBindableResource::ResourceKind::Sampler : {
-                    
+
                     //auto* sampler = PtrCast<MetalSampler>(elem.get());
                     //useRes.push_back(sampler->GetHandle());
-                    
                 }break;
             }
-            
         }
-        
         return useRes;
     }
 }

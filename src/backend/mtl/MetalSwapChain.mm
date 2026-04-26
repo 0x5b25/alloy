@@ -29,7 +29,7 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
         swapChain.device = dev->GetHandle();
         //swapChain.opaque = true;
         //swapChain.pixelFormat = VdToMtlPixelFormat(desc.colorFormat);
-        swapChain.pixelFormat = MTLPixelFormatRGBA8Unorm;
+        //swapChain.pixelFormat = MTLPixelFormatRGBA8Unorm;
         //Metal specs say that drawable count can only be 2 or 3
         swapChain.maximumDrawableCount = desc.backBufferCnt;
         swapChain.drawableSize = {(float)desc.initialWidth, (float)desc.initialHeight};
@@ -192,7 +192,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
         switch([rawTex textureType]) {
                 
             case MTLTextureType1D: texDesc.type = ITexture::Description::Type::Texture1D; break;
-            case MTLTextureType2D: texDesc.type = ITexture::Description::Type::Texture1D; break;
+            case MTLTextureType2D: texDesc.type = ITexture::Description::Type::Texture2D; break;
             case MTLTextureType3D: texDesc.type = ITexture::Description::Type::Texture3D; break;
             default:
                 
