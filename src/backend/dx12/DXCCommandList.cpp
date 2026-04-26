@@ -481,10 +481,10 @@ namespace alloy::dxc
     }
 
 
-    DXCResourceLayout* DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline() {
-        CHK_GFX_PIPELINE_SET();
-        return GetPipeline()->GetPipelineLayout().get();
-    }
+    //DXCResourceLayout* DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline() {
+    //    CHK_GFX_PIPELINE_SET();
+    //    return GetPipeline()->GetPipelineLayout().get();
+    //}
 
     void DXCRenderCmdEnc::EndPass() {
         DXCCmdEncBase::EndPass();
@@ -678,9 +678,9 @@ namespace alloy::dxc
 
 
     void DXCRenderCmdEnc::SetGraphicsResourceSet(const common::sp<IResourceSet>& rs){
-#ifdef VLD_DEBUG
-        GetResourceLayoutForCurrentPipeline();
-#endif
+//#ifdef VLD_DEBUG
+//        GetResourceLayoutForCurrentPipeline();
+//#endif
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
@@ -710,7 +710,7 @@ namespace alloy::dxc
     ) {
         //assert(slot < _resourceSets.size());
 
-        auto dxcLayout = GetResourceLayoutForCurrentPipeline();
+        auto dxcLayout = currentPipeline->GetPipelineLayout();
 
         auto argBase = dxcLayout->GetHeapCount();
 
@@ -907,14 +907,14 @@ namespace alloy::dxc
 
     }
 
-    DXCResourceLayout* DXCRenderCmdEnc6::GetResourceLayoutForCurrentPipeline() {
-        assert(currentPipeline != nullptr);
-        if(IsMeshShaderPipeline(*currentPipeline)) {
-            return static_cast<DXCMeshShaderPipeline*>(currentPipeline)->GetPipelineLayout().get();
-        }
-
-        return DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline();
-    }
+   //DXCResourceLayout* DXCRenderCmdEnc6::GetResourceLayoutForCurrentPipeline() {
+   //    assert(currentPipeline != nullptr);
+   //    if(IsMeshShaderPipeline(*currentPipeline)) {
+   //        return static_cast<DXCMeshShaderPipeline*>(currentPipeline)->GetPipelineLayout().get();
+   //    }
+   //
+   //    return DXCRenderCmdEnc::GetResourceLayoutForCurrentPipeline();
+   //}
 
     void DXCRenderCmdEnc6::SetPipeline(const common::sp<IMeshShaderPipeline>& pipeline) {
 
@@ -955,10 +955,10 @@ namespace alloy::dxc
 
 #pragma region ComputeCmdEnc
 
-    DXCResourceLayout* DXCComputeCmdEnc::GetResourceLayoutForCurrentPipeline() {
-        CHK_COMPUTE_PIPELINE_SET();
-        return GetPipeline()->GetPipelineLayout().get();
-    }
+    //DXCResourceLayout* DXCComputeCmdEnc::GetResourceLayoutForCurrentPipeline() {
+    //    CHK_COMPUTE_PIPELINE_SET();
+    //    return GetPipeline()->GetPipelineLayout().get();
+    //}
 
     void DXCComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
 
@@ -982,9 +982,9 @@ namespace alloy::dxc
 
     void DXCComputeCmdEnc::SetComputeResourceSet(const common::sp<IResourceSet>& rs){
         //assert(slot < _resourceSets.size());
-#ifdef VLD_DEBUG
-        GetResourceLayoutForCurrentPipeline();
-#endif
+//#ifdef VLD_DEBUG
+//        GetResourceLayoutForCurrentPipeline();
+//#endif
         resources.insert(rs);
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
@@ -1009,7 +1009,7 @@ namespace alloy::dxc
     ) {
         //assert(slot < _resourceSets.size());
 
-        auto dxcLayout = GetResourceLayoutForCurrentPipeline();
+        auto dxcLayout = currentPipeline->GetPipelineLayout();
 
         auto argBase = dxcLayout->GetHeapCount();
 

@@ -8,6 +8,7 @@
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanContext.hpp"
+#include "backend/vk/VulkanPipeline.hpp"
 //#include "VulkanResourceBarrier.hpp"
 
 #include <ranges>
@@ -396,13 +397,15 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
         auto vkPipeline = PtrCast<VulkanGraphicsPipeline>(pipeline.get());
 
-        DEBUGCODE(
-            if(!std::holds_alternative<std::monostate>(currentPipeline)) {
-                auto ppCurrGfxPipe = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline);
-                assert(ppCurrGfxPipe != nullptr);    //Empty pipeline should be in std::monostate
-                assert(vkPipeline != *ppCurrGfxPipe);//Shouldn't bind same pipeline multiple times
-            }
-        );
+        assert((VulkanPipelineBase*)vkPipeline != currentPipeline);
+
+        //DEBUGCODE(
+        //    if(!std::holds_alternative<std::monostate>(currentPipeline)) {
+        //        auto ppCurrGfxPipe = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline);
+        //        assert(ppCurrGfxPipe != nullptr);    //Empty pipeline should be in std::monostate
+        //        assert(vkPipeline != *ppCurrGfxPipe);//Shouldn't bind same pipeline multiple times
+        //    }
+        //);
 
         resources.insert(pipeline);
         recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
@@ -419,13 +422,15 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetPipeline(const common::sp<IMeshShaderPipeline>& pipeline) {
         auto vkPipeline = PtrCast<VulkanMeshShaderPipeline>(pipeline.get());
 
-        DEBUGCODE(
-            if(!std::holds_alternative<std::monostate>(currentPipeline)) {
-                auto ppCurrPipe = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline);
-                assert(ppCurrPipe != nullptr);    //Empty pipeline should be in std::monostate
-                assert(vkPipeline != *ppCurrPipe);//Shouldn't bind same pipeline multiple times
-            }
-        );
+        assert((VulkanPipelineBase*)vkPipeline != currentPipeline);
+
+        //DEBUGCODE(
+        //    if(!std::holds_alternative<std::monostate>(currentPipeline)) {
+        //        auto ppCurrPipe = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline);
+        //        assert(ppCurrPipe != nullptr);    //Empty pipeline should be in std::monostate
+        //        assert(vkPipeline != *ppCurrPipe);//Shouldn't bind same pipeline multiple times
+        //    }
+        //);
 
         resources.insert(pipeline);
         recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
@@ -447,7 +452,7 @@ namespace alloy::vk{
     {
         assert(dev->GetDevCaps().SupportMeshShader());
 
-        CHK_MESH_PIPELINE_SET();
+        //CHK_MESH_PIPELINE_SET();
         recordedCmds.emplace_back([ =, this ](VkCommandBuffer cmdList){
             VK_DEV_CALL(dev,
                 vkCmdDrawMeshTasksEXT(cmdList, groupCountX, groupCountY, groupCountZ)
@@ -458,13 +463,15 @@ namespace alloy::vk{
     void VkComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
         auto vkPipeline = PtrCast<VulkanComputePipeline>(pipeline.get());
 
-        DEBUGCODE(
-            if(!std::holds_alternative<std::monostate>(currentPipeline)) {
-                auto ppCurrCompPipe = std::get_if<VulkanComputePipeline*>(&currentPipeline);
-                assert(ppCurrCompPipe != nullptr);    //Empty pipeline should be in std::monostate
-                assert(vkPipeline != *ppCurrCompPipe);//Shouldn't bind same pipeline multiple times
-            }
-        );
+        assert((VulkanPipelineBase*)vkPipeline != currentPipeline);
+
+        //DEBUGCODE(
+        //    if(!std::holds_alternative<std::monostate>(currentPipeline)) {
+        //        auto ppCurrCompPipe = std::get_if<VulkanComputePipeline*>(&currentPipeline);
+        //        assert(ppCurrCompPipe != nullptr);    //Empty pipeline should be in std::monostate
+        //        assert(vkPipeline != *ppCurrCompPipe);//Shouldn't bind same pipeline multiple times
+        //    }
+        //);
 
         resources.insert(pipeline);
         recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
@@ -538,18 +545,20 @@ namespace alloy::vk{
     void VkRenderCmdEnc::SetGraphicsResourceSet(
         const common::sp<IResourceSet>& rs
     ){
-        VkPipelineLayout pipelineLayout = nullptr;
-        uint32_t resourceSetCount = 0;
-        if (auto* v = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline)) {
-            pipelineLayout = (*v)->GetLayout();
-            resourceSetCount = (*v)->GetResourceSetCount();
-        } else if (auto* v = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline)) {
-            pipelineLayout = (*v)->GetLayout();
-            resourceSetCount = (*v)->GetResourceSetCount();
-        } else { // std::monostate
-            //Need to bind a pipeline
-            assert(false);
-        }
+        assert(currentPipeline != nullptr);
+
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        uint32_t resourceSetCount = currentPipeline->GetResourceSetCount();
+        //if (auto* v = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline)) {
+        //    pipelineLayout = (*v)->GetLayout();
+        //    resourceSetCount = (*v)->GetResourceSetCount();
+        //} else if (auto* v = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline)) {
+        //    pipelineLayout = (*v)->GetLayout();
+        //    resourceSetCount = (*v)->GetResourceSetCount();
+        //} else { // std::monostate
+        //    //Need to bind a pipeline
+        //    assert(false);
+        //}
 
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
@@ -595,21 +604,22 @@ namespace alloy::vk{
                                            const std::span<uint32_t>& data,
                                            std::uint32_t destOffsetIn32BitValues
     ) {
-        VulkanPipelineBase* pipeline = nullptr;
-        if (auto* v = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline)) {
-            pipeline = (*v);
-        } else if (auto* v = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline)) {
-            pipeline = (*v);
-        } else { // std::monostate
-            //Need to bind a pipeline
-            assert(false);
-        }
+        //VulkanPipelineBase* pipeline = nullptr;
+        //if (auto* v = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline)) {
+        //    pipeline = (*v);
+        //} else if (auto* v = std::get_if<VulkanMeshShaderPipeline*>(&currentPipeline)) {
+        //    pipeline = (*v);
+        //} else { // std::monostate
+        //    //Need to bind a pipeline
+        //    assert(false);
+        //}
+        assert(currentPipeline != nullptr);
 
         std::vector<uint32_t> savedData {data.begin(), data.end()};
         recordedCmds.emplace_back(
         [ =, this, savedData = std::move(savedData) ](VkCommandBuffer cmdList){
 
-            auto& pcs = pipeline->GetPushConstants();
+            auto& pcs = currentPipeline->GetPushConstants();
 
             assert(pcs.size() > pushConstantIndex);
             auto& pc = pcs[pushConstantIndex];
@@ -620,7 +630,7 @@ namespace alloy::vk{
             VK_DEV_CALL(dev,
             vkCmdPushConstants(
                 cmdList,
-                pipeline->GetLayout(),
+                currentPipeline->GetLayout(),
                 VK_SHADER_STAGE_ALL_GRAPHICS,
                 (offset + destOffsetIn32BitValues) * 4,
                 savedData.size() * 4,
@@ -631,20 +641,21 @@ namespace alloy::vk{
     void VkComputeCmdEnc::SetComputeResourceSet(
         const common::sp<IResourceSet>& rs
     ){
-        assert(std::holds_alternative<VulkanComputePipeline*>(currentPipeline));
+        assert(currentPipeline != nullptr);
+        //assert(std::holds_alternative<VulkanComputePipeline*>(currentPipeline));
 
-        VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
+        //VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
 
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
         RegisterResourceSet(vkrs);
 
-        recordedCmds.emplace_back([this, pipeline, vkrs](VkCommandBuffer cmdList){
+        recordedCmds.emplace_back([=, this](VkCommandBuffer cmdList){
 
             auto& dss = vkrs->GetHandle();
 
-            auto resourceSetCount = pipeline->GetResourceSetCount();
+            auto resourceSetCount = currentPipeline->GetResourceSetCount();
             assert(resourceSetCount == dss.size());
 
             std::vector<VkDescriptorSet> descriptorSets;
@@ -659,7 +670,7 @@ namespace alloy::vk{
                     vkCmdBindDescriptorSets(
                         cmdList,
                         VK_PIPELINE_BIND_POINT_COMPUTE,
-                        pipeline->GetLayout(),
+                        currentPipeline->GetLayout(),
                         0,
                         descriptorSets.size(),
                         descriptorSets.data(),
@@ -681,14 +692,15 @@ namespace alloy::vk{
                                            const std::span<uint32_t>& data,
                                            std::uint32_t destOffsetIn32BitValues
     ) {
-        assert(std::holds_alternative<VulkanComputePipeline*>(currentPipeline));
+        assert(currentPipeline != nullptr);
+        //assert(std::holds_alternative<VulkanComputePipeline*>(currentPipeline));
 
-        VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
+        //VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
 
         std::vector<uint32_t> savedData {data.begin(), data.end()};
         recordedCmds.emplace_back([=, this, savedData = std::move(savedData)](VkCommandBuffer cmdList){
 
-            auto& pcs = pipeline->GetPushConstants();
+            auto& pcs = currentPipeline->GetPushConstants();
             assert(pcs.size() > pushConstantIndex);
 
             auto& pc = pcs[pushConstantIndex];
@@ -699,7 +711,7 @@ namespace alloy::vk{
             VK_DEV_CALL(dev,
             vkCmdPushConstants(
                 cmdList,
-                pipeline->GetLayout(),
+                currentPipeline->GetLayout(),
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 (offset + destOffsetIn32BitValues) * 4,
                 savedData.size() * 4,

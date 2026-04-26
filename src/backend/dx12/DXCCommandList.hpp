@@ -34,9 +34,9 @@ namespace alloy::dxc
     class DXCCmdEncBase;
 
     constexpr auto DXC_RESOURCE_STATE_ANY = (D3D12_RESOURCE_STATES)-1;
-    
+
     class DXCCommandList: public ICommandList{
-        
+
     public:
 
         struct ResourceStates {
@@ -65,7 +65,7 @@ namespace alloy::dxc
         common::sp<DXCDevice> _dev;
         ID3D12CommandAllocator* _cmdAlloc;
         ID3D12GraphicsCommandList1* _cmdList;
-        
+
         std::vector<DXCCmdEncBase*> _passes;
         DXCCmdEncBase* _currentPass;
 
@@ -75,11 +75,11 @@ namespace alloy::dxc
         std::unordered_set<common::sp<RefCntBase>> _devRes;
 
         //DX12 resource state decay rule:
-        //The following resources will decay when an 
+        //The following resources will decay when an
         //ExecuteCommandLists operation is completed on the GPU:
         //  1. Resources being accessed on a Copy queue, or
         //  2. Buffer resources on any queue type, or
-        //  3. Texture resources on any queue type that have the 
+        //  3. Texture resources on any queue type that have the
         //       D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS flag set, or
         //  4. Any resource implicitly promoted to a read-only state.
         //only the texture states need explicit request and update.
@@ -100,7 +100,7 @@ namespace alloy::dxc
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList1* pList
-        ) 
+        )
             : _dev(dev)
             , _cmdAlloc(pAllocator)
             , _cmdList(pList)
@@ -109,20 +109,20 @@ namespace alloy::dxc
 
         virtual ~DXCCommandList() override;
 
-        
+
         static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
         ID3D12GraphicsCommandList1* GetHandle() const { return _cmdList; }
-        
+
         virtual void Begin() override;
         virtual void End() override;
 #if 0
         virtual void ClearColorTarget(
-            std::uint32_t slot, 
+            std::uint32_t slot,
             float r, float g, float b, float a) override;
 
         virtual void ClearDepthStencil(float depth, std::uint8_t stencil) override;
-#endif 
-        
+#endif
+
 
         ///#TODO: add load, store and clearcolor handling for more efficient operation
         virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
@@ -132,7 +132,7 @@ namespace alloy::dxc
 
         virtual void EndPass() override;
 
-        
+
         virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
 
         virtual void TransitionTextureToDefaultLayout(
@@ -170,9 +170,9 @@ namespace alloy::dxc
         //        during command playback, namely Get(Buffer|Tex)State
         DXCCommandList::ResourceStates resStates;
         std::vector<std::function<void()>> recordedCmds;
-        
+
         DXCCmdEncBase(DXCDevice* dev,
-                      DXCCommandList* cmdList) 
+                      DXCCommandList* cmdList)
             : dev(dev)
             , cmdList(cmdList)
             , currentPipeline(nullptr)
@@ -184,10 +184,10 @@ namespace alloy::dxc
         virtual void EndPass();
 
         ID3D12GraphicsCommandList1* GetCmdList() const;
-        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() {
-            assert(false);
-            return nullptr;
-        }
+        //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() {
+        //    assert(false);
+        //    return nullptr;
+        //}
 
         //Claim expected resource states
         void RegisterBufferUsage(
@@ -247,7 +247,7 @@ namespace alloy::dxc
 
         virtual ~DXCRenderCmdEnc() {}
 
-        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
+        //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
         virtual void EndPass() override;
 
@@ -255,13 +255,13 @@ namespace alloy::dxc
 
         virtual void SetVertexBuffer(
             std::uint32_t index, const common::sp<BufferRange>& buffer) override;
-    
+
         virtual void SetIndexBuffer(
             const common::sp<BufferRange>& buffer, IndexFormat format) override;
 
-        
+
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
-        
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
             const std::span<uint32_t>& data,
@@ -277,21 +277,21 @@ namespace alloy::dxc
         virtual void Draw(
             std::uint32_t vertexCount, std::uint32_t instanceCount,
             std::uint32_t vertexStart, std::uint32_t instanceStart) override;
-        
+
         virtual void DrawIndexed(
-            std::uint32_t indexCount, std::uint32_t instanceCount, 
-            std::uint32_t indexStart, std::uint32_t vertexOffset, 
+            std::uint32_t indexCount, std::uint32_t instanceCount,
+            std::uint32_t indexStart, std::uint32_t vertexOffset,
             std::uint32_t instanceStart) override;
 #if 0
         virtual void DrawIndirect(
-            const common::sp<IBuffer>& indirectBuffer, 
+            const common::sp<IBuffer>& indirectBuffer,
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 
         virtual void DrawIndexedIndirect(
-            const common::sp<IBuffer>& indirectBuffer, 
+            const common::sp<IBuffer>& indirectBuffer,
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
-        
+
         virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override {
             //Need CommandEncoder6 to support mesh shader
             assert(false);
@@ -303,12 +303,12 @@ namespace alloy::dxc
 
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
-    
+
 
     };
 
     struct DXCComputeCmdEnc : public IComputeCommandEncoder, public DXCCmdEncBase {
-        
+
         DXCComputePipeline* GetPipeline() {
             return static_cast<DXCComputePipeline*>(currentPipeline);
         }
@@ -317,14 +317,14 @@ namespace alloy::dxc
             : DXCCmdEncBase{ dev, cmdList }
         { }
 
-        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
+        //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
-        
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
             const std::span<uint32_t>& data,
@@ -352,9 +352,9 @@ namespace alloy::dxc
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
 #endif
 
-        
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}    
+        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     };
 
     struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {
@@ -366,7 +366,7 @@ namespace alloy::dxc
             const common::sp<BufferRange>& source,
             const common::sp<BufferRange>& destination,
             std::uint32_t sizeInBytes) override;
-                
+
 
         virtual void CopyBufferToTexture(
             const common::sp<BufferRange>& src,
@@ -402,7 +402,7 @@ namespace alloy::dxc
             const Size3D& copySize) override;
 
         //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-        
+
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
 
         virtual void WaitForFence(const common::sp<IFence>&) override {}
@@ -416,7 +416,7 @@ namespace alloy::dxc
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList6* pList
-        ) 
+        )
             : DXCCommandList(dev, pAllocator, pList)
         {}
         ID3D12GraphicsCommandList6* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList6*>(_cmdList); }
@@ -427,7 +427,7 @@ namespace alloy::dxc
 
     };
 
-    
+
     struct DXCRenderCmdEnc6 : public DXCRenderCmdEnc {
 
         DXCMeshShaderPipeline* GetPipeline() {
@@ -441,7 +441,7 @@ namespace alloy::dxc
         );
 
         ~DXCRenderCmdEnc6();
-        virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
+        //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
         virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override;
 
@@ -456,16 +456,14 @@ namespace alloy::dxc
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
             ID3D12GraphicsCommandList7* pList
-        ) 
+        )
             : DXCCommandList6(dev, pAllocator, pList)
         {}
 
         ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
-        
+
         virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
     };
-    
+
 
 } // namespace alloy
-
-

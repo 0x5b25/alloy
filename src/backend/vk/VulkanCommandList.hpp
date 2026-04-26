@@ -203,10 +203,12 @@ namespace alloy::vk
         VulkanDevice* dev;
         VkCommandBuffer cmdList;
 
-        std::variant< std::monostate,
-                      VulkanGraphicsPipeline*,
-                      VulkanComputePipeline*,
-                      VulkanMeshShaderPipeline* > currentPipeline;
+        VulkanPipelineBase* currentPipeline;
+
+        //std::variant< std::monostate,
+        //              VulkanGraphicsPipeline*,
+        //              VulkanComputePipeline*,
+        //              VulkanMeshShaderPipeline* > currentPipeline;
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
 
