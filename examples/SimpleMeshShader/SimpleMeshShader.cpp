@@ -30,9 +30,7 @@ class SimpleMeshShader : public IApp {
     alloy::common::sp<alloy::IMeshShaderPipeline> _pipeline;
 
     
-    alloy::common::sp<alloy::IBuffer> vertexBuffer, 
-                                      indexBuffer,
-                                      uniformBuffer,
+    alloy::common::sp<alloy::IBuffer> uniformBuffer,
                                       structBuffer;
     void* pUniformBuffer;
 
@@ -143,35 +141,15 @@ void SimpleMeshShader::_CreateResources() {
 void SimpleMeshShader::_CreateBuffers() {
     auto& factory = _runner->GetRenderService()->GetDevice()->GetResourceFactory();
 
-    std::vector<VertexData> quadVertices
-    {
-        {{-0.75f, 0.75f},  {0, 0}, {0.f, 0.f, 1.f, 1.f}},
-        {{0.75f, 0.75f},   {1, 0}, {0.f, 1.f, 0.f, 1.f}},
-        {{-0.75f, -0.75f}, {0, 1}, {1.f, 0.f, 0.f, 1.f}},
-        {{0.75f, -0.75f},  {1, 1}, {1.f, 1.f, 0.f, 1.f}}
-    };
-
-    std::vector<std::uint32_t> quadIndices { 0, 1, 2, 3 };
-
     struct SceneDescriptor
     {
-        float offset[4];
+        glm::u32vec2 patchCnt;
+        glm::vec2 patchSize;
         float padding[15 * 4];
-    } sceneDescriptor {{ 0.1f, 0.2f, 0.3f, 1.0f }};
-
-    alloy::IBuffer::Description _vbDesc{};
-    _vbDesc.sizeInBytes = 4 * sizeof(VertexData);
-    _vbDesc.usage.vertexBuffer = 1;
-    vertexBuffer = factory.CreateBuffer(_vbDesc);
-    vertexBuffer->SetDebugName("Vertex Buffer");
-    UpdateBuffer(vertexBuffer, quadVertices.data(), quadVertices.size());
-
-    alloy::IBuffer::Description _ibDesc{};
-    _ibDesc.sizeInBytes = 4 * sizeof(std::uint32_t);
-    _ibDesc.usage.indexBuffer = 1;
-    indexBuffer = factory.CreateBuffer(_ibDesc);
-    indexBuffer->SetDebugName("Index Buffer");
-    UpdateBuffer(indexBuffer, quadIndices.data(), quadIndices.size());
+    } sceneDescriptor {
+        .patchCnt = { 16, 16},
+        .patchSize = { 1.f, 1.f }
+    };
 
     alloy::IBuffer::Description _ubDesc{};
     _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
@@ -349,14 +327,14 @@ void SimpleMeshShader::_CreatePipeline() {
     //pipelineDescription.blendState.attachments[0].blendEnabled = true;
     pipelineDescription.attachmentState.sampleCount = msaaSampleCount;
 
-    pipelineDescription.depthStencilState.depthTestEnabled = false;
+    pipelineDescription.depthStencilState.depthTestEnabled = true;
     pipelineDescription.depthStencilState.depthWriteEnabled = true;
     pipelineDescription.depthStencilState.depthComparison = alloy::ComparisonKind::LessEqual;
 
 
-    pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::Back;
+    pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::None;
     pipelineDescription.rasterizerState.fillMode = alloy::RasterizerStateDescription::PolygonFillMode::Solid;
-    pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::Clockwise;
+    pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::CounterClockwise;
     pipelineDescription.rasterizerState.depthClipEnabled = true;
     pipelineDescription.rasterizerState.scissorTestEnabled = false;
 
@@ -398,15 +376,14 @@ void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
         timeElapsedSec * glm::radians(90.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view = glm::lookAt(
-        glm::vec3(2.0f, 2.0f, 2.0f),
+        glm::vec3(10.0f, 10.0f, 10.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.proj = glm::perspective(
         glm::radians(45.0f), 
         fbWidth / (float)fbHeight,
-        0.1f, 10.0f);
+        0.01f, 100.0f);
 
-    
     memcpy(pUniformBuffer, &ubo, sizeof(ubo));
 
     //_commandList->BeginRenderPass(fb);
@@ -418,7 +395,7 @@ void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     //_commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);
     pass.SetGraphicsResourceSet(_resSet);
 
-    pass.DispatchMesh(1, 1, 1);
+    pass.DispatchMesh(8, 1, 1);
 }
 
 int main() {

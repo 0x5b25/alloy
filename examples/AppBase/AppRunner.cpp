@@ -201,7 +201,7 @@ int AppRunner::Run(IApp* pUserApp) {
             auto& dtAct = passAction.depthTargetAction.emplace();
             dtAct.loadAction = alloy::LoadAction::Clear;
             dtAct.storeAction = alloy::StoreAction::Store;
-            dtAct.clearDepth = 0.999f;
+            dtAct.clearDepth = 1.f;
             if(msaaEnabled) {
                 dtAct.target = tgt.depthStencil;
                 dtAct.msaaResolveTarget = fbDesc.depthAttachment;
@@ -255,7 +255,7 @@ void AppRunner::SetupAlloyEnv() {
     alloy::IContext::Options ctxOpt{};
     ctxOpt.debug = true;
 
-    auto ctx = alloy::IContext::Create(alloy::Backend::Metal, ctxOpt);
+    auto ctx = alloy::IContext::Create(alloy::Backend::DX12, ctxOpt);
     auto adp = ctx->EnumerateAdapters().front();
 
     alloy::IGraphicsDevice::Options devOpt{};
