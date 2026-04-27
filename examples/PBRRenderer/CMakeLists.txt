@@ -1,5 +1,5 @@
 
-add_executable(PBRRenderer 
+add_executable(PBRRenderer
     main.cpp
     PBRRendererApp.cpp
     PBRRendererApp.hpp
@@ -12,6 +12,12 @@ add_executable(PBRRenderer
     )
 
 compile_shader(PBRRenderer_shaders SOURCES Shaders/PBRObjectShader.hlsl TYPES ps_6_0 vs_6_0 WITH_DBG_INFO)
+# Force consumers to recompile in the same incremental build pass when
+# generated shader headers change (works around Ninja's static planning
+# of depfile-based implicit deps).
+add_shader_object_depends(PBRRenderer_shaders
+    FILES MeshRenderer.cpp)
+
 target_link_libraries(PBRRenderer PRIVATE PBRRenderer_shaders AppBase HLSLCompiler)
 target_compile_features(PBRRenderer PRIVATE cxx_std_20)
 

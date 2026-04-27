@@ -11,6 +11,12 @@ namespace QuadShader {
     #include "Shaders/QuadMeshShader_ps_6_7.h"
 }
 
+struct SceneDescriptor
+{
+    glm::uvec2 chunkCnt;
+    glm::vec2 chunkSize;
+};
+
 struct VertexData
 {
     float position[2]; // This is the position, in normalized device coordinates.
@@ -29,7 +35,7 @@ class SimpleMeshShader : public IApp {
 
     alloy::common::sp<alloy::IMeshShaderPipeline> _pipeline;
 
-    
+
     alloy::common::sp<alloy::IBuffer> uniformBuffer,
                                       structBuffer;
     void* pUniformBuffer;
@@ -37,14 +43,14 @@ class SimpleMeshShader : public IApp {
     alloy::common::sp<alloy::ITextureView> tex1;
     alloy::common::sp<alloy::ISampler> samp1;
 
-    
+
     alloy::common::sp<alloy::IResourceSet> _resSet;
 
-    
+
     uint64_t _fenceVal = 0;
     alloy::common::sp<alloy::IEvent> _fence;
 
-    
+
     template<typename T>
     void UpdateBuffer(
         const alloy::common::sp<alloy::IBuffer>& buffer,
@@ -75,7 +81,7 @@ class SimpleMeshShader : public IApp {
             auto transferedSize = transferSizeInBytes - remainingSize;
             auto batchSize = std::min(stagingBufferSizeInBytes, remainingSize);
             memcpy(writePtr, readPtr + transferedSize, batchSize);
-            
+
             //Record the command buffer
             auto cmd = dev->GetCopyCommandQueue()->CreateCommandList();
             cmd->Begin();
@@ -107,7 +113,7 @@ class SimpleMeshShader : public IApp {
     void _CreateBuffers();
     void _CreateTextures();
     void _CreatePipeline();
-    
+
 public:
     SimpleMeshShader(IAppRunner* runner)
         : _runner(runner)
@@ -119,7 +125,7 @@ public:
 
     virtual int GetExitCode() override { return 0; }
 
-    
+
     virtual void FixedUpdate() override {}
     virtual void Update() override {}
     virtual void OnDrawGui() override {}
@@ -138,18 +144,14 @@ void SimpleMeshShader::_CreateResources() {
 }
 
 
+SceneDescriptor g_SceneDescriptor = SceneDescriptor{
+    /*.patchCnt = */{ 16, 16},
+    /*.patchSize = */{ 1.f, 1.f }
+};
+
 void SimpleMeshShader::_CreateBuffers() {
     auto& factory = _runner->GetRenderService()->GetDevice()->GetResourceFactory();
 
-    struct SceneDescriptor
-    {
-        glm::u32vec2 patchCnt;
-        glm::vec2 patchSize;
-        float padding[15 * 4];
-    } sceneDescriptor {
-        .patchCnt = { 16, 16},
-        .patchSize = { 1.f, 1.f }
-    };
 
     alloy::IBuffer::Description _ubDesc{};
     _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
@@ -164,7 +166,7 @@ void SimpleMeshShader::_CreateBuffers() {
     _tbDesc.usage.structuredBufferReadOnly = 1;
     structBuffer = factory.CreateBuffer(_tbDesc);
     structBuffer->SetDebugName("Storage Buffer");
-    UpdateBuffer(structBuffer, &sceneDescriptor, 1);
+    UpdateBuffer(structBuffer, &g_SceneDescriptor, 1);
 }
 
 void SimpleMeshShader::_CreateTextures() {
@@ -176,7 +178,7 @@ void SimpleMeshShader::_CreateTextures() {
     samp1 = factory.CreateSampler(samp1Desc);
 
     alloy::ITexture::Description tex1ImgDesc{};
-                
+
     tex1ImgDesc.width = 256;
     tex1ImgDesc.height = 256;
     tex1ImgDesc.depth = 1;
@@ -220,7 +222,7 @@ void SimpleMeshShader::_CreateTextures() {
     auto copyDst = copyBuffer->MapToCPU();
     // Copy to upload buffer
     for (int y = 0; y < tex1ImgDesc.height; y++)
-        memcpy((void*)((uintptr_t)copyDst + y * upload_pitch_dst), 
+        memcpy((void*)((uintptr_t)copyDst + y * upload_pitch_dst),
                 (void*)((uintptr_t)pCPUBuffer+ y * upload_pitch_src), upload_pitch_src);
 
     copyBuffer->UnMap();
@@ -232,7 +234,7 @@ void SimpleMeshShader::_CreateTextures() {
     auto& pass = cmdList->BeginTransferPass();
 
     pass.CopyBufferToTexture(
-        copyBuffer, upload_pitch_dst, upload_buffer_size, 
+        copyBuffer, upload_pitch_dst, upload_buffer_size,
         tex1Img, {0, 0, 0}, 0, 0,
         {tex1ImgDesc.width, tex1ImgDesc.height, 1}
     );
@@ -268,7 +270,7 @@ void SimpleMeshShader::_CreatePipeline() {
         elem.bindingSlot = 0;
         elem.bindingCount = 1;
         elem.kind = ElemKind::UniformBuffer;
-        elem.stages = alloy::IShader::Stage::Task 
+        elem.stages = alloy::IShader::Stage::Task
                     | alloy::IShader::Stage::Mesh
                     | alloy::IShader::Stage::Fragment;
     }
@@ -279,7 +281,7 @@ void SimpleMeshShader::_CreatePipeline() {
         elem.bindingSlot = 0;
         elem.bindingCount = 1;
         elem.kind = ElemKind::StorageBuffer;
-        elem.stages = alloy::IShader::Stage::Task 
+        elem.stages = alloy::IShader::Stage::Task
                     | alloy::IShader::Stage::Mesh
                     | alloy::IShader::Stage::Fragment;
     }
@@ -307,13 +309,13 @@ void SimpleMeshShader::_CreatePipeline() {
     alloy::IResourceSet::Description resSetDesc{};
     resSetDesc.layout = _layout;
     resSetDesc.boundResources = {
-        alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
+        alloy::BufferRange::MakeByteBuffer(uniformBuffer),
         alloy::BufferRange::MakeByteBuffer(structBuffer),
         tex1,
         samp1
     };
     _resSet = factory.CreateResourceSet(resSetDesc);
-        
+
     alloy::MeshShaderPipelineDescription pipelineDescription{};
     pipelineDescription.resourceLayout = _layout;
     pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
@@ -321,7 +323,7 @@ void SimpleMeshShader::_CreatePipeline() {
     {
         alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
         dsAttachment.depthStencilFormat = depthStencilFormat;
-        
+
         pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
     }
     //pipelineDescription.blendState.attachments[0].blendEnabled = true;
@@ -364,7 +366,7 @@ void SimpleMeshShader::_CreatePipeline() {
 
 void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     auto timeElapsedSec = _runner->GetTimeService()->GetElapsedSeconds();
-    
+
     auto* rndrSvc = _runner->GetRenderService();
     uint32_t fbWidth, fbHeight;
     rndrSvc->GetFrameBufferSize(fbWidth, fbHeight);
@@ -373,14 +375,14 @@ void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     UniformBufferObject ubo{};
     ubo.model = glm::rotate(
         glm::mat4(1.0f),
-        timeElapsedSec * glm::radians(90.0f),
+        timeElapsedSec * glm::radians(10.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view = glm::lookAt(
         glm::vec3(10.0f, 10.0f, 10.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.proj = glm::perspective(
-        glm::radians(45.0f), 
+        glm::radians(45.0f),
         fbWidth / (float)fbHeight,
         0.01f, 100.0f);
 
