@@ -384,7 +384,7 @@ void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     ubo.proj = glm::perspective(
         glm::radians(45.0f),
         fbWidth / (float)fbHeight,
-        0.01f, 100.0f);
+        0.1f, 1000.0f);
 
     memcpy(pUniformBuffer, &ubo, sizeof(ubo));
 

@@ -646,7 +646,7 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
                     depthStencilDescriptor.depthCompareFunction = MTLCompareFunctionAlways;
                 }
 
-                depthStencilDescriptor.depthWriteEnabled = depthStencilDescriptor.depthWriteEnabled;
+                depthStencilDescriptor.depthWriteEnabled = desc.depthStencilState.depthWriteEnabled;
 
                 if(desc.depthStencilState.stencilTestEnabled) {
                     auto& alDssDesc = desc.depthStencilState;

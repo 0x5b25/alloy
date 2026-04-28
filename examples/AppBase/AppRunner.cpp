@@ -252,10 +252,20 @@ void AppRunner::SetupAlloyEnv() {
      * Create device
      *******************************/
 
+    alloy::Backend backend;
+
+#ifdef VLD_PLATFORM_MACOS
+    backend = alloy::Backend::Metal;
+#elif defined VLD_PLATFORM_WIN32
+    backend = alloy::Backend::DX12;
+#else
+    backend = alloy::Backend::Vulkan;
+#endif
+
     alloy::IContext::Options ctxOpt{};
     ctxOpt.debug = true;
 
-    auto ctx = alloy::IContext::Create(alloy::Backend::DX12, ctxOpt);
+    auto ctx = alloy::IContext::Create(backend, ctxOpt);
     auto adp = ctx->EnumerateAdapters().front();
 
     alloy::IGraphicsDevice::Options devOpt{};

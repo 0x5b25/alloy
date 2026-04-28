@@ -119,19 +119,19 @@ void ASMain(
     bool patchValid = dtid < totalPatchCnt;
     if(patchValid) {
         uint entrySlot = WavePrefixCountBits(patchValid);
-        
+
         const uint2 thisPatchIdx = {dtid % patchCnt.x, dtid / patchCnt.x};
-        
+
         const float2 thisPatchCenter = patchSize * thisPatchIdx + 0.5 * (patchSize)
             - totalPatchCenter;
-        
+
         sPayload.patches[entrySlot].worldPos = float3(thisPatchCenter.x, 0, thisPatchCenter.y);
         sPayload.patches[entrySlot].worldNormal = float3(0, 1, 0);
         sPayload.patches[entrySlot].worldTangent = float3(0, 0, 1);
         sPayload.patches[entrySlot].avgGrassHeight = 1;
-        sPayload.patches[entrySlot].scatterRadius = patchSize.x * 0.5;
+        sPayload.patches[entrySlot].scatterRadius = length(patchSize * patchSize) * 0.5;
         sPayload.patches[entrySlot].patchIdx = thisPatchIdx;
-        
+
     }
 
     // Assumes all meshlets are visible
@@ -186,7 +186,7 @@ void MSMain(
     //uint globalSeed = gid + 1; //Seed of value 0 normally don't end up well
     uint globalSeed = CombineSeed(patchIdx.x, patchIdx.y);
     //globalSeed = CombineSeed(globalSeed, patchIdx.y);
-    
+
     // Must be called before writing the geometry output
     SetMeshOutputCounts(VERT_PER_PATCH, PRIM_PER_PATCH); // 8 verts, 6 prims per strand
 
@@ -224,7 +224,7 @@ void MSMain(
         const static float w2 = .3f * widthScale;
 
         //Generate the verts
-        //float3 sideVec = 
+        //float3 sideVec =
         //x: leaning, y: height, z: width
         float3 p2 = float3(0,                 0,           w0);
         float3 p1 = float3(0,                 bladeHeight, w1);
@@ -239,7 +239,7 @@ void MSMain(
 
 
         float3x3 modelRot = (float3x3)ubo.model;
-        float3 localNormal = vertNormalWeights.x * bladeDirection 
+        float3 localNormal = vertNormalWeights.x * bladeDirection
                            + vertNormalWeights.y * normal;
         float3 worldNormal = mul(modelRot, localNormal);
 
@@ -247,7 +247,7 @@ void MSMain(
         uint baseVertIdx = gtid * 2;
         for(uint i = 0; i < 2; ++i) {
             const float widthFactor = i == 0 ? -1 : 1;
-            float3 worldPos = bladePosition + vertWeights.x * bladeDirection 
+            float3 worldPos = bladePosition + vertWeights.x * bladeDirection
                                             + vertWeights.y * normal
                                             + widthFactor * vertWeights.z * bladeRightDirection;
             vertices[baseVertIdx + i].worldSpacePosition = worldPos;
@@ -278,7 +278,7 @@ void MSMain(
             triangles[basePrimIdx + i] = baseVertIdx + triangleIndices;
         }
     }
-    
+
 }
 
 float4 PSMain(MeshOutput input/*, bool isFrontFace : SV_IsFrontFace*/) : SV_TARGET
