@@ -11,7 +11,7 @@ struct ImGui_ImplAlloy_InitInfo {
     alloy::common::sp<alloy::IGraphicsDevice> device;
 
     alloy::SampleCount msaaSampleCount;
-    alloy::PixelFormat renderTargetFormat;
+    alloy::PixelFormat renderTargetFormat, depthStencilFormat;
 };
 
 class ImGuiAlloyBackend;

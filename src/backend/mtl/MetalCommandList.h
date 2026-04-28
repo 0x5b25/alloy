@@ -3,6 +3,7 @@
 #include "alloy/common/RefCnt.hpp"
 #include "alloy/BindableResource.hpp"
 #include "alloy/CommandList.hpp"
+#import "backend/mtl/MetalPipeline.h"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -21,7 +22,7 @@ class MetalFrameBufferBase;
 
 
 class CmdEncoderImplBase {
-    
+
 protected:
     std::unordered_set<common::sp<common::RefCntBase>> resources;
 
@@ -30,13 +31,13 @@ protected:
     MetalCommandList* _cmdBuf;
 
     CmdEncoderImplBase(MetalCommandList* cmdBuf) : _cmdBuf(cmdBuf){}
-    
+
 
     //virtual id<MTLCommandEncoder> GetHandle() = 0;
-    
+
 public:
     virtual ~CmdEncoderImplBase() {};
-    
+
     virtual void EndPass() {}
 
   //void RegisterObjInUse(const common::sp<common::RefCntBase> &obj);
@@ -54,19 +55,19 @@ public:
     virtual id<MTLCommandEncoder> GetHandle() override {return _mtlEnc;}
 
     BaseCommandEncoderImpl(MetalCommandList* cmdBuf) : CmdEncoderImplBase(cmdBuf) {}
-    
+
     virtual ~BaseCommandEncoderImpl() override;
-    
-    
+
+
     virtual void EndEncoding() override {
         assert(_mtlEnc != nullptr);
         [_mtlEnc endEncoding];
         [_mtlEnc release];
         _mtlEnc = nullptr;
     }
-    
-    
-    
+
+
+
     virtual void PushDebugGroup(const std::string& label) override;
     virtual void PopDebugGropu() override;
 
@@ -74,16 +75,16 @@ public:
 */
 
 class MetalRenderCmdEnc : public IRenderCommandEncoder, public CmdEncoderImplBase {
-    
+
     id<MTLRenderCommandEncoder> _mtlEnc;
 
     //MetalGfxPipeline* _currentPipeline;
 
-    //Metal framebuffers won't 
+    //Metal framebuffers won't
     RenderPassAction _actions;
-    
+
     struct RenderPassRegistry{
-        common::sp<MetalGfxPipeline> boundPipeline;
+        MetalGfxPipelineBase* boundPipeline;
         std::unordered_map<std::uint32_t, common::sp<BufferRange> > boundVertexBuffers;
         common::sp<BufferRange> boundIndexBuffer; IndexFormat boundIndexBufferFormat;
         //common::sp<IResourceSet> boundArgBuffers[31];
@@ -92,14 +93,14 @@ class MetalRenderCmdEnc : public IRenderCommandEncoder, public CmdEncoderImplBas
 
     ///#TODO: Confirm can we have multiple draw calls in single render pass
     RenderPassRegistry _drawResources;
-    
+
 public:
 
 
     //id<MTLCommandEncoder> GetHandle() override {return _mtlEnc;}
-    
+
     MetalRenderCmdEnc(
-        
+
         MetalCommandList* cmdBuf,
         id<MTLRenderCommandEncoder>  enc,
         const RenderPassAction& action
@@ -116,7 +117,9 @@ public:
         }
         _mtlEnc = nullptr;
     }
-    
+
+    void SetPipelineBase(MetalGfxPipelineBase* mtlPipeline);
+
     virtual void SetPipeline(const common::sp<IGfxPipeline>&) override;
 
     // Sets the active <see cref="DeviceBuffer"/> for the given index.
@@ -131,7 +134,7 @@ public:
     virtual void SetIndexBuffer(
         const common::sp<BufferRange>& buffer, IndexFormat format) override;
 
-    
+
     // Sets the active <see cref="ResourceSet"/> for the given index. This ResourceSet is only active for the graphics
     // Pipeline.
     // <param name="slot">The resource slot.</param>
@@ -148,8 +151,8 @@ public:
         const common::sp<IResourceSet>& rs
         //const std::vector<std::uint32_t>& dynamicOffsets
         ) override;
-    
-    
+
+
     virtual void SetPushConstants(
         std::uint32_t pushConstantIndex,
         const std::span<uint32_t>& data,
@@ -208,7 +211,7 @@ public:
         std::uint32_t vertexCount, std::uint32_t instanceCount,
         std::uint32_t vertexStart, std::uint32_t instanceStart) override;
     void Draw(std::uint32_t vertexCount){Draw(vertexCount, 1, 0, 0);}
-    
+
     // Draws indexed primitives from the currently-bound state in this <see cref="CommandList"/>.
     // <param name="indexCount">The number of indices.</param>
     // <param name="instanceCount">The number of instances.</param>
@@ -220,7 +223,7 @@ public:
         std::uint32_t indexStart, std::uint32_t vertexOffset,
         std::uint32_t instanceStart) override;
     void DrawIndexed(std::uint32_t indexCount){DrawIndexed(indexCount, 1, 0, 0, 0);}
-    
+
     // Issues indirect draw commands based on the information contained in the given indirect <see cref="DeviceBuffer"/>.
     // The information stored in the indirect Buffer should conform to the structure of <see cref="IndirectDrawArguments"/>.
     // <param name="indirectBuffer">The indirect Buffer to read from. Must have been created with the
@@ -234,19 +237,28 @@ public:
     //    const common::sp<BufferRange>& indirectBuffer,
     //    std::uint32_t drawCount, std::uint32_t stride) = 0;
 
-    // Issues indirect, indexed draw commands based on the information contained in the given indirect <see cref="DeviceBuffer"/>.
-    // The information stored in the indirect Buffer should conform to the structure of
-    // <see cref="IndirectDrawIndexedArguments"/>.
-    // <param name="indirectBuffer">The indirect Buffer to read from. Must have been created with the
-    // <see cref="BufferUsage.IndirectBuffer"/> flag.</param>
-    // <param name="offset">An offset, in bytes, from the start of the indirect buffer from which the draw commands will be
-    // read. This value must be a multiple of 4.</param>
-    // <param name="drawCount">The number of draw commands to read and issue from the indirect Buffer.</param>
-    // <param name="stride">The stride, in bytes, between consecutive draw commands in the indirect Buffer. This value must
-    // be a multiple of four, and must be larger than the size of <see cref="IndirectDrawIndexedArguments"/>.</param>
-    //virtual void DrawIndexedIndirect(
+    // Issues indirect, indexed draw commands based on the information contained
+    // in the given indirect <see cref="DeviceBuffer"/>. The information stored
+    // in the indirect Buffer should conform to the structure of <see
+    // cref="IndirectDrawIndexedArguments"/>. <param name="indirectBuffer">The
+    // indirect Buffer to read from. Must have been created with the <see
+    // cref="BufferUsage.IndirectBuffer"/> flag.</param> <param name="offset">An
+    // offset, in bytes, from the start of the indirect buffer from which the
+    // draw commands will be read. This value must be a multiple of 4.</param>
+    // <param name="drawCount">The number of draw commands to read and issue
+    // from the indirect Buffer.</param> <param name="stride">The stride, in
+    // bytes, between consecutive draw commands in the indirect Buffer. This
+    // value must be a multiple of four, and must be larger than the size of
+    // <see cref="IndirectDrawIndexedArguments"/>.</param>
+    // virtual void DrawIndexedIndirect(
     //    const common::sp<BufferRange>& indirectBuffer,
-    //    std::uint32_t drawCount, std::uint32_t stride) = 0;
+    //
+
+    virtual void SetPipeline(const common::sp<IMeshShaderPipeline> &) override;
+
+    virtual void DispatchMesh(std::uint32_t groupCountX,
+                              std::uint32_t groupCountY,
+                              std::uint32_t groupCountZ) override;
 
 
     virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override;
@@ -257,9 +269,14 @@ public:
 
     class MetalComputeCmdEnc : public IComputeCommandEncoder, public CmdEncoderImplBase {
         id<MTLComputeCommandEncoder> _mtlEnc;
-    
+
+        struct {
+            MetalComputePipeline* boundPipeline;
+            std::vector<uint8_t> argBuffer;
+        } _compResources;
+
     public:
-        
+
         MetalComputeCmdEnc(
             MetalCommandList* cmdBuf,
             id<MTLComputeCommandEncoder>  enc
@@ -267,11 +284,11 @@ public:
             : CmdEncoderImplBase(cmdBuf)
             , _mtlEnc(enc)
         {};
-        
+
         virtual ~MetalComputeCmdEnc() {}
-        
+
         virtual void EndPass() override {}
-        
+
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
         virtual void SetComputeResourceSet(
@@ -304,7 +321,7 @@ public:
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
 
-        
+
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
 
@@ -348,7 +365,7 @@ public:
             const common::sp<BufferRange>& source,
             const common::sp<BufferRange>& destination,
             std::uint32_t sizeInBytes) override;
-                
+
         //TODO: should we adjust to resource views?
         virtual void CopyBufferToTexture(
             const common::sp<BufferRange>& source,
@@ -427,7 +444,7 @@ public:
             for (std::uint32_t level = 0; level < source->GetDesc().mipLevels; level++)
             {
                 std::uint32_t mipWidth, mipHeight, mipDepth;
-                
+
                 Helpers::GetMipDimensions(source->GetDesc(), level, mipWidth, mipHeight, mipDepth);
                 CopyTexture(
                     source, 0, 0, 0, level, 0,
@@ -476,16 +493,16 @@ public:
         // <param name="texture">The <see cref="Texture"/> to generate mipmaps for. This Texture must have been created with
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
-    
-        
+
+
         /// Resolves a multisampled source <see cref="Texture"/> into a non-multisampled destination <see cref="Texture"/>.
         /// <param name="source">The source of the resolve operation. Must be a multisampled <see cref="Texture"/>
         /// (<see cref="Texture.SampleCount"/> > 1).</param>
         /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
         /// (<see cref="Texture.SampleCount"/> == 1).</param>
-        virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-        
-        
+        //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
+
+
         virtual void WaitForFence(const common::sp<IFence>&) override {}
         virtual void UpdateFence(const common::sp<IFence>&) override {}
 
@@ -494,27 +511,27 @@ public:
 
 
 class MetalCommandList : public ICommandList{
-    
+
     common::sp<MetalDevice> _dev;
     id<MTLCommandBuffer> _cmdBuf;
-    
+
     CmdEncoderImplBase* _currEncoder;
-    
+
     std::vector<CmdEncoderImplBase*> _passes;
     std::unordered_set<common::sp<common::RefCntBase>> _objsInUse;
-    
+
 public:
     MetalCommandList(const common::sp<MetalDevice>&,
                      id<MTLCommandBuffer>);
-    
+
     virtual ~MetalCommandList() override;
 
 
     void RegisterObjInUse(const common::sp<common::RefCntBase>& obj) {_objsInUse.emplace(obj);}
-    
+
     virtual void Begin() override {}
     virtual void End() override {}
-    
+
     virtual IRenderCommandEncoder&   BeginRenderPass(const RenderPassAction&) override;
     virtual IComputeCommandEncoder&  BeginComputePass() override;
     virtual ITransferCommandEncoder& BeginTransferPass() override;
@@ -525,7 +542,7 @@ public:
         _currEncoder->EndPass();
         _currEncoder = nullptr;
     }
-    
+
 
     //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
     //virtual void EndRenderPass() = 0;
@@ -540,7 +557,7 @@ public:
     // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to
     // <see cref="PopDebugGroup"/>.
     // <param name="name">The name of the group. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void PushDebugGroup(const std::string& name) override {}
+    virtual void PushDebugGroup(const std::string& name,const Color4f& color) override {}
 
     // Pops the current debug group. This method must only be called after <see cref="PushDebugGroup(string)"/> has been
     // called on this instance.
@@ -549,14 +566,14 @@ public:
     // Inserts a debug marker into the CommandList at the current position. This is used by graphics debuggers to identify
     // points of interest in a command stream.
     // <param name="name">The name of the marker. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void InsertDebugMarker(const std::string& name) override {}
+    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override {}
 
     //virtual void EncodeWaitForEvent(const common::sp<IEvent>& event, uint64_t expectedValue) override;
     //virtual void EncodeSignalEvent(const common::sp<IEvent>& event, uint64_t value) override;
-    
+
 
     //virtual void Present(const common::sp<RenderTarget>& ) override;
-    
+
     id<MTLCommandBuffer> GetHandle() const {return _cmdBuf;}
 };
 

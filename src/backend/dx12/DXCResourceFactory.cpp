@@ -72,6 +72,13 @@ namespace alloy::dxc
         return DXCComputePipeline::Make(_CreateNewDevHandle(), description);
     }
 
+    common::sp<IMeshShaderPipeline> DXCResourceFactory::CreateMeshShaderPipeline(
+        const MeshShaderPipelineDescription& description
+    ) {
+        assert(GetBase()->GetDevCaps().SupportMeshShader());
+        return DXCMeshShaderPipeline::Make(_CreateNewDevHandle(), description);
+    }
+
     common::sp<ITexture> DXCResourceFactory::WrapNativeTexture(
         void* nativeHandle,
         const ITexture::Description& description

@@ -20,7 +20,7 @@
 #define VK_ASSERT(expr)                                             \
 	do                                                              \
 	{                                                               \
-		if (!expr)                                                    \
+		if (!(expr))                                                \
 		{                                                           \
 			/*LOGE("Detected Vulkan error: {}", vkb::to_string(err));*/ \
 			abort();                                                \
@@ -29,7 +29,7 @@
 
 
 struct VkInstExtNames {
-    
+
 
     constexpr static const char* VK_KHR_SURFACE = "VK_KHR_surface";
     constexpr static const char* VK_KHR_WIN32_SURFACE = "VK_KHR_win32_surface";
@@ -70,7 +70,7 @@ struct VkDevExtNames {
 
     constexpr static auto VK_KHR_SYNCHRONIZATION2 =  "VK_KHR_synchronization2";// "VK_KHR_timeline_semaphore";
     constexpr static auto VK_KHR_TIMELINE_SEMAPHORE =  "VK_KHR_timeline_semaphore";// "VK_KHR_timeline_semaphore";
-    
+
     constexpr static auto VK_KHR_DYNAMIC_RENDERING = "VK_KHR_dynamic_rendering";
     //Following extension is required by VK_KHR_dynamic_rendering
     constexpr static auto VK_KHR_DEPTH_STENCIL_RESOLVE = "VK_KHR_depth_stencil_resolve";
@@ -79,7 +79,7 @@ struct VkDevExtNames {
 
 };
 
-struct VkCommonStrings {    
+struct VkCommonStrings {
     constexpr static auto StandardValidationLayerName = "VK_LAYER_LUNARG_standard_validation";
     constexpr static auto KhronosValidationLayerName = "VK_LAYER_KHRONOS_validation";
     constexpr static auto main = "main";

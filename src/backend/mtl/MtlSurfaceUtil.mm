@@ -16,6 +16,13 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+static CAMetalLayer* _CreateMetalLayer() {
+    auto _metalLayer = [CAMetalLayer layer];
+    _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    _metalLayer.framebufferOnly = true;
+    
+    return _metalLayer;
+}
 
 CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
     
@@ -34,13 +41,13 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             NSWindow* nsWindow = (NSWindow*)nsWindowSource->nsWindow;
             NSView* contentView = nsWindow.contentView;
             
-            if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
-                auto _metalLayer = [CAMetalLayer layer];
+            //if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
+                auto _metalLayer = _CreateMetalLayer();
                 contentView.wantsLayer = true;
                 contentView.layer = _metalLayer;
-            } else {
-                [contentView.layer retain];
-            }
+            //} else {
+            //    [contentView.layer retain];
+            //}
             container = (CAMetalLayer*)contentView.layer;
         }break;
             
@@ -48,13 +55,13 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             auto nsViewSource = (alloy::NSViewSwapChainSource*)src;
             NSView* contentView = (NSView*)nsViewSource->nsView;
             
-            if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
-                auto _metalLayer = [CAMetalLayer layer];
+            //if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
+                auto _metalLayer = _CreateMetalLayer();
                 contentView.wantsLayer = true;
                 contentView.layer = _metalLayer;
-            } else {
-                [contentView.layer retain];
-            }
+            //} else {
+            //    [contentView.layer retain];
+            //}
             //[contentView release];
             container = (CAMetalLayer*)contentView.layer;
         } break;

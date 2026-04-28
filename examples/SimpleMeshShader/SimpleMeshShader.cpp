@@ -6,9 +6,16 @@
 #include <glm/ext.hpp>
 
 namespace QuadShader {
-    #include "shaders/QuadShader_ps_6_0.h"
-    #include "shaders/QuadShader_vs_6_0.h"
+    #include "Shaders/QuadMeshShader_as_6_7.h"
+    #include "Shaders/QuadMeshShader_ms_6_7.h"
+    #include "Shaders/QuadMeshShader_ps_6_7.h"
 }
+
+struct SceneDescriptor
+{
+    glm::uvec2 chunkCnt;
+    glm::vec2 chunkSize;
+};
 
 struct VertexData
 {
@@ -23,29 +30,27 @@ struct UniformBufferObject {
     glm::mat4 proj;
 };
 
-class SimpleQuad : public IApp {
+class SimpleMeshShader : public IApp {
     IAppRunner* _runner;
 
-    alloy::common::sp<alloy::IGfxPipeline> _pipeline;
+    alloy::common::sp<alloy::IMeshShaderPipeline> _pipeline;
 
-    
-    alloy::common::sp<alloy::IBuffer> vertexBuffer, 
-                                      indexBuffer,
-                                      uniformBuffer,
+
+    alloy::common::sp<alloy::IBuffer> uniformBuffer,
                                       structBuffer;
     void* pUniformBuffer;
 
     alloy::common::sp<alloy::ITextureView> tex1;
     alloy::common::sp<alloy::ISampler> samp1;
 
-    
+
     alloy::common::sp<alloy::IResourceSet> _resSet;
 
-    
+
     uint64_t _fenceVal = 0;
     alloy::common::sp<alloy::IEvent> _fence;
 
-    
+
     template<typename T>
     void UpdateBuffer(
         const alloy::common::sp<alloy::IBuffer>& buffer,
@@ -76,7 +81,7 @@ class SimpleQuad : public IApp {
             auto transferedSize = transferSizeInBytes - remainingSize;
             auto batchSize = std::min(stagingBufferSizeInBytes, remainingSize);
             memcpy(writePtr, readPtr + transferedSize, batchSize);
-            
+
             //Record the command buffer
             auto cmd = dev->GetCopyCommandQueue()->CreateCommandList();
             cmd->Begin();
@@ -108,19 +113,19 @@ class SimpleQuad : public IApp {
     void _CreateBuffers();
     void _CreateTextures();
     void _CreatePipeline();
-    
+
 public:
-    SimpleQuad(IAppRunner* runner)
+    SimpleMeshShader(IAppRunner* runner)
         : _runner(runner)
     {
         _CreateResources();
     }
 
-    virtual ~SimpleQuad() override {}
+    virtual ~SimpleMeshShader() override {}
 
     virtual int GetExitCode() override { return 0; }
 
-    
+
     virtual void FixedUpdate() override {}
     virtual void Update() override {}
     virtual void OnDrawGui() override {}
@@ -131,7 +136,7 @@ public:
     virtual void OnFrameBegin(uint32_t frameIdx) {}
 };
 
-void SimpleQuad::_CreateResources() {
+void SimpleMeshShader::_CreateResources() {
     _fence = _runner->GetRenderService()->GetDevice()->GetResourceFactory().CreateSyncEvent();
     _CreateBuffers();
     _CreateTextures();
@@ -139,38 +144,14 @@ void SimpleQuad::_CreateResources() {
 }
 
 
-void SimpleQuad::_CreateBuffers() {
+SceneDescriptor g_SceneDescriptor = SceneDescriptor{
+    /*.patchCnt = */{ 16, 16},
+    /*.patchSize = */{ 1.f, 1.f }
+};
+
+void SimpleMeshShader::_CreateBuffers() {
     auto& factory = _runner->GetRenderService()->GetDevice()->GetResourceFactory();
 
-    std::vector<VertexData> quadVertices
-    {
-        {{-0.75f, 0.75f},  {0, 0}, {0.f, 0.f, 1.f, 1.f}},
-        {{0.75f, 0.75f},   {1, 0}, {0.f, 1.f, 0.f, 1.f}},
-        {{-0.75f, -0.75f}, {0, 1}, {1.f, 0.f, 0.f, 1.f}},
-        {{0.75f, -0.75f},  {1, 1}, {1.f, 1.f, 0.f, 1.f}}
-    };
-
-    std::vector<std::uint32_t> quadIndices { 0, 1, 2, 3 };
-
-    struct SceneDescriptor
-    {
-        float offset[4];
-        float padding[15 * 4];
-    } sceneDescriptor {{ 0.1f, 0.2f, 0.3f, 1.0f }};
-
-    alloy::IBuffer::Description _vbDesc{};
-    _vbDesc.sizeInBytes = 4 * sizeof(VertexData);
-    _vbDesc.usage.vertexBuffer = 1;
-    vertexBuffer = factory.CreateBuffer(_vbDesc);
-    vertexBuffer->SetDebugName("Vertex Buffer");
-    UpdateBuffer(vertexBuffer, quadVertices.data(), quadVertices.size());
-
-    alloy::IBuffer::Description _ibDesc{};
-    _ibDesc.sizeInBytes = 4 * sizeof(std::uint32_t);
-    _ibDesc.usage.indexBuffer = 1;
-    indexBuffer = factory.CreateBuffer(_ibDesc);
-    indexBuffer->SetDebugName("Index Buffer");
-    UpdateBuffer(indexBuffer, quadIndices.data(), quadIndices.size());
 
     alloy::IBuffer::Description _ubDesc{};
     _ubDesc.sizeInBytes = sizeof(UniformBufferObject);
@@ -185,10 +166,10 @@ void SimpleQuad::_CreateBuffers() {
     _tbDesc.usage.structuredBufferReadOnly = 1;
     structBuffer = factory.CreateBuffer(_tbDesc);
     structBuffer->SetDebugName("Storage Buffer");
-    UpdateBuffer(structBuffer, &sceneDescriptor, 1);
+    UpdateBuffer(structBuffer, &g_SceneDescriptor, 1);
 }
 
-void SimpleQuad::_CreateTextures() {
+void SimpleMeshShader::_CreateTextures() {
     auto dev = _runner->GetRenderService()->GetDevice();
     auto& factory = dev->GetResourceFactory();
 
@@ -197,7 +178,7 @@ void SimpleQuad::_CreateTextures() {
     samp1 = factory.CreateSampler(samp1Desc);
 
     alloy::ITexture::Description tex1ImgDesc{};
-                
+
     tex1ImgDesc.width = 256;
     tex1ImgDesc.height = 256;
     tex1ImgDesc.depth = 1;
@@ -241,7 +222,7 @@ void SimpleQuad::_CreateTextures() {
     auto copyDst = copyBuffer->MapToCPU();
     // Copy to upload buffer
     for (int y = 0; y < tex1ImgDesc.height; y++)
-        memcpy((void*)((uintptr_t)copyDst + y * upload_pitch_dst), 
+        memcpy((void*)((uintptr_t)copyDst + y * upload_pitch_dst),
                 (void*)((uintptr_t)pCPUBuffer+ y * upload_pitch_src), upload_pitch_src);
 
     copyBuffer->UnMap();
@@ -253,7 +234,7 @@ void SimpleQuad::_CreateTextures() {
     auto& pass = cmdList->BeginTransferPass();
 
     pass.CopyBufferToTexture(
-        copyBuffer, upload_pitch_dst, upload_buffer_size, 
+        copyBuffer, upload_pitch_dst, upload_buffer_size,
         tex1Img, {0, 0, 0}, 0, 0,
         {tex1ImgDesc.width, tex1ImgDesc.height, 1}
     );
@@ -270,7 +251,7 @@ void SimpleQuad::_CreateTextures() {
 
 }
 
-void SimpleQuad::_CreatePipeline() {
+void SimpleMeshShader::_CreatePipeline() {
     auto* rndrSvc = _runner->GetRenderService();
     auto msaaSampleCount    = rndrSvc->GetFrameBufferSampleCount();
     auto renderTargetFormat = rndrSvc->GetFrameBufferColorFormat();
@@ -289,7 +270,9 @@ void SimpleQuad::_CreatePipeline() {
         elem.bindingSlot = 0;
         elem.bindingCount = 1;
         elem.kind = ElemKind::UniformBuffer;
-        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+        elem.stages = alloy::IShader::Stage::Task
+                    | alloy::IShader::Stage::Mesh
+                    | alloy::IShader::Stage::Fragment;
     }
 
     {
@@ -298,7 +281,9 @@ void SimpleQuad::_CreatePipeline() {
         elem.bindingSlot = 0;
         elem.bindingCount = 1;
         elem.kind = ElemKind::StorageBuffer;
-        elem.stages = alloy::IShader::Stage::Vertex | alloy::IShader::Stage::Fragment;
+        elem.stages = alloy::IShader::Stage::Task
+                    | alloy::IShader::Stage::Mesh
+                    | alloy::IShader::Stage::Fragment;
     }
 
     {
@@ -324,69 +309,64 @@ void SimpleQuad::_CreatePipeline() {
     alloy::IResourceSet::Description resSetDesc{};
     resSetDesc.layout = _layout;
     resSetDesc.boundResources = {
-        alloy::BufferRange::MakeByteBuffer(uniformBuffer), 
+        alloy::BufferRange::MakeByteBuffer(uniformBuffer),
         alloy::BufferRange::MakeByteBuffer(structBuffer),
         tex1,
         samp1
     };
     _resSet = factory.CreateResourceSet(resSetDesc);
-        
-    alloy::GraphicsPipelineDescription pipelineDescription{};
+
+    alloy::MeshShaderPipelineDescription pipelineDescription{};
     pipelineDescription.resourceLayout = _layout;
     pipelineDescription.attachmentState.colorAttachments = { alloy::AttachmentStateDescription::ColorAttachment::MakeOverrideBlend() };
     pipelineDescription.attachmentState.colorAttachments.front().format = renderTargetFormat;
     {
         alloy::AttachmentStateDescription::DepthStencilAttachment dsAttachment {};
         dsAttachment.depthStencilFormat = depthStencilFormat;
-        
+
         pipelineDescription.attachmentState.depthStencilAttachment = dsAttachment;
     }
     //pipelineDescription.blendState.attachments[0].blendEnabled = true;
     pipelineDescription.attachmentState.sampleCount = msaaSampleCount;
 
-    pipelineDescription.depthStencilState.depthTestEnabled = false;
+    pipelineDescription.depthStencilState.depthTestEnabled = true;
     pipelineDescription.depthStencilState.depthWriteEnabled = true;
     pipelineDescription.depthStencilState.depthComparison = alloy::ComparisonKind::LessEqual;
 
 
-    pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::Back;
+    pipelineDescription.rasterizerState.cullMode = alloy::RasterizerStateDescription::FaceCullMode::None;
     pipelineDescription.rasterizerState.fillMode = alloy::RasterizerStateDescription::PolygonFillMode::Solid;
-    pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::Clockwise;
+    pipelineDescription.rasterizerState.frontFace = alloy::RasterizerStateDescription::FrontFace::CounterClockwise;
     pipelineDescription.rasterizerState.depthClipEnabled = true;
     pipelineDescription.rasterizerState.scissorTestEnabled = false;
 
-    pipelineDescription.primitiveTopology = alloy::PrimitiveTopology::TriangleStrip;
-
-    using VL = alloy::VertexLayout;
-    pipelineDescription.shaderSet.vertexLayouts = { {} };
-    pipelineDescription.shaderSet.vertexLayouts[0].SetElements({
-        {"POSITION", {alloy::VertexInputSemantic::Name::Position, 0}, alloy::ShaderDataType::Float2},
-        {"TEXCOORD", {alloy::VertexInputSemantic::Name::TextureCoordinate, 0}, alloy::ShaderDataType::Float2},
-        {"COLOR", {alloy::VertexInputSemantic::Name::Color, 0}, alloy::ShaderDataType::Float4}
-        });
-
-    alloy::IShader::Description vertexShaderDesc{};
-    vertexShaderDesc.stage = alloy::IShader::Stage::Vertex;
-    vertexShaderDesc.entryPoint = "VSMain";
+    alloy::IShader::Description taskShaderDesc{};
+    taskShaderDesc.stage = alloy::IShader::Stage::Task;
+    taskShaderDesc.entryPoint = "ASMain";
+    alloy::IShader::Description meshShaderDesc{};
+    meshShaderDesc.stage = alloy::IShader::Stage::Mesh;
+    meshShaderDesc.entryPoint = "MSMain";
     alloy::IShader::Description fragmentShaderDesc{};
     fragmentShaderDesc.stage = alloy::IShader::Stage::Fragment;
     fragmentShaderDesc.entryPoint = "PSMain";
 
+    auto taskShader = factory.CreateShader(taskShaderDesc, QuadShader::g_ASMain);
+    auto meshShader = factory.CreateShader(meshShaderDesc, QuadShader::g_MSMain);
     auto fragmentShader = factory.CreateShader(fragmentShaderDesc, QuadShader::g_PSMain);
-    auto vertexShader = factory.CreateShader(vertexShaderDesc, QuadShader::g_VSMain);
 
-    pipelineDescription.shaderSet.vertexShader = vertexShader;
-    pipelineDescription.shaderSet.fragmentShader = fragmentShader;
+    pipelineDescription.taskShader = taskShader;
+    pipelineDescription.meshShader = meshShader;
+    pipelineDescription.fragmentShader = fragmentShader;
 
     //pipelineDescription.outputs = swapChain->GetBackBuffer()->GetDesc();
     //pipelineDescription.outputs = fb->GetOutputDescription();
-    _pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
+    _pipeline = factory.CreateMeshShaderPipeline(pipelineDescription);
 }
 
 
-void SimpleQuad::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
+void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     auto timeElapsedSec = _runner->GetTimeService()->GetElapsedSeconds();
-    
+
     auto* rndrSvc = _runner->GetRenderService();
     uint32_t fbWidth, fbHeight;
     rndrSvc->GetFrameBufferSize(fbWidth, fbHeight);
@@ -395,18 +375,17 @@ void SimpleQuad::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     UniformBufferObject ubo{};
     ubo.model = glm::rotate(
         glm::mat4(1.0f),
-        timeElapsedSec * glm::radians(90.0f),
+        timeElapsedSec * glm::radians(10.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view = glm::lookAt(
-        glm::vec3(2.0f, 2.0f, 2.0f),
+        glm::vec3(10.0f, 10.0f, 10.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.proj = glm::perspective(
-        glm::radians(45.0f), 
+        glm::radians(45.0f),
         fbWidth / (float)fbHeight,
-        0.1f, 10.0f);
+        0.1f, 1000.0f);
 
-    
     memcpy(pUniformBuffer, &ubo, sizeof(ubo));
 
     //_commandList->BeginRenderPass(fb);
@@ -416,21 +395,14 @@ void SimpleQuad::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
 
     //_commandList->ClearDepthStencil(0, 0);
     //_commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);
-    pass.SetVertexBuffer(0, alloy::BufferRange::MakeByteBuffer(vertexBuffer) );
-    pass.SetIndexBuffer(alloy::BufferRange::MakeByteBuffer(indexBuffer), alloy::IndexFormat::UInt32);
     pass.SetGraphicsResourceSet(_resSet);
 
-    pass.DrawIndexed(
-        /*indexCount:    */4,
-        /*instanceCount: */1,
-        /*indexStart:    */0,
-        /*vertexOffset:  */0,
-        /*instanceStart: */0);
+    pass.DispatchMesh(8, 1, 1);
 }
 
 int main() {
     auto runner = IAppRunner::Create(800, 600, "Simple Quad");
-    auto app = new SimpleQuad(runner);
+    auto app = new SimpleMeshShader(runner);
     auto res = runner->Run(app);
     delete app;
     delete runner;

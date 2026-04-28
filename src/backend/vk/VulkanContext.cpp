@@ -6,7 +6,7 @@
 
 namespace alloy
 {
-    
+
     common::sp<IContext> CreateVulkanContext(const IContext::Options& opts) {
         return alloy::vk::VulkanContext::Make(opts);
     }
@@ -20,7 +20,22 @@ namespace alloy::vk
         *this = { };
 
         auto& fnTable = ctx.GetFnTable();
-        
+
+        //Get all supported extensions
+        uint32_t extensionCount;
+        fnTable.vkEnumerateDeviceExtensionProperties(adp, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        fnTable.vkEnumerateDeviceExtensionProperties(adp, nullptr, &extensionCount, availableExtensions.data());
+
+        std::unordered_set<std::string> availableExtNames;
+        for(auto& ext : availableExtensions) {
+            availableExtNames.emplace(ext.extensionName);
+        }
+
+        auto IsExtSupported = [&](const std::string& extName) {
+            return availableExtNames.contains(extName);
+        };
+
         VkPhysicalDeviceProperties devProps { };
         fnTable.vkGetPhysicalDeviceProperties(adp, &devProps);
 
@@ -32,18 +47,18 @@ namespace alloy::vk
         limits = devProps.limits;
         sparseProperties = devProps.sparseProperties;
 
-        isIntegratedGPU 
+        isIntegratedGPU
             = devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
 
         fnTable.vkGetPhysicalDeviceFeatures(adp, &features);
 
         if(devProps.apiVersion >= VK_VERSION_1_1) {
 
-            VkPhysicalDeviceProperties2 devProps2 { 
+            VkPhysicalDeviceProperties2 devProps2 {
                 .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
             };
 
-            VkPhysicalDeviceFeatures2 features2 { 
+            VkPhysicalDeviceFeatures2 features2 {
                 .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2
             };
 
@@ -83,6 +98,13 @@ namespace alloy::vk
                 features2.pNext = &features14;
             }
 
+
+            if(IsExtSupported(VK_EXT_MESH_SHADER_EXTENSION_NAME)) {
+                meshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+                meshShaderFeatures.pNext = features2.pNext;
+                features2.pNext = &meshShaderFeatures;
+            }
+
             fnTable.vkGetPhysicalDeviceProperties2(adp, &devProps2);
             fnTable.vkGetPhysicalDeviceFeatures2(adp, &features2);
         }
@@ -90,7 +112,7 @@ namespace alloy::vk
         //Resizable BAR system will have a >256MB HOST_VISIBLE DEVICE_LOCAL heap
         VkPhysicalDeviceMemoryProperties vramProp{};
         fnTable.vkGetPhysicalDeviceMemoryProperties(adp, &vramProp);
-        constexpr auto BARPropBits = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+        constexpr auto BARPropBits = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
         constexpr size_t defaultBARSize = 256 * 1024 * 1024; //256MB
@@ -98,7 +120,7 @@ namespace alloy::vk
         for(uint32_t i = 0; i < vramProp.memoryTypeCount; i++) {
             auto& type = vramProp.memoryTypes[i];
 
-            auto isBARType = type.propertyFlags & BARPropBits == BARPropBits;
+            auto isBARType = (type.propertyFlags & BARPropBits) == BARPropBits;
             if(isBARType) {
                 auto& heap = vramProp.memoryHeaps[type.heapIndex];
                 if(heap.size > defaultBARSize) {
@@ -108,29 +130,11 @@ namespace alloy::vk
             }
         }
 
-        //Get all supported extensions
-        uint32_t extensionCount;
-        fnTable.vkEnumerateDeviceExtensionProperties(adp, nullptr, &extensionCount, nullptr);
-        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-        fnTable.vkEnumerateDeviceExtensionProperties(adp, nullptr, &extensionCount, availableExtensions.data());
 
-        std::unordered_set<std::string> availableExtNames;
-        for(auto& ext : availableExtensions) {
-            availableExtNames.emplace(ext.extensionName);
-        }
-
-        auto IsExtSupported = [&](const std::string& extName) {
-            return availableExtNames.contains(extName);
-        };
-
-        if( devProps.apiVersion >= VK_VERSION_1_4 || 
+        if( devProps.apiVersion >= VK_VERSION_1_4 ||
             IsExtSupported(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME)
         ) {
             features12.scalarBlockLayout = true;
-        }
-
-        if(IsExtSupported(VK_EXT_MESH_SHADER_EXTENSION_NAME)) {
-            supportMeshShader = true;
         }
 
         if( IsExtSupported(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
@@ -163,7 +167,7 @@ namespace alloy::vk
     }
 
 
-    
+
     common::sp<VulkanAdapter> VulkanAdapter::Make(
         const common::sp<VulkanContext>& ctx,
         VkPhysicalDevice handle
@@ -194,7 +198,7 @@ namespace alloy::vk
             return std::optional<uint32_t>();
         };
 
-        
+
         uint32_t graphicsQueueFamily;
         std::vector<uint32_t> excludes;
 
@@ -255,11 +259,11 @@ namespace alloy::vk
                 adp->_qFamily.graphicsQueueSupportsCompute = true;
             }
         }
-        
+
         if (adp->_caps.isIntegratedGPU) {
-            ///#TODO: Default all integrated GPUs to UMA 
+            ///#TODO: Default all integrated GPUs to UMA
             adp->info.capabilities.isUMA = true;
-        } 
+        }
 
         if(adp->_caps.isResizableBARSupported) {
             adp->info.capabilities.supportResizableBar = 1;
@@ -282,12 +286,12 @@ namespace alloy::vk
                 adp->_qFamily.transferQueueFamily = res.value();
             }
         }
-        
+
 
         return common::sp(adp);
 
     }
-    
+
     void VulkanAdapter::PopulateAdpLimits() {
         auto& fnTable = _ctx->GetFnTable();
 
@@ -301,87 +305,87 @@ namespace alloy::vk
             return  SampleCount::x1;
         };
 
-        info.limits.maxImageDimension1D = _caps.limits.maxImageDimension1D; 
-        info.limits.maxImageDimension2D = _caps.limits.maxImageDimension2D; 
-        info.limits.maxImageDimension3D = _caps.limits.maxImageDimension3D; 
-        info.limits.maxImageDimensionCube = _caps.limits.maxImageDimensionCube; 
-        info.limits.maxImageArrayLayers = _caps.limits.maxImageArrayLayers; 
-        info.limits.maxTexelBufferElements = _caps.limits.maxTexelBufferElements; 
-        info.limits.maxUniformBufferRange = _caps.limits.maxUniformBufferRange; 
-        info.limits.maxStorageBufferRange = _caps.limits.maxStorageBufferRange; 
-        info.limits.maxPushConstantsSize = _caps.limits.maxPushConstantsSize; 
-        info.limits.maxMemoryAllocationCount = _caps.limits.maxMemoryAllocationCount; 
-        info.limits.maxSamplerAllocationCount = _caps.limits.maxSamplerAllocationCount; 
-        info.limits.bufferImageGranularity = _caps.limits.bufferImageGranularity; 
-        info.limits.sparseAddressSpaceSize = _caps.limits.sparseAddressSpaceSize; 
-        info.limits.maxBoundDescriptorSets = _caps.limits.maxBoundDescriptorSets; 
-        info.limits.maxPerStageDescriptorSamplers = _caps.limits.maxPerStageDescriptorSamplers; 
-        info.limits.maxPerStageDescriptorUniformBuffers = _caps.limits.maxPerStageDescriptorUniformBuffers; 
-        info.limits.maxPerStageDescriptorStorageBuffers = _caps.limits.maxPerStageDescriptorStorageBuffers; 
-        info.limits.maxPerStageDescriptorSampledImages = _caps.limits.maxPerStageDescriptorSampledImages; 
-        info.limits.maxPerStageDescriptorStorageImages = _caps.limits.maxPerStageDescriptorStorageImages; 
-        info.limits.maxPerStageDescriptorInputAttachments = _caps.limits.maxPerStageDescriptorInputAttachments; 
-        info.limits.maxPerStageResources = _caps.limits.maxPerStageResources; 
-        info.limits.maxVertexInputAttributes = _caps.limits.maxVertexInputAttributes; 
-        info.limits.maxVertexInputBindings = _caps.limits.maxVertexInputBindings; 
-        info.limits.maxVertexInputAttributeOffset = _caps.limits.maxVertexInputAttributeOffset; 
-        info.limits.maxVertexInputBindingStride = _caps.limits.maxVertexInputBindingStride; 
-        info.limits.maxVertexOutputComponents = _caps.limits.maxVertexOutputComponents; 
-        info.limits.maxFragmentInputComponents = _caps.limits.maxFragmentInputComponents; 
-        info.limits.maxFragmentOutputAttachments = _caps.limits.maxFragmentOutputAttachments; 
-        info.limits.maxFragmentDualSrcAttachments = _caps.limits.maxFragmentDualSrcAttachments; 
-        info.limits.maxFragmentCombinedOutputResources = _caps.limits.maxFragmentCombinedOutputResources; 
-        info.limits.maxComputeSharedMemorySize = _caps.limits.maxComputeSharedMemorySize; 
-        info.limits.maxComputeWorkGroupCount[0] = _caps.limits.maxComputeWorkGroupCount[0]; 
-        info.limits.maxComputeWorkGroupCount[1] = _caps.limits.maxComputeWorkGroupCount[1]; 
-        info.limits.maxComputeWorkGroupCount[2] = _caps.limits.maxComputeWorkGroupCount[2]; 
-        info.limits.maxComputeWorkGroupInvocations = _caps.limits.maxComputeWorkGroupInvocations; 
-        info.limits.maxComputeWorkGroupSize[0] = _caps.limits.maxComputeWorkGroupSize[0]; 
-        info.limits.maxComputeWorkGroupSize[1] = _caps.limits.maxComputeWorkGroupSize[1]; 
-        info.limits.maxComputeWorkGroupSize[2] = _caps.limits.maxComputeWorkGroupSize[2]; 
-        info.limits.maxDrawIndexedIndexValue = _caps.limits.maxDrawIndexedIndexValue; 
-        info.limits.maxDrawIndirectCount = _caps.limits.maxDrawIndirectCount; 
-        info.limits.maxSamplerLodBias = _caps.limits.maxSamplerLodBias; 
-        info.limits.maxSamplerAnisotropy = _caps.limits.maxSamplerAnisotropy; 
-        info.limits.maxViewports = _caps.limits.maxViewports; 
+        info.limits.maxImageDimension1D = _caps.limits.maxImageDimension1D;
+        info.limits.maxImageDimension2D = _caps.limits.maxImageDimension2D;
+        info.limits.maxImageDimension3D = _caps.limits.maxImageDimension3D;
+        info.limits.maxImageDimensionCube = _caps.limits.maxImageDimensionCube;
+        info.limits.maxImageArrayLayers = _caps.limits.maxImageArrayLayers;
+        info.limits.maxTexelBufferElements = _caps.limits.maxTexelBufferElements;
+        info.limits.maxUniformBufferRange = _caps.limits.maxUniformBufferRange;
+        info.limits.maxStorageBufferRange = _caps.limits.maxStorageBufferRange;
+        info.limits.maxPushConstantsSize = _caps.limits.maxPushConstantsSize;
+        info.limits.maxMemoryAllocationCount = _caps.limits.maxMemoryAllocationCount;
+        info.limits.maxSamplerAllocationCount = _caps.limits.maxSamplerAllocationCount;
+        info.limits.bufferImageGranularity = _caps.limits.bufferImageGranularity;
+        info.limits.sparseAddressSpaceSize = _caps.limits.sparseAddressSpaceSize;
+        info.limits.maxBoundDescriptorSets = _caps.limits.maxBoundDescriptorSets;
+        info.limits.maxPerStageDescriptorSamplers = _caps.limits.maxPerStageDescriptorSamplers;
+        info.limits.maxPerStageDescriptorUniformBuffers = _caps.limits.maxPerStageDescriptorUniformBuffers;
+        info.limits.maxPerStageDescriptorStorageBuffers = _caps.limits.maxPerStageDescriptorStorageBuffers;
+        info.limits.maxPerStageDescriptorSampledImages = _caps.limits.maxPerStageDescriptorSampledImages;
+        info.limits.maxPerStageDescriptorStorageImages = _caps.limits.maxPerStageDescriptorStorageImages;
+        info.limits.maxPerStageDescriptorInputAttachments = _caps.limits.maxPerStageDescriptorInputAttachments;
+        info.limits.maxPerStageResources = _caps.limits.maxPerStageResources;
+        info.limits.maxVertexInputAttributes = _caps.limits.maxVertexInputAttributes;
+        info.limits.maxVertexInputBindings = _caps.limits.maxVertexInputBindings;
+        info.limits.maxVertexInputAttributeOffset = _caps.limits.maxVertexInputAttributeOffset;
+        info.limits.maxVertexInputBindingStride = _caps.limits.maxVertexInputBindingStride;
+        info.limits.maxVertexOutputComponents = _caps.limits.maxVertexOutputComponents;
+        info.limits.maxFragmentInputComponents = _caps.limits.maxFragmentInputComponents;
+        info.limits.maxFragmentOutputAttachments = _caps.limits.maxFragmentOutputAttachments;
+        info.limits.maxFragmentDualSrcAttachments = _caps.limits.maxFragmentDualSrcAttachments;
+        info.limits.maxFragmentCombinedOutputResources = _caps.limits.maxFragmentCombinedOutputResources;
+        info.limits.maxComputeSharedMemorySize = _caps.limits.maxComputeSharedMemorySize;
+        info.limits.maxComputeWorkGroupCount[0] = _caps.limits.maxComputeWorkGroupCount[0];
+        info.limits.maxComputeWorkGroupCount[1] = _caps.limits.maxComputeWorkGroupCount[1];
+        info.limits.maxComputeWorkGroupCount[2] = _caps.limits.maxComputeWorkGroupCount[2];
+        info.limits.maxComputeWorkGroupInvocations = _caps.limits.maxComputeWorkGroupInvocations;
+        info.limits.maxComputeWorkGroupSize[0] = _caps.limits.maxComputeWorkGroupSize[0];
+        info.limits.maxComputeWorkGroupSize[1] = _caps.limits.maxComputeWorkGroupSize[1];
+        info.limits.maxComputeWorkGroupSize[2] = _caps.limits.maxComputeWorkGroupSize[2];
+        info.limits.maxDrawIndexedIndexValue = _caps.limits.maxDrawIndexedIndexValue;
+        info.limits.maxDrawIndirectCount = _caps.limits.maxDrawIndirectCount;
+        info.limits.maxSamplerLodBias = _caps.limits.maxSamplerLodBias;
+        info.limits.maxSamplerAnisotropy = _caps.limits.maxSamplerAnisotropy;
+        info.limits.maxViewports = _caps.limits.maxViewports;
         info.limits.maxViewportDimensions[0] = _caps.limits.maxViewportDimensions[0];
         info.limits.maxViewportDimensions[1] = _caps.limits.maxViewportDimensions[1];
-        info.limits.minMemoryMapAlignment = _caps.limits.minMemoryMapAlignment; 
-        info.limits.minTexelBufferOffsetAlignment = _caps.limits.minTexelBufferOffsetAlignment; 
-        info.limits.minUniformBufferOffsetAlignment = _caps.limits.minUniformBufferOffsetAlignment; 
-        info.limits.minStorageBufferOffsetAlignment = _caps.limits.minStorageBufferOffsetAlignment; 
-        info.limits.maxFramebufferWidth = _caps.limits.maxFramebufferWidth; 
-        info.limits.maxFramebufferHeight = _caps.limits.maxFramebufferHeight; 
-        info.limits.maxFramebufferLayers = _caps.limits.maxFramebufferLayers; 
-        //info.limits.framebufferColorSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferColorSampleCounts); 
-        //info.limits.framebufferDepthSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferDepthSampleCounts); 
-        //info.limits.framebufferStencilSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferStencilSampleCounts); 
-        //info.limits.framebufferNoAttachmentsSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferNoAttachmentsSampleCounts); 
-        info.limits.maxColorAttachments = _caps.limits.maxColorAttachments; 
-        //info.limits.sampledImageColorSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageColorSampleCounts); 
-        //info.limits.sampledImageIntegerSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageIntegerSampleCounts); 
-        //info.limits.sampledImageDepthSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageDepthSampleCounts); 
-        //info.limits.sampledImageStencilSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageStencilSampleCounts); 
-        //info.limits.storageImageSampleCounts 
-        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.storageImageSampleCounts); 
-        //info.limits.maxSampleMaskWords = _caps.limits.maxSampleMaskWords; 
-        info.limits.timestampPeriod = _caps.limits.timestampPeriod; 
-        info.limits.maxClipDistances = _caps.limits.maxClipDistances; 
-        info.limits.maxCullDistances = _caps.limits.maxCullDistances; 
-        info.limits.maxCombinedClipAndCullDistances = _caps.limits.maxCombinedClipAndCullDistances; 
-        //info.limits.pointSizeRange[0] = _caps.limits.pointSizeRange[0]; 
-        //info.limits.pointSizeRange[1] = _caps.limits.pointSizeRange[1]; 
-        //info.limits.lineWidthRange[0] = _caps.limits.lineWidthRange[0]; 
-        //info.limits.lineWidthRange[1] = _caps.limits.lineWidthRange[1]; 
-        info.limits.pointSizeGranularity = _caps.limits.pointSizeGranularity; 
+        info.limits.minMemoryMapAlignment = _caps.limits.minMemoryMapAlignment;
+        info.limits.minTexelBufferOffsetAlignment = _caps.limits.minTexelBufferOffsetAlignment;
+        info.limits.minUniformBufferOffsetAlignment = _caps.limits.minUniformBufferOffsetAlignment;
+        info.limits.minStorageBufferOffsetAlignment = _caps.limits.minStorageBufferOffsetAlignment;
+        info.limits.maxFramebufferWidth = _caps.limits.maxFramebufferWidth;
+        info.limits.maxFramebufferHeight = _caps.limits.maxFramebufferHeight;
+        info.limits.maxFramebufferLayers = _caps.limits.maxFramebufferLayers;
+        //info.limits.framebufferColorSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferColorSampleCounts);
+        //info.limits.framebufferDepthSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferDepthSampleCounts);
+        //info.limits.framebufferStencilSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferStencilSampleCounts);
+        //info.limits.framebufferNoAttachmentsSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.framebufferNoAttachmentsSampleCounts);
+        info.limits.maxColorAttachments = _caps.limits.maxColorAttachments;
+        //info.limits.sampledImageColorSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageColorSampleCounts);
+        //info.limits.sampledImageIntegerSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageIntegerSampleCounts);
+        //info.limits.sampledImageDepthSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageDepthSampleCounts);
+        //info.limits.sampledImageStencilSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.sampledImageStencilSampleCounts);
+        //info.limits.storageImageSampleCounts
+        //    = _VkSampleCnts2AlSampleCnt(_caps.limits.storageImageSampleCounts);
+        //info.limits.maxSampleMaskWords = _caps.limits.maxSampleMaskWords;
+        info.limits.timestampPeriod = _caps.limits.timestampPeriod;
+        info.limits.maxClipDistances = _caps.limits.maxClipDistances;
+        info.limits.maxCullDistances = _caps.limits.maxCullDistances;
+        info.limits.maxCombinedClipAndCullDistances = _caps.limits.maxCombinedClipAndCullDistances;
+        //info.limits.pointSizeRange[0] = _caps.limits.pointSizeRange[0];
+        //info.limits.pointSizeRange[1] = _caps.limits.pointSizeRange[1];
+        //info.limits.lineWidthRange[0] = _caps.limits.lineWidthRange[0];
+        //info.limits.lineWidthRange[1] = _caps.limits.lineWidthRange[1];
+        info.limits.pointSizeGranularity = _caps.limits.pointSizeGranularity;
         info.limits.lineWidthGranularity = _caps.limits.lineWidthGranularity;
 
         auto generalMSAASampleCntBits = _caps.limits.framebufferColorSampleCounts   //Render target supported
@@ -389,7 +393,7 @@ namespace alloy::vk
                                       & _caps.limits.storageImageSampleCounts       //Storage support
                                       ;
         info.limits.maxMSAASampleCount = _VkSampleCnts2AlSampleCnt(generalMSAASampleCntBits);
-        
+
         //Will update in PopulateAdpFeatures
         info.limits.minStructuredBufferStride = _caps.SupportScalarBlockLayout() ? 4 : 16;
     }
@@ -407,7 +411,7 @@ namespace alloy::vk
 
         auto _IsHeapSatisfied = [&](
             uint32_t heapIdx,
-            VkMemoryPropertyFlags exist, 
+            VkMemoryPropertyFlags exist,
             VkMemoryPropertyFlags nonExist
         ) {
             bool hasRequiredFlags = exist ? false : true;
@@ -497,7 +501,7 @@ namespace alloy::vk
       , _qFamily{}
     { }
 
-    
+
     common::sp<IGraphicsDevice> VulkanAdapter::RequestDevice(
         const IGraphicsDevice::Options& options
     ) {
@@ -525,7 +529,7 @@ namespace alloy::vk
             _fnTable.vkEnumerateDeviceExtensionProperties(adp, nullptr, &extensionCount, availableExtensions.data());
 
             uint32_t reqExtFoundCount = 0;
-            
+
             for (const auto& extension : availableExtensions) {
                 if(requiredExtensions.contains(extension.extensionName)) {
                     reqExtFoundCount++;
@@ -541,7 +545,7 @@ namespace alloy::vk
         VK_CHECK(_fnTable.vkEnumeratePhysicalDevices(_instance, &devCnt, gpus.data()));
 
         std::vector<common::sp<IPhysicalAdapter>> adapters;
-        
+
         for(auto& gpu : gpus) {
 
             if(!_IsAdpSupportRequiredExts(gpu)) continue;
@@ -574,7 +578,7 @@ namespace alloy::vk
         std::unordered_set<std::string> availableInstanceLayers{ _ToSet(EnumerateInstanceLayers()) };
         std::unordered_set<std::string> availableInstanceExtensions{ _ToSet(EnumerateInstanceExtensions()) };
 
-       
+
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -593,7 +597,7 @@ namespace alloy::vk
         std::vector<const char*> instanceLayers{};
 
         auto _AddExtIfPresent = [&](const char* extName){
-            if (availableInstanceExtensions.find(extName) 
+            if (availableInstanceExtensions.find(extName)
                     != availableInstanceExtensions.end())
             {
                 instanceExtensions.push_back(extName);
@@ -629,11 +633,11 @@ namespace alloy::vk
 
         //Debugging
         if(opts.debug) {
-            instCaps.hasDebugReportExt 
+            instCaps.hasDebugReportExt
                 = _AddExtIfPresent(VkInstExtNames::VK_EXT_DEBUG_REPORT);
-            instCaps.hasStandardValidationLayers 
+            instCaps.hasStandardValidationLayers
                 = _AddLayerIfPresent(VkCommonStrings::StandardValidationLayerName);
-            instCaps.hasKhronosValidationLayers 
+            instCaps.hasKhronosValidationLayers
                 = _AddLayerIfPresent(VkCommonStrings::KhronosValidationLayerName);
         }
 
@@ -663,7 +667,7 @@ namespace alloy::vk
             debugCallbackCI.pUserData = pCtx;
 
             VK_CHECK(pCtx->_fnTable.vkCreateDebugReportCallbackEXT(
-                instance, &debugCallbackCI, nullptr, &pCtx->_debugCallbackHandle));       
+                instance, &debugCallbackCI, nullptr, &pCtx->_debugCallbackHandle));
         }
 
         return common::sp {pCtx};
@@ -681,10 +685,10 @@ namespace alloy::vk
         void* pUserData
     ) {
         auto self = (VulkanContext*)pUserData;
-        
+
         return self->_DbgCb(msgFlags, objectType, object, location, msgCode, pLayerPrefix, pMsg);
     }
-        
+
 
     VkBool32 VulkanContext::_DbgCb(
         VkDebugReportFlagsEXT                       msgFlags,
@@ -713,4 +717,3 @@ namespace alloy::vk
 
 
 } // namespace alloy::vk
-

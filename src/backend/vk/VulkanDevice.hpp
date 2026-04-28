@@ -33,12 +33,12 @@ namespace alloy::vk
     class VulkanCommandList;
     //class VulkanResourceFactory;
     //Manage command pools, to achieve one command pool per thread
-    
+
     struct _CmdPoolContainer;
     class _CmdPoolMgr {
         friend class VulkanDevice;
         friend struct _CmdPoolContainer;
- 
+
     private:
         VulkanDevice* _dev;
         std::uint32_t _queueFamily;
@@ -92,7 +92,7 @@ namespace alloy::vk
 
             bool operator==(const TextureState& other) const {
                 return stage == other.stage &&
-                       access == other.access && 
+                       access == other.access &&
                        layout == other.layout;
             }
         };
@@ -140,7 +140,7 @@ namespace alloy::vk
         std::deque<TransitionCmdBuf> _transitionCmdBufs;
 
         void _RecycleTransitionCmdBufs();
-    
+
         //void _InsertBarriers(
         //    const alloy::utils::BarrierActions& barriers);
 
@@ -178,7 +178,7 @@ namespace alloy::vk
         virtual common::sp<ICommandList> CreateCommandList() override;
 
         virtual void* GetNativeHandle() const override {return _q;}
-        
+
         /*IVkTimeline implementations*/
         virtual void RemoveResource(VulkanBuffer* buffer) override {
             //_CleanupSyncPoints();
@@ -187,7 +187,7 @@ namespace alloy::vk
             //    pt.states.buffers.erase(buffer);
             //}
         }
-        
+
         virtual void RemoveResource(VulkanTexture* texture) override {
             //_CleanupSyncPoints();
             _currentState.textures.erase(texture);
@@ -270,7 +270,7 @@ namespace alloy::vk
 
 
     public:
-        
+
         virtual void* GetNativeHandle() const override { return _dev; }
 
         //virtual const IGraphicsDevice::AdapterInfo& GetAdapterInfo() const override { return _adpInfo; }
@@ -287,6 +287,8 @@ namespace alloy::vk
 
         //const VkInstance& GetInstance() const;
         const VolkDeviceTable& GetFnTable() const {return _fnTable;}
+
+        const VulkanDevCaps& GetDevCaps() const { return _adp->GetCaps(); }
 
         //const VkSurfaceKHR& Surface() const {return _surface;}
 
@@ -341,7 +343,7 @@ namespace alloy::vk
         VulkanBuffer(
             const common::sp<VulkanDevice>& dev,
             const IBuffer::Description& desc
-        ) 
+        )
             : IBuffer(desc)
             , _dev(dev)
         { }
@@ -380,7 +382,7 @@ namespace alloy::vk
             _debugName = name;
         }
 
-        
+
         virtual std::string GetDebugName() override {
             return _debugName;
         }
@@ -407,7 +409,7 @@ namespace alloy::vk
         );
 
         const VkSemaphore& GetHandle() const { return _timelineSem; }
-    
+
         virtual uint64_t GetSignaledValue() override;
         virtual void SignalFromCPU(uint64_t signalValue) override;
         virtual bool WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) override;
@@ -419,6 +421,5 @@ namespace alloy::vk
         void SyncTimelineToThis(IVkTimeline* timeline, uint64_t syncValue);
 
     };
-    
-} // namespace alloy
 
+} // namespace alloy

@@ -179,31 +179,43 @@ namespace alloy
         //std::vector<SpecializationConstant*> specializations;
 
     };
+
+    struct MeshShaderPipelineDescription {
+        
+        AttachmentStateDescription attachmentState;
+        
+        DepthStencilStateDescription depthStencilState;
+        
+        RasterizerStateDescription rasterizerState;
+
+        PrimitiveTopology primitiveTopology;
+
+        common::sp<IShader> taskShader; //Amplification shader. Optional
+        common::sp<IShader> meshShader;
+        common::sp<IShader> fragmentShader;
+
+        common::sp<IResourceLayout> resourceLayout;
+    };
     
 
     class IGfxPipeline : public common::RefCntBase{
 
     protected:
         IGfxPipeline() {}
-
-    public:
         
-    public:
-
-
-
     };
 
     class IComputePipeline : public common::RefCntBase{
 
     protected:
         IComputePipeline() {}
+    };
 
-    public:
-        
-    public:
+
+    class IMeshShaderPipeline : public common::RefCntBase{
 
 
     };
+
 } // namespace alloy
 

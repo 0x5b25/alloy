@@ -340,24 +340,22 @@ namespace alloy::vk {
 
     VkShaderStageFlags VdToVkShaderStages(IShader::Stages stages){
         VkShaderStageFlags flag = 0;
-        if (stages[IShader::Stage::Vertex])                 flag |= VK_SHADER_STAGE_VERTEX_BIT;
-        if (stages[IShader::Stage::Geometry])               flag |= VK_SHADER_STAGE_GEOMETRY_BIT;
-        if (stages[IShader::Stage::TessellationControl])    flag |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        if (stages[IShader::Stage::TessellationEvaluation]) flag |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        if (stages[IShader::Stage::Fragment])               flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
-        if (stages[IShader::Stage::Compute])                flag |= VK_SHADER_STAGE_COMPUTE_BIT;
+        if (stages[IShader::Stage::Vertex])     flag |= VK_SHADER_STAGE_VERTEX_BIT;
+        if (stages[IShader::Stage::Task])       flag |= VK_SHADER_STAGE_TASK_BIT_EXT;
+        if (stages[IShader::Stage::Mesh])       flag |= VK_SHADER_STAGE_MESH_BIT_EXT;
+        if (stages[IShader::Stage::Fragment])   flag |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (stages[IShader::Stage::Compute])    flag |= VK_SHADER_STAGE_COMPUTE_BIT;
         return flag;
 
     }
 
     VkShaderStageFlagBits VdToVkShaderStageSingle(IShader::Stage stage) {
         switch(stage) {
-        case IShader::Stage::Vertex:                 return VK_SHADER_STAGE_VERTEX_BIT;
-        case IShader::Stage::Geometry:               return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case IShader::Stage::TessellationControl:    return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case IShader::Stage::TessellationEvaluation: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case IShader::Stage::Fragment:               return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case IShader::Stage::Compute:                return VK_SHADER_STAGE_COMPUTE_BIT;
+        case IShader::Stage::Vertex:     return VK_SHADER_STAGE_VERTEX_BIT;
+        case IShader::Stage::Task:       return VK_SHADER_STAGE_TASK_BIT_EXT;
+        case IShader::Stage::Mesh:       return VK_SHADER_STAGE_MESH_BIT_EXT;
+        case IShader::Stage::Fragment:   return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case IShader::Stage::Compute:    return VK_SHADER_STAGE_COMPUTE_BIT;
         default: return VkShaderStageFlagBits::VK_SHADER_STAGE_ALL;
         }
     }

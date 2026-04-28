@@ -37,7 +37,7 @@ namespace alloy::mtl
     class MetalContext : public alloy::IContext {
 
     public:
-        static common::sp<MetalContext> Make();
+        static common::sp<MetalContext> Make(const IContext::Options& opts);
 
         virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) override;
         virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() override;
@@ -50,7 +50,7 @@ namespace alloy::mtl
 
 
     public:
-        MetalCmdQ(MetalDevice& device); 
+        MetalCmdQ(MetalDevice& device);
 
         virtual ~MetalCmdQ() override;
 
@@ -87,9 +87,9 @@ namespace alloy::mtl
         common::sp<MetalAdapter> _adp;
         //GraphicsApiVersion _apiVersion;
         IGraphicsDevice::Features _features;
-        
+
         AdapterInfo _info;
-        
+
         MetalCmdQ* _gfxQ, * _copyQ;
 
         MetalDevice() = default;
@@ -104,7 +104,7 @@ namespace alloy::mtl
         );
 
         id<MTLDevice> GetHandle() const { return _adp->GetHandle(); }
-        
+
         virtual const Features& GetFeatures() const override { return _features; }
         virtual IPhysicalAdapter& GetAdapter() const override {return *_adp.get();}
 
@@ -116,9 +116,9 @@ namespace alloy::mtl
         virtual ICommandQueue* GetCopyCommandQueue() override;
 
         virtual ISwapChain::State PresentToSwapChain(ISwapChain* sc) override;
-               
 
-        
+
+
         virtual void* GetNativeHandle() const override { return GetHandle(); }
         virtual void WaitForIdle() override;
     };
@@ -127,33 +127,33 @@ namespace alloy::mtl
 
         common::sp<MetalDevice> _dev;
         id<MTLBuffer> _mtlBuffer;
-        
+
 
     public:
         MetalBuffer( const common::sp<MetalDevice>& dev,
                     const IBuffer::Description& desc,
                     id<MTLBuffer> buffer );
-        
+
         virtual ~MetalBuffer() override;
-        
-        
+
+
         id<MTLBuffer> GetHandle() const { return _mtlBuffer; }
-        
+
         static common::sp<MetalBuffer> Make(const common::sp<MetalDevice>& dev,
                                             const IBuffer::Description& desc);
-        
-        
+
+
         virtual void* MapToCPU() override;
 
         virtual void UnMap() override;
-        
-        
+
         virtual void SetDebugName(const std::string& ) override;
+        virtual std::string GetDebugName() override;
 
     };
 
     class MetalFence : public alloy::IFence {
-        
+
         common::sp<MetalDevice> _dev;
         id<MTLFence> _mtlFence;
 
@@ -186,4 +186,3 @@ namespace alloy::mtl
 
     };
 } // namespace alloy
-

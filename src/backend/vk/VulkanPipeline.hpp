@@ -30,7 +30,7 @@ namespace alloy::vk
 
         VkPipelineLayout _pipelineLayout;
         VkPipeline _devicePipeline;
-        
+
         std::uint32_t resourceSetCount;
         std::uint32_t dynamicOffsetsCount;
         //public override bool IsComputePipeline { get; }
@@ -142,9 +142,9 @@ namespace alloy::vk
         const VkPipelineLayout& GetLayout() const { return _pipelineLayout; }
         std::uint32_t GetResourceSetCount() const { return resourceSetCount; }
         std::uint32_t GetDynamicOffsetCount() const {return dynamicOffsetsCount;}
-        const std::vector<VulkanResourceLayout::PushConstantInfo>& GetPushConstants() 
+        const std::vector<VulkanResourceLayout::PushConstantInfo>& GetPushConstants()
             const { return pushConstants; }
-    
+
     };
 
     class VulkanComputePipeline : public IComputePipeline, public VulkanPipelineBase{
@@ -165,7 +165,7 @@ namespace alloy::vk
 
     };
 
-    
+
     class VulkanGraphicsPipeline : public IGfxPipeline, public VulkanPipelineBase{
 
         //VkRenderPass _renderPass;
@@ -186,6 +186,28 @@ namespace alloy::vk
         );
 
     };
+
+
+    class VulkanMeshShaderPipeline : public IMeshShaderPipeline, public VulkanPipelineBase{
+
+        //VkRenderPass _renderPass;
+
+        bool scissorTestEnabled;
+
+        VulkanMeshShaderPipeline(
+            const common::sp<VulkanDevice>& dev
+        ) : VulkanPipelineBase(dev){}
+
+
+    public:
+        ~VulkanMeshShaderPipeline() override {}
+
+        static common::sp<IMeshShaderPipeline> Make(
+            const common::sp<VulkanDevice>& dev,
+            const MeshShaderPipelineDescription& desc
+        );
+
+    };
+
+
 } // namespace alloy
-
-

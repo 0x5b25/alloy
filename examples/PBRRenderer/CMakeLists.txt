@@ -1,5 +1,5 @@
 
-add_executable(PBRRenderer 
+alloy_add_example_executable(PBRRenderer
     main.cpp
     PBRRendererApp.cpp
     PBRRendererApp.hpp
@@ -11,12 +11,11 @@ add_executable(PBRRenderer
     Scene.hpp
     )
 
-compile_shader(PBRRenderer_shaders SOURCES Shaders/PBRObjectShader.hlsl TYPES ps vs)
-target_link_libraries(PBRRenderer PRIVATE PBRRenderer_shaders AppBase HLSLCompiler)
-target_compile_features(PBRRenderer PRIVATE cxx_std_20)
+compile_shader(PBRRenderer_shaders SOURCES Shaders/PBRObjectShader.hlsl TYPES ps_6_0 vs_6_0 WITH_DBG_INFO)
+# Force consumers to recompile in the same incremental build pass when
+# generated shader headers change (works around Ninja's static planning
+# of depfile-based implicit deps).
+add_shader_object_depends(PBRRenderer_shaders
+    FILES MeshRenderer.cpp)
 
-
-if(WIN32)
-    alloy_copy_dxc_runtime_libs(PBRRenderer)
-    pix_runtime_copy_binaries(PBRRenderer)
-endif()
+target_link_libraries(PBRRenderer PRIVATE HLSLCompiler)

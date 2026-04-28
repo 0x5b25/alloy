@@ -221,7 +221,7 @@ void Scene::UpdateGPUScene() {
             anyMeshDirty = true;
             //Gather buffer size
             _meshVertexCnt = 0;
-            for(auto& slot : _meshes) { 
+            for(auto& slot : _meshes) {
                 _meshVertexCnt += slot.mesh.vertices.size();
             }
 
@@ -263,7 +263,7 @@ void Scene::UpdateGPUScene() {
         }
         else if(anyMeshDirty){
             auto pBuffer = (uint8_t*)_vertexBuffer->MapToCPU();
-            for(auto& slot : _meshes) { 
+            for(auto& slot : _meshes) {
                 if(!slot.isDirty) continue;
                 slot.isDirty = false;
 
@@ -293,7 +293,7 @@ void Scene::UpdateGPUScene() {
             auto& slot = _objects[i];
             if(slot.isMeshDirty)
                 anyMeshComponentDirty = true;
-            if(slot.isTransformDirty || slot.isMeshDirty) 
+            if(slot.isTransformDirty || slot.isMeshDirty)
                 anyObjSlotDirty = true;
             if(!slot.isAlive) continue;
 
@@ -354,7 +354,7 @@ void Scene::UpdateGPUScene() {
 
         if(needNewBuffer) {
             anyObjSlotDirty = true;
-            auto reqSize = sizeof(PerObjData) * std::max(1ull, _objects.size());
+            auto reqSize = sizeof(PerObjData) * std::max((std::size_t)1, _objects.size());
             alloy::IBuffer::Description vbDesc{};
             vbDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
             vbDesc.usage.structuredBufferReadOnly = 1;
@@ -422,7 +422,7 @@ void Scene::UpdateGPUScene() {
             }
         }
 
-        auto _UpdateBuffer = [&](const std::vector<uint32_t>& data, 
+        auto _UpdateBuffer = [&](const std::vector<uint32_t>& data,
                                  alloy_sp<alloy::IBuffer>& bufferSlot)
         {
             auto reqSize = sizeof(uint32_t) * data.size();
@@ -439,7 +439,7 @@ void Scene::UpdateGPUScene() {
                 vbDesc.hostAccess = alloy::HostAccess::PreferDeviceMemory;
                 //vbDesc.usage.indexBuffer = 1;
                 vbDesc.usage.structuredBufferReadOnly = 1;
-                vbDesc.sizeInBytes = std::max(reqSize, 0x100ull);
+                vbDesc.sizeInBytes = std::max(reqSize, (std::size_t)0x100);
                 bufferSlot = _dev->GetResourceFactory().CreateBuffer(vbDesc);
             }
 

@@ -41,9 +41,12 @@ namespace alloy::mtl{
 
         common::sp<IGfxPipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) override;
-        
+
         common::sp<IComputePipeline> CreateComputePipeline(
             const ComputePipelineDescription& description) override;
+
+        common::sp<IMeshShaderPipeline> CreateMeshShaderPipeline(
+            const MeshShaderPipelineDescription& description) override;
 
         common::sp<IShader> CreateShader(
             const IShader::Description& desc,
@@ -62,7 +65,6 @@ namespace alloy::mtl{
         virtual common::sp<IRenderTarget> CreateRenderTarget(
             const common::sp<ITextureView>& texView) override;
 
-       
         //virtual sp<CommandList> CreateCommandList() override;
 
         virtual common::sp<IEvent> CreateSyncEvent() override;

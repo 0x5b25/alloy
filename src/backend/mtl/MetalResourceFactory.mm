@@ -13,7 +13,7 @@
 
 namespace alloy::mtl {
 
-    
+
 #define MTL_IMPL_RF_CREATE_WITH_DESC(ResType) \
     common::sp<I##ResType> MetalResourceFactory::Create##ResType ( \
         const I##ResType ::Description& description \
@@ -39,7 +39,7 @@ namespace alloy::mtl {
         return common::sp<MetalDevice>(dev);
     }
 
-    
+
     //void* MetalResourceFactory::GetHandle() const {
     //    //auto dev = GetBase();
     //    return GetBase()->GetNativeHandle();
@@ -69,13 +69,20 @@ namespace alloy::mtl {
         //return nullptr;
         return MetalGfxPipeline::Make(_CreateNewDevHandle(), description);
     }
-        
+
     common::sp<IComputePipeline> MetalResourceFactory::CreateComputePipeline(
         const ComputePipelineDescription& description
     ) {
         //return nullptr;
         return MetalComputePipeline::Make(_CreateNewDevHandle(), description);
     }
+
+    common::sp<IMeshShaderPipeline> MetalResourceFactory::CreateMeshShaderPipeline(
+        const MeshShaderPipelineDescription& description
+    ) {
+        return MetalMeshShaderPipeline::Make(_CreateNewDevHandle(), description);
+    }
+
 
     common::sp<ITexture> MetalResourceFactory::WrapNativeTexture(
         void* nativeHandle,
@@ -106,5 +113,3 @@ namespace alloy::mtl {
     }
 
 } // namespace alloy
-
-

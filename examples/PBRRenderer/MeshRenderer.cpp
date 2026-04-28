@@ -11,8 +11,8 @@
 #include "Scene.hpp"
 
 namespace PBRObjectShader {
-    #include "Shaders/PBRObjectShader_ps.h"
-    #include "Shaders/PBRObjectShader_vs.h"
+    #include "Shaders/PBRObjectShader_ps_6_0.h"
+    #include "Shaders/PBRObjectShader_vs_6_0.h"
 }
 
 struct UniformBufferObject{

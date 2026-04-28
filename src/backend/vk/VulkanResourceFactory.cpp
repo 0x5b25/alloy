@@ -16,7 +16,7 @@
 namespace alloy::vk
 {
 
-    
+
 #define VK_IMPL_RF_CREATE_WITH_DESC(ResType) \
     common::sp<I##ResType> VulkanResourceFactory::Create##ResType ( \
         const I##ResType ::Description& description \
@@ -54,11 +54,17 @@ namespace alloy::vk
     ) {
         return VulkanGraphicsPipeline::Make(_CreateNewDevHandle(), description);
     }
-        
+
     common::sp<IComputePipeline> VulkanResourceFactory::CreateComputePipeline(
         const ComputePipelineDescription& description
     ) {
         return VulkanComputePipeline::Make(_CreateNewDevHandle(), description);
+    }
+
+    common::sp<IMeshShaderPipeline> VulkanResourceFactory::CreateMeshShaderPipeline(
+        const MeshShaderPipelineDescription& description
+    ) {
+        return VulkanMeshShaderPipeline::Make(_CreateNewDevHandle(), description);
     }
 
     common::sp<ITexture> VulkanResourceFactory::WrapNativeTexture(
@@ -78,7 +84,7 @@ namespace alloy::vk
         return VulkanTextureView::Make(RefRawPtr(vkTex), description);
     }
 
-    
+
     common::sp<IRenderTarget> VulkanResourceFactory::CreateRenderTarget(
         const common::sp<ITextureView>& texView
     ) {
@@ -91,4 +97,3 @@ namespace alloy::vk
 
 
 } // namespace alloy
-

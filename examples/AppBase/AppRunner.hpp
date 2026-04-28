@@ -44,9 +44,9 @@ public:
     virtual alloy_sp<alloy::IGraphicsDevice> GetDevice() override;
     virtual uint32_t GetCurrentFrameIndex() override;
 
-    
+
     virtual void GetFrameBufferSize(uint32_t& width, uint32_t& height) override;
-    
+
     virtual alloy::PixelFormat GetFrameBufferColorFormat() override;
     virtual alloy::PixelFormat GetFrameBufferDepthStencilFormat() override;
     virtual alloy::SampleCount GetFrameBufferSampleCount() override;
@@ -62,6 +62,7 @@ class AppRunner : public IAppRunner {
     //IApp *_pUserApp;
 
     alloy::SampleCount _msaaSampleCnt = alloy::SampleCount::x16;
+    alloy::PixelFormat _dsFormat = alloy::PixelFormat::D32_Float_S8_UInt;
     TimeServiceImpl _timeSvc;
     RenderServiceImpl _rndrSvc;
 
@@ -77,7 +78,7 @@ class AppRunner : public IAppRunner {
     alloy_sp<alloy::IEvent> _submissionFence;
 
 private:
-    
+
     void SetupAlloyEnv();
     void SetupImGui();
     void TearDownImGui();
@@ -97,10 +98,10 @@ public:
     AppRunner(unsigned width, unsigned height, const std::string& wndName);
     ~AppRunner();
 
-    
+
     virtual ITimeService* GetTimeService() override;
     virtual IRenderService* GetRenderService() override;
-    
+
     virtual void* GetWindowHandle() override {return _window;}
     virtual void LockAndHideCursor() override;
     virtual void UnlockAndShowCursor() override;

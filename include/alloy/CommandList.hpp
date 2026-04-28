@@ -22,6 +22,7 @@ namespace alloy
     class IBuffer;
     class ITexture;
     class IGfxPipeline;
+    class IMeshShaderPipeline;
     class IComputePipeline;
     class IResourceLayout;
     class IResourceSet;
@@ -30,6 +31,7 @@ namespace alloy
     class IRenderCommandEncoder {
     public:
         virtual void SetPipeline(const common::sp<IGfxPipeline>&) = 0;
+        virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) = 0;
 
         // Sets the active <see cref="DeviceBuffer"/> for the given index.
         // When drawing, the bound <see cref="DeviceBuffer"/> objects must be compatible with the bound <see cref="Pipeline"/>.
@@ -151,6 +153,10 @@ namespace alloy
             const sp<Buffer>& indirectBuffer, 
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) = 0;
         #endif
+
+        virtual void DispatchMesh(std::uint32_t groupCountX,
+                                  std::uint32_t groupCountY,
+                                  std::uint32_t groupCountZ) = 0;
 
         virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
         virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
