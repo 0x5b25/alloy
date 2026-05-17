@@ -19,14 +19,26 @@ namespace alloy {
    
         
         enum class LoadAction {
-            DontCare = 0,
-            Load = 1,
-            Clear = 2,
+            // No explicit renderpass on dx12,
+            // this is effectively LoadAction::Load
+            DontCare,
+            Load,
+            Clear,
+            
+            // Readonly usage, will disable StoreAction
+            // On vulkan platform without VK_KHR_load_store_op_none
+            // support, this is effectively
+            // LoadAction::Load + StoreAction::Store
+            ReadOnly,
         };
         
         enum class StoreAction {
-            DontCare = 0,
-            Store = 1,
+            
+            // DiscardResource on dx12
+            // dont care on Vulkan/Metal
+            DontCare,
+
+            Store,
 
             //Not supported other than metal
             //MultisampleResolve = 2,
@@ -41,9 +53,15 @@ namespace alloy {
         };
         
         struct AttachmentAction {
-            /// The target texture to render into. For color attachments, this resource must have been created with the
-            /// <see cref="TextureUsage.RenderTarget"/> flag. For depth attachments, this resource must have been created with the
-            /// <see cref="TextureUsage.DepthStencil"/> flag.
+            // The target texture to render into. 
+            //   For color attachments, must have renderTarget usage
+            //   For depth & stencil attachments, must have depthStencil usage
+            // Note: limitations on separate depth and stencil targets:
+            //    DX12: no support at all, must use combined depth/stencil format
+            //          and pass in same targets for depth and stencil attachment
+            //    Vulkan: support separate usage with VK_KHR_dynamic_rendering, which is 
+            //            required by alloy
+            //    Metal: support separate usage by default
             common::sp<IRenderTarget> target;
 
                             

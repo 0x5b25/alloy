@@ -84,10 +84,11 @@ namespace alloy
         // <param name="index">The color target index.</param>
         // <param name="viewport">The new <see cref="Viewport"/>.</param>
         virtual void SetViewports(const std::span<Viewport>& viewport) = 0;
-        // This at least should be inside a renderpass, therefore a framebuffer exists, 
-        // then we can get fb sizes
-        //virtual void SetFullViewport(std::uint32_t index) = 0;
-        virtual void SetFullViewports() = 0;
+        
+        // All targets in a render pass should have the same
+        // size, We grab the first target available and use its size.
+        // Only index 0 viewport is set
+        virtual void SetFullViewport() = 0;
 
         // Sets the active scissor rectangle at the given index.
         // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
@@ -98,7 +99,10 @@ namespace alloy
         // <param name="height">The height of the scissor rectangle.</param>
         virtual void SetScissorRects(const std::span<Rect>& ) = 0;
         
-        virtual void SetFullScissorRects() = 0;
+        // All targets in a render pass should have the same
+        // size, We grab the first target available and use its size.
+        // Only index 0 scissor rect is set
+        virtual void SetFullScissorRect() = 0;
 
         
         // Draws primitives from the currently-bound state in this CommandList. 

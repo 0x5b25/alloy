@@ -390,8 +390,8 @@ void SimpleMeshShader::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
 
     //_commandList->BeginRenderPass(fb);
     pass.SetPipeline(_pipeline);
-    pass.SetFullViewports();
-    pass.SetFullScissorRects();
+    pass.SetFullViewport();
+    pass.SetFullScissorRect();
 
     //_commandList->ClearDepthStencil(0, 0);
     //_commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);

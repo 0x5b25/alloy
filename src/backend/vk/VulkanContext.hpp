@@ -36,11 +36,25 @@ namespace alloy::vk
 
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
 
+        enum class ResourceBindingModel {
+            //Pre-vk1.2 binding mode
+            Legacy,
+
+            // Legacy + partially bound descriptor sets. Enables
+            // shader ABI and fallback bindless mode.
+            DescriptorIndexing,
+            
+            // Modern binding mode, no descriptor pool needed,
+            // acts like D3D12 descriptor heaps.
+            DescriptorBuffer
+        } resourceBindingModel;
+
         bool SupportScalarBlockLayout() const { return features12.scalarBlockLayout; }
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
+        bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::Legacy; }
+        
         bool supportRayTracing;
-        bool supportBindless;
 
         bool isIntegratedGPU;
         bool isResizableBARSupported;

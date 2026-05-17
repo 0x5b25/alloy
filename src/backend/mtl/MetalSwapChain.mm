@@ -87,7 +87,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
         , _layer(layer)
         , _dev(dev)
         , _currentCt(nil)
-        , _currentDs(0)
+        , _currentFrameIdx(0)
     {
         //auto mtlDev = static_cast<DeviceImpl*>(dev.get());
         //mtlDev->ref();
@@ -113,7 +113,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
             [_currentCt release];
             _currentCt = nil;
         }
-        _currentDs = 0;
+        _currentFrameIdx = 0;
         _dsTex.clear();
     }
 
@@ -151,17 +151,16 @@ std::uint32_t MetalSwapChain::GetHeight() const {
                 _currentCt = [_layer nextDrawable];
                 [_currentCt retain];
 
-                if(!_dsTex.empty()) {
-                    _currentDs++;
-                    if(_currentDs >= _dsTex.size()) {
-                        _currentDs = 0;
-                    }
+                _currentFrameIdx ++; 
+                if(_currentFrameIdx >= _layer.maximumDrawableCount) {
+                    _currentFrameIdx = 0;
                 }
-
             }
         }
 
-        auto dsTex = _dsTex[_currentDs];
+        common::sp<MetalTexture> dsTex;
+        if(!_dsTex.empty())
+            dsTex = _dsTex[_currentDs];
 
         auto fb = new MetalSCFB(common::ref_sp(this), _currentCt, dsTex);
             

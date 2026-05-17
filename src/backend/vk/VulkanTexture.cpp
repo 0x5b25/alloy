@@ -37,7 +37,7 @@ namespace alloy::vk {
         //SampleCount = description.SampleCount;
         //VkSampleCount = VkFormats.VdToVkSampleCount(SampleCount);
 
-        bool isStaging = desc.hostAccess != HostAccess::None;
+        bool isHostVisible = desc.hostAccess != HostAccess::None;
 
         //if (!isStaging)
         //{
@@ -51,7 +51,11 @@ namespace alloy::vk {
             imageCI.extent.depth = desc.depth;
             imageCI.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
             imageCI.usage = VdToVkTextureUsage(desc.usage);
-            imageCI.tiling = isStaging ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
+
+            // #TODO: Ditch mapped texture altogether. Move towards dedicated transfer queue
+            // Make all textures host invisible?
+            imageCI.tiling = isHostVisible ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
+
             imageCI.format = VdToVkPixelFormat(desc.format, desc.usage.depthStencil);
             imageCI.flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 

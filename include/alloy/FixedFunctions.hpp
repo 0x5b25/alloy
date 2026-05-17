@@ -332,14 +332,6 @@ namespace alloy
         // A series of isolated points.
         PointList,
     };    
-    
-    // Specifies which model the rendering backend should use for binding resources.
-    enum class ResourceBindingModel{
-        Default = 0, Improved = 1,
-    };
-
-    
-
 } // namespace alloy
 
 

@@ -136,16 +136,19 @@ add_library(Veldrid STATIC
     )
 
 if(${VLD_BACKEND_DXC})
+    set_target_properties(Veldrid PROPERTIES BACKEND_DXC TRUE)
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_DXC=1)
     include("src/backend/dx12/CMakeLists.txt")
 endif()
 
 if(${VLD_BACKEND_VK})
+    set_target_properties(Veldrid PROPERTIES BACKEND_VK TRUE)
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_VK=1)
     include("src/backend/vk/CMakeLists.txt")
 endif()
 
 if(${VLD_BACKEND_MTL})
+    set_target_properties(Veldrid PROPERTIES BACKEND_MTL TRUE)
     target_compile_definitions(Veldrid PRIVATE VLD_BACKEND_MTL=1)
     enable_language(OBJC)
     enable_language(OBJCXX)
@@ -193,15 +196,19 @@ function(link_with_veldrid TARGET)
 endfunction()
 
 function(alloy_copy_runtime_libs TARGET)
-    if(${VLD_BACKEND_DXC})
+    get_target_property(_BACKEND_DXC_ENABLED  Veldrid BACKEND_DXC)
+    get_target_property(_BACKEND_VK_ENABLED   Veldrid BACKEND_VK)
+    get_target_property(_BACKEND_MTL_ENABLED  Veldrid BACKEND_MTL)
+
+    if(${_BACKEND_DXC_ENABLED})
         alloy_copy_dxc_runtime_libs(${TARGET})
     endif()
 
-    if(${VLD_BACKEND_VK})
+    if(${_BACKEND_VK_ENABLED})
         alloy_copy_vulkan_runtime_libs(${TARGET})
     endif()
 
-    if(${VLD_BACKEND_MTL})
+    if(${_BACKEND_MTL_ENABLED})
         alloy_copy_metal_runtime_libs(${TARGET})
     endif()
 endfunction()

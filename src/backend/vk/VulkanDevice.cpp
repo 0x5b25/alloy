@@ -192,10 +192,20 @@ bool Contains(T&& container, U&& element) {
                                                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES>();
 
         features12.timelineSemaphore = true;
+        features12.separateDepthStencilLayouts = true;
 
-        if(devCaps.supportBindless) {
-            features12.descriptorIndexing = true;
-            features12.descriptorBindingPartiallyBound = true;
+        //Bindless shader ABI and binding models
+        {
+            //Enable the resource heap indexing
+            if(devCaps.resourceBindingModel != VulkanDevCaps::ResourceBindingModel::Legacy) {
+                features12.descriptorIndexing = true;
+                features12.descriptorBindingPartiallyBound = true;
+            }
+
+            //Enable the descriptor buffer
+            if(devCaps.resourceBindingModel == VulkanDevCaps::ResourceBindingModel::DescriptorBuffer) {
+                devExtensions.push_back(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+            }
         }
 
         if(devCaps.SupportScalarBlockLayout()) {
@@ -285,6 +295,7 @@ bool Contains(T&& container, U&& element) {
         }
 
         dev->_features.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
+        dev->_features.supportReadOnlyAttachment = _AddExtIfPresent(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(devExtensions.size());
         createInfo.ppEnabledExtensionNames = devExtensions.data();
@@ -438,6 +449,36 @@ bool Contains(T&& container, U&& element) {
     //        _queueGraphics, 1, &info, nullptr
     //    ));
     //}
+
+    void VulkanDevice::RegisterTextureState(
+        const VkImageLayout& request,
+        VulkanTexture* texture
+    ) {
+        auto texFormat = texture->GetDesc().format;
+        bool isColorFormat = true;
+
+        IVkTimeline::TextureState state {};
+
+        if(FormatHelpers::IsDepthStencilFormat(texFormat)) {
+            isColorFormat = false;
+            state.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+            state.depth.layout = request;
+        }
+
+        if(FormatHelpers::IsDepthStencilFormat(texFormat)) {
+            isColorFormat = false;
+            state.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            state.stencil.layout = request;
+
+        }
+
+        if(isColorFormat) {
+            state.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
+            state.color.layout = request;
+        }
+
+        _currentState.textures[texture] = state;
+    }
 
     ISwapChain::State VulkanDevice::PresentToSwapChain(
         ISwapChain* sc
@@ -919,18 +960,13 @@ bool Contains(T&& container, U&& element) {
 
         std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
 
-        for(auto& [texture, stateReq] : currCmdListReqStates.textures) {
-            //TextureState state {};
-            //Search for current recorded state
-            VkImageLayout currLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            auto it = _currentState.textures.find(texture);
-            if(it == _currentState.textures.end()) {
-                currLayout = cpuTimeline.textures[texture];
-            } else {
-                currLayout = it->second;
-            }
-            //Acquire resource on this timeline
-            texture->NotifyUsageOn(this);
+        auto _TransitionLayoutIfNotMatch = [&](
+            const VulkanTexture* texture,
+            VkImageLayout currLayout, 
+            const VulkanCommandList::TextureState::AspectState& stateReq, 
+            VkImageAspectFlags aspects
+        ) {
+            
             if(currLayout != stateReq.layout) {
 
                 auto& desc = texture->GetDesc();
@@ -950,17 +986,49 @@ bool Contains(T&& container, U&& element) {
                 action.subresourceRange.levelCount = desc.mipLevels;
                 action.subresourceRange.baseArrayLayer = 0;
                 action.subresourceRange.layerCount = desc.arrayLayers;
-
-                auto& aspectMask = action.subresourceRange.aspectMask;
-                if (desc.usage.depthStencil) {
-                    aspectMask = FormatHelpers::IsStencilFormat(desc.format)
-                        ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
-                        : VK_IMAGE_ASPECT_DEPTH_BIT;
-                }
-                else {
-                    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                }
+                action.subresourceRange.aspectMask = aspects;
             }
+        };
+
+        for(auto& [texture, stateReq] : currCmdListReqStates.textures) {
+            //TextureState state {};
+            //Search for current recorded state
+            IVkTimeline::TextureState currLayout {} ;
+            auto it = _currentState.textures.find(texture);
+            if(it == _currentState.textures.end()) {
+                assert(cpuTimeline.textures.contains(texture));
+                currLayout = cpuTimeline.textures[texture];
+            } else {
+                currLayout = it->second;
+            }
+            //Acquire resource on this timeline
+            texture->NotifyUsageOn(this);
+
+            assert( (currLayout.aspects & stateReq.aspects) == stateReq.aspects &&
+                "Resource request aspects must be supported by the resource"
+            );
+
+            if(stateReq.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
+                _TransitionLayoutIfNotMatch(texture, 
+                                            currLayout.color.layout,
+                                            stateReq.color,
+                                            VK_IMAGE_ASPECT_COLOR_BIT);
+            }
+
+            if(stateReq.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+                _TransitionLayoutIfNotMatch(texture, 
+                                            currLayout.depth.layout,
+                                            stateReq.depth,
+                                            VK_IMAGE_ASPECT_DEPTH_BIT);
+            }
+
+            if(stateReq.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+                _TransitionLayoutIfNotMatch(texture, 
+                                            currLayout.stencil.layout,
+                                            stateReq.stencil,
+                                            VK_IMAGE_ASPECT_STENCIL_BIT);
+            }
+
         }
 
         VkDependencyInfoKHR depInfo {};
@@ -1007,22 +1075,46 @@ bool Contains(T&& container, U&& element) {
     ) {
         auto& finalStates = cmdList.GetFinalResourceStates();
         for(auto&[tex, state] : finalStates.textures) {
-            _currentState.textures[tex] = state.layout;
+            
+            auto& currLayout = _currentState.textures[tex];
+            
+            currLayout.aspects |= state.aspects;
+            if(state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
+                _currentState.textures[tex].color.layout = state.color.layout;
+            }
+
+            if(state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+                _currentState.textures[tex].depth.layout = state.depth.layout;
+            }
+
+            if(state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+                _currentState.textures[tex].stencil.layout = state.stencil.layout;
+            }
         }
     }
 
 
     VkSemaphore VulkanCommandQueue::PrepareTextureForPresent(VulkanTexture* tex) {
-        VkImageLayout currState {};
+        auto& cpuTimeline = _dev->GetCurrentState();
+
+        IVkTimeline::TextureState currState {};
         auto it = _currentState.textures.find(tex);
         if(it != _currentState.textures.end()) {
             currState = it->second;
         } else {
-            currState = _dev->GetCurrentState().textures[tex];
+            assert(cpuTimeline.textures.contains(tex));
+            currState = cpuTimeline.textures[tex];
             _currentState.textures[tex] = currState;
         }
 
-        if(currState != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+        assert(currState.aspects == VK_IMAGE_ASPECT_COLOR_BIT
+            && "Only color texture can be presented");
+
+        auto& currColorState = currState.color;
+
+        if(currColorState.layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+            //First time present, add to current timeline
+            // swap chains are bound to command queues. so we only notify once
             tex->NotifyUsageOn(this);
 
             auto& texDesc = tex->GetDesc();
@@ -1031,7 +1123,7 @@ bool Contains(T&& container, U&& element) {
             barrier.pNext = NULL;
             barrier.srcAccessMask = 0;//vk_access_flags_from_d3d12_barrier(currState.access);
             barrier.dstAccessMask = 0;
-            barrier.oldLayout = currState;
+            barrier.oldLayout = currColorState.layout;
             barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1070,6 +1162,18 @@ bool Contains(T&& container, U&& element) {
                 VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
             }
 
+            //Give the transition buffer a debug name
+            if (_dev->GetContext().GetCaps().hasDebugUtilExt)
+            {
+                auto name = std::format("PresentImgTransitionCmdBuf_#{}", _lastSubmittedFence);
+                VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+                nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+                nameInfo.objectType = VK_OBJECT_TYPE_COMMAND_BUFFER;
+                nameInfo.objectHandle = (uint64_t)cmdBuf;
+                nameInfo.pObjectName = name.c_str();
+                VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
+            }
+
             _transitionCmdBufs.push_back(container);
 
             uint64_t signalValues[] = {_lastSubmittedFence, 0};
@@ -1091,6 +1195,8 @@ bool Contains(T&& container, U&& element) {
 
 
             VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
+
+            currColorState.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         } else {
             VkSubmitInfo submitInfo {};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1102,7 +1208,7 @@ bool Contains(T&& container, U&& element) {
 
         //_currentState.textures[tex].stage = PipelineStage::None;
         //_currentState.textures[tex].access = ResourceAccess::None;
-        _currentState.textures[tex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        _currentState.textures[tex] = currState;
 
         return _presentFence;
     }

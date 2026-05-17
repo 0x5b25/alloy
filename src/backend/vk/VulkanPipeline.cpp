@@ -953,6 +953,7 @@ public:
         const ComputePipelineDescription& desc
     ){
         VkComputePipelineCreateInfo pipelineCI {};
+        pipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 
         // Pipeline Layout
 
@@ -1031,7 +1032,7 @@ public:
 
         VkShaderRAII cs{dev.get()};
 
-        VkPipelineShaderStageCreateInfo stageCI;
+        VkPipelineShaderStageCreateInfo& stageCI = pipelineCI.stage;
 
         {
             auto& shader = desc.computeShader;
@@ -1050,7 +1051,7 @@ public:
 
             VkShaderModuleCreateInfo shaderModuleCI {};
             shaderModuleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-            shaderModuleCI.codeSize = spvBlob.code.size() / 4;
+            shaderModuleCI.codeSize = spvBlob.code.size();
             shaderModuleCI.pCode = (const uint32_t*)spvBlob.code.data();
             VK_CHECK(VK_DEV_CALL(dev,
                 vkCreateShaderModule(dev->LogicalDev(), &shaderModuleCI, nullptr, &cs)));
@@ -1062,7 +1063,6 @@ public:
             stageCI.pName = "main";//Don't have a way to convince dxil-spv to change this name
         }
 
-        pipelineCI.stage = stageCI;
 
         VkPipeline devicePipeline;
         VK_CHECK(VK_DEV_CALL(dev, vkCreateComputePipelines(
@@ -1080,7 +1080,7 @@ public:
 
         auto rawPipe = new VulkanComputePipeline(dev);
         rawPipe->_devicePipeline = devicePipeline;
-        rawPipe->_pipelineLayout = *pipelineLayout;
+        rawPipe->_pipelineLayout = pipelineLayout.Reset();
         rawPipe->resourceSetCount = resourceSetCount;
 
         if(desc.resourceLayout) {

@@ -268,10 +268,10 @@ namespace alloy::dxc
             std::uint32_t destOffsetIn32BitValues) override;
 
         virtual void SetViewports(const std::span<Viewport>& viewport) override;
-        virtual void SetFullViewports() override;
+        virtual void SetFullViewport() override;
 
         virtual void SetScissorRects(const std::span<Rect>& ) override;
-        virtual void SetFullScissorRects() override;
+        virtual void SetFullScissorRect() override;
 
 
         virtual void Draw(

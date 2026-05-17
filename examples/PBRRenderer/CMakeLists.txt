@@ -18,4 +18,4 @@ compile_shader(PBRRenderer_shaders SOURCES Shaders/PBRObjectShader.hlsl TYPES ps
 add_shader_object_depends(PBRRenderer_shaders
     FILES MeshRenderer.cpp)
 
-target_link_libraries(PBRRenderer PRIVATE HLSLCompiler)
+target_link_libraries(PBRRenderer PRIVATE HLSLCompiler PBRRenderer_shaders)

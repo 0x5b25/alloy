@@ -22,7 +22,10 @@ class MetalSwapChain : public ISwapChain{
     CAMetalLayer* _layer;
 
     std::vector<common::sp<MetalTexture>> _dsTex;
-    uint32_t _currentDs;
+
+    // Metal doesn't give us this value. Let's assume metal's
+    // nextDrawable will return images in order.
+    uint32_t _currentFrameIdx;
     id<CAMetalDrawable> _currentCt;
     
     //MetalSCFB* _capturingFb;
@@ -45,6 +48,8 @@ public:
     virtual void Resize(unsigned width, unsigned height) override;
     
     virtual common::sp<IFrameBuffer> GetBackBuffer() override;
+
+    virtual uint32_t GetBackBufferIndex() override { return _currentFrameIdx; }
     
     common::sp<MetalDevice> GetDevice() const { return _dev; }
 

@@ -8,7 +8,7 @@
 
 namespace alloy::VK::priv{
 
-SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, alloy::SwapChainSource* swapchainSource) {
+SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, const alloy::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
 	auto hInst = ctx.GetHandle();
@@ -29,7 +29,7 @@ SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, alloy::SwapChainSo
 			surfaceCI.hinstance = (HINSTANCE)win32Source->hInstance;
 			VkSurfaceKHR surface;
 			VkResult result = fnTable.vkCreateWin32SurfaceKHR(hInst, &surfaceCI, nullptr, &surface);
-			
+
 			return {surface, true};
 		}
 		default: {
@@ -43,7 +43,7 @@ std::string GetSurfaceExtension(alloy::SwapChainSource* swapchainSource) {
 	assert(swapchainSource != nullptr);
 
 	switch (swapchainSource->tag) {
-		case alloy::SwapChainSource::Tag::Opaque: 
+		case alloy::SwapChainSource::Tag::Opaque:
 			return "VK_KHR_surface";
 		case alloy::SwapChainSource::Tag::Win32:
 			return "VK_KHR_win32_surface";

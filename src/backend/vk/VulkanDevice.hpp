@@ -86,19 +86,26 @@ namespace alloy::vk
         };
 
         struct TextureState {
-            VkPipelineStageFlags stage;
-            VkAccessFlags2 access;
-            VkImageLayout layout;
+            //VkPipelineStageFlags stage;
+            //VkAccessFlags2 access;
+            //VkImageLayout layout;
+            //
+            //bool operator==(const TextureState& other) const {
+            //    return stage == other.stage &&
+            //           access == other.access &&
+            //           layout == other.layout;
+            //}
 
-            bool operator==(const TextureState& other) const {
-                return stage == other.stage &&
-                       access == other.access &&
-                       layout == other.layout;
-            }
+            VkImageAspectFlags aspects;
+
+            struct AspectState {
+                VkImageLayout layout;
+            } color, depth, stencil;
+
         };
 
         struct ResourceStates {
-            std::unordered_map<VulkanTexture*, VkImageLayout> textures;
+            std::unordered_map<VulkanTexture*, TextureState> textures;
 
             void SyncTo(const ResourceStates& other) {
                 for(auto& [k, v] : other.textures)
@@ -226,6 +233,10 @@ namespace alloy::vk
 
                 std::uint32_t supportsDepthClip : 1;
 
+                // VK_KHR_load_store_op_none is promoted into vk1.4
+                // validate extension support on actual hardware
+                std::uint32_t supportReadOnlyAttachment : 1;
+
             };
             std::uint32_t value;
         };
@@ -304,9 +315,7 @@ namespace alloy::vk
     public:
         ResourceStates& GetCurrentState() override { return _currentState; }
 
-        void RegisterTextureState(const VkImageLayout& request, VulkanTexture* texture) {
-            _currentState.textures[texture] = request;
-        }
+        void RegisterTextureState(const VkImageLayout& request, VulkanTexture* texture);
 
         void RemoveResource(VulkanBuffer* buffer) override {  }
         void RemoveResource(VulkanTexture* texture) override { _currentState.textures.erase(texture); }

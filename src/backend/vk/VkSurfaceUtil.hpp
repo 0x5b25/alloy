@@ -33,7 +33,7 @@ namespace alloy::VK::priv{
 		bool isOwnSurface;//Is this surface managed by us
 	};
 
-	SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, alloy::SwapChainSource* swapchainSource);
+	SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, const alloy::SwapChainSource* swapchainSource);
 
 	std::string GetSurfaceExtension(alloy::SwapChainSource* swapchainSource);
 }

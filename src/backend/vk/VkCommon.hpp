@@ -77,6 +77,9 @@ struct VkDevExtNames {
     //Following extension is required by VK_KHR_depth_stencil_resolve
     constexpr static auto VK_KHR_CREATE_RENDERPASS2 = "VK_KHR_create_renderpass2";
 
+    constexpr static auto VK_EXT_DESCRIPTOR_BUFFER = "VK_EXT_descriptor_buffer";
+    //For pre-vk1.2 extensions
+    constexpr static auto VK_EXT_DESCRIPTOR_INDEXING = "VK_EXT_descriptor_indexing";
 };
 
 struct VkCommonStrings {

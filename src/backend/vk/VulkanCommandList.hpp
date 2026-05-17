@@ -40,12 +40,21 @@ namespace alloy::vk
         };
 
         struct TextureState {
-            VkPipelineStageFlags stage;
-            VkAccessFlags2 access;
-            VkImageLayout layout;
+            VkImageAspectFlags aspects;
+            struct AspectState {
+                VkPipelineStageFlags stage;
+                VkAccessFlags2 access;
+                VkImageLayout layout;
+            } color, depth, stencil;
+        };
+
+        struct TextureSubResource {
+            VulkanTexture* texture;
+            VkImageSubresourceRange range;
         };
 
         struct ResourceStates {
+            
             std::unordered_map<VulkanBuffer*, BufferState> buffers;
             std::unordered_map<VulkanTexture*, TextureState> textures;
 
@@ -219,7 +228,8 @@ namespace alloy::vk
         VkCmdEncBase(VulkanDevice* dev,
                      VkCommandBuffer cmdList)
             : dev(dev)
-            , cmdList(cmdList) {}
+            , cmdList(cmdList)
+            , currentPipeline() {}
 
         virtual ~VkCmdEncBase() {}
 
@@ -237,6 +247,11 @@ namespace alloy::vk
         void RegisterTexUsage(
             VulkanTexture* tex,
             const VulkanCommandList::TextureState& state
+        );
+
+        void RegisterTexUsageAllAspecs(
+            VulkanTexture* tex,
+            VulkanCommandList::TextureState::AspectState state
         );
 
         void RegisterResourceSet(VulkanResourceSet* rs);
@@ -273,10 +288,10 @@ namespace alloy::vk
             std::uint32_t destOffsetIn32BitValues) override;
 
         virtual void SetViewports(const std::span<Viewport>& viewport) override;
-        virtual void SetFullViewports() override;
+        virtual void SetFullViewport() override;
 
         virtual void SetScissorRects(const std::span<Rect>& ) override;
-        virtual void SetFullScissorRects() override;
+        virtual void SetFullScissorRect() override;
 
 
         virtual void Draw(

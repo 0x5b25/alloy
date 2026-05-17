@@ -251,23 +251,51 @@ void MetalRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport) {
     }
 }
 
-void MetalRenderCmdEnc::SetFullViewports() {
-    std::vector<Viewport> vps;
-    for (auto& a : _actions.colorTargetActions) {
-        auto& desc = a.target->GetTexture().GetTextureObject()->GetDesc();
-        Viewport vp {
+void MetalRenderCmdEnc::SetFullViewport() {
+    
+    Viewport vp[1];
+    bool vpIsSet = false;
+
+    auto _SetVP = [&](const ITexture::Description& texDesc){
+        vp[0] = {
             .x = 0,
             .y = 0,
-            .width = (float)desc.width,
-            .height = (float)desc.height,
+            .width    = (float)texDesc.width,
+            .height   = (float)texDesc.height,
             .minDepth = 0,
-            .maxDepth = (float)desc.depth
+            .maxDepth = 1,
         };
 
-        vps.push_back(vp);
+        vpIsSet = true;
+    };
+
+    for(auto& rt : _fb.colorTargetActions) {
+        auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+        _SetVP(texDesc);
+        break;
     }
 
-    SetViewports(vps);
+    if(!vpIsSet) {
+        if(_fb.depthTargetAction) {
+            auto& dt = _fb.depthTargetAction.value();
+            auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetVP(texDesc);
+            vpIsSet = true;
+        }
+    }
+
+    if(!vpIsSet) {
+        if(_fb.stencilTargetAction) {
+            auto& st = _fb.stencilTargetAction.value();
+            auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetVP(texDesc);
+            vpIsSet = true;
+        }
+    }
+    
+    assert(vpIsSet && "Pass with no render / depth / stencil targets!");
+
+    SetViewports(vp);
 }
 
 
@@ -287,20 +315,45 @@ void MetalRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects) {
     [_mtlEnc setScissorRects:mtlRects.data() count:mtlRects.size()];
 }
 
-void MetalRenderCmdEnc::SetFullScissorRects() {
-    std::vector<Rect> rects;
-    for (auto& a : _actions.colorTargetActions) {
-        auto& desc = a.target->GetTexture().GetTextureObject()->GetDesc();
-        Rect rect {
+void MetalRenderCmdEnc::SetFullScissorRect() {
+    Rect sr[1];
+    bool srIsSet = false;
+
+    auto _SetSR = [&](const ITexture::Description& texDesc){
+        sr[0] = {
             .x = 0,
             .y = 0,
-            .width = desc.width,
-            .height = desc.height,
+            .width  = texDesc.width,
+            .height = texDesc.height,
         };
 
-        rects.push_back(rect);
+        srIsSet = true;
+    };
+
+    for(auto& rt : _fb.colorTargetActions) {
+        auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+        _SetSR(texDesc);
+        break;
     }
 
+    if(!srIsSet) {
+        if(_fb.depthTargetAction) {
+            auto& dt = _fb.depthTargetAction.value();
+            auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetSR(texDesc);
+        }
+    }
+
+    if(!srIsSet) {
+        if(_fb.stencilTargetAction) {
+            auto& st = _fb.stencilTargetAction.value();
+            auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetSR(texDesc);
+        }
+    }
+
+    assert(srIsSet && "Pass with no render / depth / stencil targets!");
+    
     SetScissorRects(rects);
 }
 

@@ -326,6 +326,14 @@ namespace alloy::mtl
         info.capabilities.supportMeshShader = feat.IsMeshShaderSupported();
         info.capabilities.isUMA = feat.IsUMA();
 
+        // Argument buffer is universally supported on 
+        // metal shader converter target hardware 
+        info.capabilities.supportBindless = true;
+
+        //#TODO: raytracing shaders default support in metal shader converter,
+        // HW raytracing on apple M2+ devices
+        info.capabilities.supportRayTracing = false;
+
         auto arch = feat.GetGPUArch();
 
         //Limits

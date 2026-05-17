@@ -123,6 +123,8 @@ namespace alloy::dxc {
 
         uint32_t GetSDKVersion() const { return d3d12CoreVersion; }
         uint32_t GetDebugLayerVersion() const { return d3d12SDKLayersVersion; }
+
+        bool IsDebugLayerDllLoaded() const { return d3d12SDKLayersDllHandle != nullptr; }
     };
 
       
@@ -157,6 +159,10 @@ namespace alloy::dxc {
         bool SupportRayTracing() const {return options5.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED; }
         bool SupportReBAR() const { return options16.GPUUploadHeapSupported; }
         bool SupportUMA() const { return architecture.UMA || architecture.CacheCoherentUMA; }
+
+        bool SupportBindless() const { 
+            return shader_model >= D3D_SHADER_MODEL_6_6; //provides descriptor heap indexing
+        }
     
         uint32_t ResourceBindingTier() const {
             switch(options.ResourceBindingTier) {
@@ -218,5 +224,24 @@ namespace alloy::dxc {
 
         const D3D12DllLoader& GetD3D12Dll() const { return _d3d12Dll; }
         const DxgiDllLoader& GetDxgiDll() const { return _dxgiDll; }
+
+        uint32_t InstallDebugCallBack(ID3D12Device* pDev);
+        void UninstallDebugCallBack(ID3D12Device* pDev, uint32_t cookie);
+
+    private:
+
+        
+        static void _DbgCbStatic(
+            D3D12_MESSAGE_CATEGORY Category, 
+            D3D12_MESSAGE_SEVERITY Severity, 
+            D3D12_MESSAGE_ID       ID, 
+            LPCSTR                 pDescription, 
+            void*                  pContext);
+        
+        void _DbgCb(
+            D3D12_MESSAGE_CATEGORY Category, 
+            D3D12_MESSAGE_SEVERITY Severity, 
+            D3D12_MESSAGE_ID       ID, 
+            LPCSTR                 pDescription);
     };
 }

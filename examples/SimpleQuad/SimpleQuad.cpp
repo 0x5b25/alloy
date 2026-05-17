@@ -6,8 +6,8 @@
 #include <glm/ext.hpp>
 
 namespace QuadShader {
-    #include "shaders/QuadShader_ps_6_0.h"
-    #include "shaders/QuadShader_vs_6_0.h"
+    #include "Shaders/QuadShader_ps_6_0.h"
+    #include "Shaders/QuadShader_vs_6_0.h"
 }
 
 struct VertexData
@@ -411,8 +411,8 @@ void SimpleQuad::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
 
     //_commandList->BeginRenderPass(fb);
     pass.SetPipeline(_pipeline);
-    pass.SetFullViewports();
-    pass.SetFullScissorRects();
+    pass.SetFullViewport();
+    pass.SetFullScissorRect();
 
     //_commandList->ClearDepthStencil(0, 0);
     //_commandList->ClearColorTarget(0, 0.9, 0.1, 0.3, 1);

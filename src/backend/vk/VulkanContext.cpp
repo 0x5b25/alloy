@@ -144,8 +144,15 @@ namespace alloy::vk
             supportRayTracing = true;
         }
 
-        if(IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) {
-            supportBindless = true;
+        
+        if(IsExtSupported(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME)) {
+            resourceBindingModel = ResourceBindingModel::DescriptorBuffer;
+        } else if( devProps.apiVersion >= VK_VERSION_1_2 ||
+                   IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        ) {
+            resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+        } else {
+            resourceBindingModel = ResourceBindingModel::Legacy;
         }
     }
 
@@ -260,14 +267,12 @@ namespace alloy::vk
             }
         }
 
-        if (adp->_caps.isIntegratedGPU) {
-            ///#TODO: Default all integrated GPUs to UMA
-            adp->info.capabilities.isUMA = true;
-        }
-
-        if(adp->_caps.isResizableBARSupported) {
-            adp->info.capabilities.supportResizableBar = 1;
-        }
+        ///#TODO: Default all integrated GPUs to UMA
+        adp->info.capabilities.isUMA = adp->_caps.isIntegratedGPU;
+        adp->info.capabilities.supportResizableBar = adp->_caps.isResizableBARSupported;
+        adp->info.capabilities.supportMeshShader = adp->_caps.SupportMeshShader();
+        adp->info.capabilities.supportRayTracing = adp->_caps.supportRayTracing;
+        adp->info.capabilities.supportBindless = adp->_caps.SupportBindless();
 
         {
             //Try find dedicated compute queue

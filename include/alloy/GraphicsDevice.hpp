@@ -60,7 +60,7 @@ namespace alloy
             PixelFormat swapChainPixelFormat;
             bool swapChainUseSRGBFormat;
             bool syncToVerticalBlank;
-            ResourceBindingModel resourceBindingModel;
+            //ResourceBindingModel resourceBindingModel;
             bool preferDepthRangeZeroToOne;
             bool preferStandardClipSpaceYDirection;
         };

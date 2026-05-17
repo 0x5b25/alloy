@@ -145,8 +145,8 @@ void MeshRenderer::DrawScene(alloy::IRenderCommandEncoder* rndPass, const Viewpo
     rndPass->SetPipeline(_objRenderPipeline);
     rndPass->SetPushConstants(0, ubo, 0);
     rndPass->SetGraphicsResourceSet(_scene.GetResourceSet());
-    rndPass->SetFullViewports();
-    rndPass->SetFullScissorRects();
+    rndPass->SetFullViewport();
+    rndPass->SetFullScissorRect();
 
     //Construct MVP matrices
 

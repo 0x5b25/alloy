@@ -310,6 +310,8 @@ namespace alloy::vk
     public:
         common::sp<IFrameBuffer> GetBackBuffer() override;
 
+        virtual uint32_t GetBackBufferIndex() override { return GetCurrentImageIdx(); }
+
         void Resize(
             std::uint32_t width, 
             std::uint32_t height) override

@@ -6,15 +6,29 @@
 #include "D3DTypeCvt.hpp"
 #include "DXCContext.hpp"
 
+#include <cassert>
+
 namespace alloy::dxc {
+
+    ITextureView& DXCSwapChainRenderTarget::GetTexture() const {
+        assert(generation == _sc->generation);
+        return *_rt.tex.get();
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE DXCSwapChainRenderTarget::GetHandle() const {    
+        assert(generation == _sc->generation);
+        return _rt.view;
+    }
 
 
     DXCSwapChainBackBuffer::DXCSwapChainBackBuffer(
         common::sp<DXCSwapChain>&& sc,
-        const BackBufferContainer& bb
+        const BackBufferContainer& bb,
+        int gen
     )
         : _sc(std::move(sc))
         , _bb(bb)
+        , generation(gen)
     {}
 
     
@@ -49,13 +63,15 @@ namespace alloy::dxc {
         OutputDescription desc { };
         desc.colorAttachments.push_back(common::sp(new DXCSwapChainRenderTarget(
             _sc,
-            _bb.colorTgt
+            _bb.colorTgt,
+            generation
         )));
 
         if(HasDSV()) {
             desc.depthAttachment.reset(new DXCSwapChainRenderTarget(
                 _sc,
-                _bb.dsTgt
+                _bb.dsTgt,
+                generation
             ));
         }
 
@@ -222,7 +238,7 @@ namespace alloy::dxc {
 
         this->ref();
 
-        return common::sp(new DXCSwapChainBackBuffer(common::sp(this), _fbs[nextFrameIdx]));
+        return common::sp(new DXCSwapChainBackBuffer(common::sp(this), _fbs[nextFrameIdx], generation));
     }
 
     void DXCSwapChain::Resize(
@@ -230,7 +246,7 @@ namespace alloy::dxc {
         std::uint32_t height
     ) {
         ReleaseFramebuffers();
-        _sc->ResizeBuffers(0, width, height, GetDesiredPixelFormat(_srgbColorSpace), 0);
+        ThrowIfFailed(_sc->ResizeBuffers(0, width, height, GetDesiredPixelFormat(_srgbColorSpace), 0));
         CreateFramebuffers(width, height);
     }
 
@@ -254,6 +270,8 @@ namespace alloy::dxc {
     }
 
     void DXCSwapChain::CreateFramebuffers(std::uint32_t width, std::uint32_t height) {
+
+        generation++;
 
         description.initialHeight = height;
         description.initialWidth = width;

@@ -355,7 +355,7 @@ namespace alloy::dxc
             ) {
                 depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
             }
-            else if(dtAct.storeAction != alloy::StoreAction::DontCare)
+            else if(dtAct.loadAction != alloy::LoadAction::ReadOnly)
             {
                 depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
             } else {
@@ -368,7 +368,9 @@ namespace alloy::dxc
             auto& texView = _fb.stencilTargetAction->target->GetTexture();
             dxcStencilTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
 
-            if(_fb.stencilTargetAction->storeAction != alloy::StoreAction::DontCare)
+            assert(FormatHelpers::IsStencilFormat(dxcStencilTex->GetDesc().format));
+
+            if(_fb.stencilTargetAction->loadAction != alloy::LoadAction::ReadOnly)
             {
                 stencilState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
             } else {
@@ -378,14 +380,28 @@ namespace alloy::dxc
 
         //Depth and stencil uses same texture
         if(dxcStencilTex == dxcDepthTex) {
-            if(dxcStencilTex) {
+            //Both used or both unused
+            if(dxcDepthTex) {
+                //We only have combined depth/stencil targets in dx12 but may 
+                // face different usages from user side, e.g. depth write by stencil
+                // test only. If anyone of them is a write, register as write
                 if(stencilState == D3D12_RESOURCE_STATE_DEPTH_WRITE ||
-                   depthState == D3D12_RESOURCE_STATE_DEPTH_WRITE)
+                   depthState == D3D12_RESOURCE_STATE_DEPTH_WRITE
+                ) {
                     RegisterTexUsage(dxcDepthTex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+                } else {
+                    RegisterTexUsage(dxcDepthTex, D3D12_RESOURCE_STATE_DEPTH_READ);
+                }
             }
         } else {
+
+            //Shouldn't have different depth and stencil targets
+            assert((dxcDepthTex == nullptr || dxcStencilTex == nullptr) &&
+                "Depth and stencil targets should point to the same resource"
+            );
+
             if(dxcDepthTex) {
-                RegisterTexUsage(dxcDepthTex, stencilState);
+                RegisterTexUsage(dxcDepthTex, depthState);
             }
             if(dxcStencilTex) {
                 RegisterTexUsage(dxcStencilTex, stencilState);
@@ -518,23 +534,26 @@ namespace alloy::dxc
 
         if (_fb.depthTargetAction.has_value())
         {
-            auto& dtAct = _fb.depthTargetAction.value();
-            auto& texView = dtAct.target->GetTexture();
-            auto dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+            auto& dsAct = _fb.depthTargetAction.value();
+            if(dsAct.msaaResolveTarget) {
+                auto& dtAct = _fb.depthTargetAction.value();
+                auto& texView = dtAct.target->GetTexture();
+                auto dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
 
-            auto srcState = GetTexState(dxcDepthTex);
-            auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+                auto srcState = GetTexState(dxcDepthTex);
+                auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
 
-            if(srcState != dstState) {
-                auto& barrier = barriers.emplace_back();
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-                barrier.Transition.pResource = dxcDepthTex->GetHandle();
-                barrier.Transition.StateBefore = srcState;
-                barrier.Transition.StateAfter = dstState;
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                if(srcState != dstState) {
+                    auto& barrier = barriers.emplace_back();
+                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                    barrier.Transition.pResource = dxcDepthTex->GetHandle();
+                    barrier.Transition.StateBefore = srcState;
+                    barrier.Transition.StateAfter = dstState;
+                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-                SetTexState(dxcDepthTex, dstState);
+                    SetTexState(dxcDepthTex, dstState);
+                }
             }
         }
 
@@ -594,6 +613,49 @@ namespace alloy::dxc
                 }
             }
         }
+
+        //Handle discard loads
+
+        for(auto& ctAct : _fb.colorTargetActions) {
+
+            // We can only discard RT resources in render target state.
+            // after resolve, it's in resolve source state
+            if(ctAct.msaaResolveTarget) continue;
+
+            if(ctAct.loadAction != LoadAction::ReadOnly &&
+               ctAct.storeAction == StoreAction::DontCare
+            ) {
+                auto& texView = ctAct.target->GetTexture();
+                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+                GetCmdList()->DiscardResource(
+                    dxcSource->GetHandle(),
+                    nullptr
+                );
+            }
+        }
+
+        // DX12 only supports combined depth stencil. We only need to handle
+        // depth here.
+        if (_fb.depthTargetAction.has_value())
+        {
+            auto& dsAct = _fb.depthTargetAction.value();
+            // We can only discard DS resources in depth write state.
+            // after resolve, it's in resolve source state
+            if(  !dsAct.msaaResolveTarget  &&
+                  dsAct.loadAction != LoadAction::ReadOnly &&
+                  dsAct.storeAction == StoreAction::DontCare
+            ) {
+                auto& texView = dsAct.target->GetTexture();
+                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+
+                GetCmdList()->DiscardResource(
+                    dxcSource->GetHandle(),
+                    nullptr
+                );
+            }
+        }
+
     }
 
     void DXCRenderCmdEnc::SetPipeline(const common::sp<IGfxPipeline>& pipeline){
@@ -762,28 +824,49 @@ namespace alloy::dxc
         });
     }
 
-    void DXCRenderCmdEnc::SetFullViewports() {
-        recordedCmds.emplace_back([this]() {
-            auto rtCnt = _fb.colorTargetActions.size();
-            //auto desc = _fb->GetDesc();
+    void DXCRenderCmdEnc::SetFullViewport() {
+        D3D12_VIEWPORT vp;
+        bool vpIsSet = false;
 
-            std::vector<D3D12_VIEWPORT> vps;
-            vps.reserve(rtCnt);
+        auto _SetVP = [&](const ITexture::Description& texDesc){
+            vp = {
+                .TopLeftX = 0,
+                .TopLeftY = 0,
+                .Width    = (float)texDesc.width,
+                .Height   = (float)texDesc.height,
+                .MinDepth = 0,
+                .MaxDepth = 1,
+            };
 
-            for(auto& rt : _fb.colorTargetActions) {
-                auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
-                D3D12_VIEWPORT vp {
-                    .TopLeftX = 0,
-                    .TopLeftY = 0,
-                    .Width    = (float)texDesc.width,
-                    .Height   = (float)texDesc.height,
-                    .MinDepth = 0,
-                    .MaxDepth = 1,
-                };
+            vpIsSet = true;
+        };
 
-                vps.push_back(vp);
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetVP(texDesc);
+            break;
+        }
+
+        if(!vpIsSet) {
+            if(_fb.depthTargetAction) {
+                auto& dt = _fb.depthTargetAction.value();
+                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetVP(texDesc);
+                vpIsSet = true;
             }
-            GetCmdList()->RSSetViewports(vps.size(), vps.data());
+        }
+
+        if(!vpIsSet) {
+            if(_fb.stencilTargetAction) {
+                auto& st = _fb.stencilTargetAction.value();
+                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetVP(texDesc);
+                vpIsSet = true;
+            }
+        }
+        assert(vpIsSet && "Pass with no render / depth / stencil targets!");
+        recordedCmds.emplace_back([this, vp]() {
+            GetCmdList()->RSSetViewports(1, &vp);
         });
     }
 
@@ -807,26 +890,47 @@ namespace alloy::dxc
         });
     }
 
-    void DXCRenderCmdEnc::SetFullScissorRects(){
-        recordedCmds.emplace_back([this]() {
-            auto rtCnt = _fb.colorTargetActions.size();
+    void DXCRenderCmdEnc::SetFullScissorRect(){
 
-            std::vector<D3D12_RECT> srs;
-            srs.reserve(rtCnt);
-            for(auto& rt : _fb.colorTargetActions) {
-            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
-            D3D12_RECT sr {
+        D3D12_RECT sr;
+        bool srIsSet = false;
+
+        auto _SetSR = [&](const ITexture::Description& texDesc){
+            sr = {
                 .left = 0,
                 .top = 0,
                 .right    =  (LONG)texDesc.width,
                 .bottom   =  (LONG)texDesc.height,
             };
 
+            srIsSet = true;
+        };
 
-                srs.push_back(sr);
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetSR(texDesc);
+            break;
+        }
+
+        if(!srIsSet) {
+            if(_fb.depthTargetAction) {
+                auto& dt = _fb.depthTargetAction.value();
+                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetSR(texDesc);
             }
+        }
 
-            GetCmdList()->RSSetScissorRects(srs.size(), srs.data());
+        if(!srIsSet) {
+            if(_fb.stencilTargetAction) {
+                auto& st = _fb.stencilTargetAction.value();
+                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetSR(texDesc);
+            }
+        }
+
+        assert(srIsSet && "Pass with no render / depth / stencil targets!");
+        recordedCmds.emplace_back([this, sr]() {
+            GetCmdList()->RSSetScissorRects(1, &sr);
         });
     }
 

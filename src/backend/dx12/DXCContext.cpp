@@ -375,6 +375,7 @@ namespace alloy::dxc {
         info.capabilities.supportMeshShader = _caps.SupportMeshShader();
         info.capabilities.supportRayTracing = _caps.SupportRayTracing();
         info.capabilities.supportResizableBar = _caps.SupportReBAR();
+        info.capabilities.supportBindless = _caps.SupportBindless();
 
         uint32_t full_heap_count = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
         uint32_t uav_count = 8;
@@ -644,6 +645,127 @@ namespace alloy::dxc {
         }
 #endif
         return adapters;
+    }
+
+    
+    uint32_t DXCContext::InstallDebugCallBack(ID3D12Device* pDev) {
+        // guard against where DWORD (aka unsigned long) isn't 32bit
+        static_assert(sizeof(DWORD)==sizeof(uint32_t)); 
+
+        uint32_t cookie = 0xffffffff;
+        if(_agilitySDK.IsDebugLayerDllLoaded()) {
+
+            ID3D12InfoQueue* pInfoQueue = nullptr;
+            pDev->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+            // Disable breaking on this warning because of a suspected bug in the D3D12 SDK layer, see #9084 for details.
+            const int D3D12_MESSAGE_ID_FENCE_ZERO_WAIT_ = 1424; // not in all copies of d3d12sdklayers.h
+            D3D12_MESSAGE_ID disabledMessages[] = { 
+                (D3D12_MESSAGE_ID)D3D12_MESSAGE_ID_FENCE_ZERO_WAIT_,
+                D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+            };
+            D3D12_INFO_QUEUE_FILTER filter = {};
+            filter.DenyList.NumIDs = sizeof(disabledMessages)/sizeof(disabledMessages[0]);
+            filter.DenyList.pIDList = disabledMessages;
+            pInfoQueue->AddStorageFilterEntries(&filter);
+
+            {
+                ID3D12InfoQueue1* pInfoQueue1 = nullptr;
+                pInfoQueue->QueryInterface(IID_PPV_ARGS(&pInfoQueue1));
+                if(pInfoQueue1) {
+                    pInfoQueue1->RegisterMessageCallback(
+                        &DXCContext::_DbgCbStatic,
+                        D3D12_MESSAGE_CALLBACK_FLAG_NONE,
+                        this,
+                        (DWORD*)&cookie
+                    );
+                    pInfoQueue1->Release();
+                }
+            }
+
+            pInfoQueue->Release();
+        }
+
+        return cookie;
+    }
+
+    void DXCContext::UninstallDebugCallBack(ID3D12Device* pDev, uint32_t cookie) {
+        if(cookie == 0xffffffff) return;
+        if(_agilitySDK.IsDebugLayerDllLoaded()) {
+            
+            ID3D12InfoQueue* pInfoQueue = nullptr;
+            pDev->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, false);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, false);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, false);
+            pInfoQueue->ClearStorageFilter();
+
+            {
+                ID3D12InfoQueue1* pInfoQueue1 = nullptr;
+                pInfoQueue->QueryInterface(IID_PPV_ARGS(&pInfoQueue1));
+                if(pInfoQueue1) {
+                    pInfoQueue1->UnregisterMessageCallback((DWORD)cookie);
+                    pInfoQueue1->Release();
+                }
+            }
+
+            pInfoQueue->Release();
+        }
+    }
+
+    void DXCContext::_DbgCbStatic(
+        D3D12_MESSAGE_CATEGORY Category, 
+        D3D12_MESSAGE_SEVERITY Severity, 
+        D3D12_MESSAGE_ID ID, 
+        LPCSTR pDescription, 
+        void* pContext
+    ) {
+        auto self = (DXCContext*)pContext;
+        self->_DbgCb(Category, Severity, ID, pDescription);
+    }
+
+    const std::string& Cat2Str(D3D12_MESSAGE_CATEGORY catIdx) {
+
+        const static std::string cat [] = {
+            "APP ",  //D3D12_MESSAGE_CATEGORY_APPLICATION_DEFINED
+            "MISC", //D3D12_MESSAGE_CATEGORY_MISCELLANEOUS
+            "INIT", //D3D12_MESSAGE_CATEGORY_INITIALIZATION
+            "CLR ",//D3D12_MESSAGE_CATEGORY_CLEANUP
+            "CMPL", //D3D12_MESSAGE_CATEGORY_COMPILATION
+            "CTOR", //D3D12_MESSAGE_CATEGORY_STATE_CREATION
+            "SET ",//D3D12_MESSAGE_CATEGORY_STATE_SETTING
+            "GET ",//D3D12_MESSAGE_CATEGORY_STATE_GETTING
+            "MANI",//D3D12_MESSAGE_CATEGORY_RESOURCE_MANIPULATION
+            "EXEC",//D3D12_MESSAGE_CATEGORY_EXECUTION
+            "SHDR",//D3D12_MESSAGE_CATEGORY_SHADER
+        };
+
+        constexpr auto maxCatIdx = sizeof(cat) / sizeof(cat[0]);
+        
+        return cat[catIdx % maxCatIdx];
+    
+    };
+
+    
+    void DXCContext::_DbgCb(
+        D3D12_MESSAGE_CATEGORY Category, 
+        D3D12_MESSAGE_SEVERITY Severity, 
+        D3D12_MESSAGE_ID       ID, 
+        LPCSTR                 pDescription
+    ) {
+        if (Severity == D3D12_MESSAGE_SEVERITY_CORRUPTION)
+            std::cout << std::format("CRPT" "[{}] [DXC#{}]: {}", Cat2Str(Category), (uint32_t)ID, std::string(pDescription)) << std::endl;
+        else if (Severity == D3D12_MESSAGE_SEVERITY_ERROR)
+            std::cout << std::format("ERR " "[{}] [DXC#{}]: {}", Cat2Str(Category), (uint32_t)ID, std::string(pDescription)) << std::endl;
+        else if (Severity == D3D12_MESSAGE_SEVERITY_WARNING)
+            std::cout << std::format("WARN" "[{}] [DXC#{}]: {}", Cat2Str(Category), (uint32_t)ID, std::string(pDescription)) << std::endl;
+        else if (Severity == D3D12_MESSAGE_SEVERITY_INFO)
+            std::cout << std::format("INFO" "[{}] [DXC#{}]: {}", Cat2Str(Category), (uint32_t)ID, std::string(pDescription)) << std::endl;
+        else if (Severity == D3D12_MESSAGE_SEVERITY_MESSAGE)
+            std::cout << std::format("MSG " "[{}] [DXC#{}]: {}", Cat2Str(Category), (uint32_t)ID, std::string(pDescription)) << std::endl;
     }
 
 }

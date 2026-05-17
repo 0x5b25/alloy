@@ -263,6 +263,9 @@ namespace alloy::dxc {
         }
 
         _alloc->Release();
+
+        _adp->GetContext().UninstallDebugCallBack(_dev, _dbgCookie);
+
         _dev->Release();
     }
 
@@ -464,7 +467,10 @@ namespace alloy::dxc {
         dev->_commonFeat.independentBlend = true;
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
-        dev->_commonFeat.shaderFloat64 = devCaps.options.DoublePrecisionFloatShaderOps;   
+        dev->_commonFeat.shaderFloat64 = devCaps.options.DoublePrecisionFloatShaderOps;  
+
+        dev->_dbgCookie = adp->GetContext().InstallDebugCallBack(dev->_dev);
+
         return dev;
     }
 

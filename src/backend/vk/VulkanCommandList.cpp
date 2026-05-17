@@ -62,7 +62,7 @@ namespace alloy::vk{
         return (READ_MASK & access) != 0;
     }
 
-    constexpr bool _HasAccessHarzard(VkAccessFlags src, VkAccessFlags dst) {
+    constexpr bool _HasAccessHazard(VkAccessFlags src, VkAccessFlags dst) {
         return (src != VK_ACCESS_NONE && dst != VK_ACCESS_NONE)
             && ((~READ_MASK)&(src | dst));
         //find anyone with a write access
@@ -95,7 +95,51 @@ namespace alloy::vk{
             firstState.textures.insert({ tex, state });
         }
 
-        lastState.textures[tex] = state;
+        auto& currState = lastState.textures[tex];
+
+        currState.aspects |= state.aspects;
+        if(state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
+            currState.color = state.color;
+        }
+        if(state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+            currState.depth = state.depth;
+        }
+        if(state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+            currState.stencil = state.stencil;
+        }
+    }
+
+    
+    void VkCmdEncBase::RegisterTexUsageAllAspecs(
+        VulkanTexture* tex,
+        VulkanCommandList::TextureState::AspectState aspectState
+    ) {
+        //Infer aspects from pixel format
+        auto pixFormat = tex->GetDesc().format;
+
+        VulkanCommandList::TextureState state{};
+        //Add each aspects separately. image_barrier2 supports separate
+        // layouts on each aspect
+
+        //Color format and depth/stencil format are mutually exclusive
+        bool isColorFormat = true;
+        if(FormatHelpers::IsDepthStencilFormat(pixFormat)) {
+            isColorFormat = false;
+            state.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+            state.depth = aspectState;
+        }
+        if(FormatHelpers::IsStencilFormat(pixFormat)) {
+            isColorFormat = false;
+            state.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            state.stencil = aspectState;
+        }
+
+        if(isColorFormat) {
+            state.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
+            state.color = aspectState;
+        }
+        
+        RegisterTexUsage(tex, state);
     }
 
 
@@ -122,15 +166,19 @@ namespace alloy::vk{
                         case _ResKind::Texture: {
                             auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
                             auto texture = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-                            VulkanCommandList::TextureState state{};
-                            state.access = VK_ACCESS_SHADER_READ_BIT;
+
+                            auto pixFormat = texture->GetDesc().format;
+
+                            VulkanCommandList::TextureState::AspectState aspectState {};
+                            aspectState.access = VK_ACCESS_SHADER_READ_BIT;
                             if(elem.options.writable)
-                                state.access |= VK_ACCESS_SHADER_WRITE_BIT;
-                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
-                            state.layout = elem.options.writable ?
+                                aspectState.access |= VK_ACCESS_SHADER_WRITE_BIT;
+                            aspectState.layout = elem.options.writable ?
                                 VK_IMAGE_LAYOUT_GENERAL :
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                            RegisterTexUsage(texture, state);
+                            aspectState.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
+
+                            RegisterTexUsageAllAspecs(texture, aspectState);
                             break;
                         }
                         case _ResKind::UniformBuffer: {
@@ -840,26 +888,51 @@ namespace alloy::vk{
 
         });
     }
-    void VkRenderCmdEnc::SetFullViewports() {
+    void VkRenderCmdEnc::SetFullViewport() {
 
-        std::vector<Viewport> vps;
-        //auto desc = _fb->GetDesc();
+        Viewport vp[1];
+        bool vpIsSet = false;
 
-        //SetViewport(0, {0, 0, (float)fb->GetDesc().GetWidth(), (float)fb->GetDesc().GetHeight(), 0, 1});
-        for (auto& ct : _fb.colorTargetActions)
-        {
-            auto& ctdesc = ct.target->GetTexture().GetTextureObject()->GetDesc();
-            auto& vp = vps.emplace_back();
-            vp.x = 0;
-            vp.y = 0;
-            vp.width = (float)ctdesc.width;
-            vp.height = (float)ctdesc.height;
-            vp.minDepth = 0;
-            vp.maxDepth = ctdesc.depth;
+        auto _SetVP = [&](const ITexture::Description& texDesc){
+            vp[0] = {
+                .x = 0,
+                .y = 0,
+                .width    = (float)texDesc.width,
+                .height   = (float)texDesc.height,
+                .minDepth = 0,
+                .maxDepth = 1,
+            };
+
+            vpIsSet = true;
+        };
+
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetVP(texDesc);
+            break;
         }
 
+        if(!vpIsSet) {
+            if(_fb.depthTargetAction) {
+                auto& dt = _fb.depthTargetAction.value();
+                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetVP(texDesc);
+                vpIsSet = true;
+            }
+        }
 
-        SetViewports(vps);
+        if(!vpIsSet) {
+            if(_fb.stencilTargetAction) {
+                auto& st = _fb.stencilTargetAction.value();
+                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetVP(texDesc);
+                vpIsSet = true;
+            }
+        }
+        
+        assert(vpIsSet && "Pass with no render / depth / stencil targets!");
+
+        SetViewports(vp);
     }
 
     void VkRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects)
@@ -888,14 +961,46 @@ namespace alloy::vk{
         });
     }
 
-    void VkRenderCmdEnc::SetFullScissorRects() {
-        std::vector<Rect> rects;
-        for(auto& ct : _fb.colorTargetActions) {
-            auto& ctDesc = ct.target->GetTexture().GetTextureObject()->GetDesc();
-            rects.emplace_back(0, 0, ctDesc.width, ctDesc.height);
+    void VkRenderCmdEnc::SetFullScissorRect() {
+        Rect sr[1];
+        bool srIsSet = false;
+
+        auto _SetSR = [&](const ITexture::Description& texDesc){
+            sr[0] = {
+                .x = 0,
+                .y = 0,
+                .width  = texDesc.width,
+                .height = texDesc.height,
+            };
+
+            srIsSet = true;
+        };
+
+        for(auto& rt : _fb.colorTargetActions) {
+            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            _SetSR(texDesc);
+            break;
         }
 
-        SetScissorRects(rects);
+        if(!srIsSet) {
+            if(_fb.depthTargetAction) {
+                auto& dt = _fb.depthTargetAction.value();
+                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetSR(texDesc);
+            }
+        }
+
+        if(!srIsSet) {
+            if(_fb.stencilTargetAction) {
+                auto& st = _fb.stencilTargetAction.value();
+                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                _SetSR(texDesc);
+            }
+        }
+
+        assert(srIsSet && "Pass with no render / depth / stencil targets!");
+
+        SetScissorRects(sr);
     }
 
     void VkRenderCmdEnc::Draw(
@@ -1080,11 +1185,11 @@ namespace alloy::vk{
         srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         RegisterBufferUsage(srcBuffer, srcState);
 
-        VulkanCommandList::TextureState dstState{};
+        VulkanCommandList::TextureState::AspectState dstState{};
         dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
         dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        RegisterTexUsage(dstImg, dstState);
+        RegisterTexUsageAllAspecs(dstImg, dstState);
         //Vulkan region bufferRowLength is in texel count
         auto sizePerPixel = FormatHelpers::GetSizeInBytes(dstImg->GetDesc().format);
         auto srcTexelsPerRow = srcBytesPerRow / sizePerPixel;
@@ -1147,11 +1252,11 @@ namespace alloy::vk{
         auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
         auto* dstBuffer = PtrCast<VulkanBuffer>(dst->GetBufferObject());
 
-        VulkanCommandList::TextureState srcState{};
+        VulkanCommandList::TextureState::AspectState srcState{};
         srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
         srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        RegisterTexUsage(srcVkTexture, srcState);
+        RegisterTexUsageAllAspecs(srcVkTexture, srcState);
 
         VulkanCommandList::BufferState dstState{};
         dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1289,18 +1394,18 @@ namespace alloy::vk{
         auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(dst.get());
 
-        VulkanCommandList::TextureState srcState{};
+        VulkanCommandList::TextureState::AspectState srcState{};
         srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
         srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        RegisterTexUsage(srcVkTexture, srcState);
+        RegisterTexUsageAllAspecs(srcVkTexture, srcState);
 
 
-        VulkanCommandList::TextureState dstState{};
+        VulkanCommandList::TextureState::AspectState dstState{};
         dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
         dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        RegisterTexUsage(dstVkTexture, dstState);
+        RegisterTexUsageAllAspecs(dstVkTexture, dstState);
 
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
@@ -1530,13 +1635,13 @@ namespace alloy::vk{
             auto vkTex = PtrCast<VulkanTexture>(t.get());
             dummyPass->resources.insert(t);
 
-            TextureState state {};
+            TextureState::AspectState state {};
             state.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR;
             state.access = VK_ACCESS_2_MEMORY_READ_BIT_KHR
                          | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR;
             state.layout = VK_IMAGE_LAYOUT_GENERAL;
 
-            dummyPass->RegisterTexUsage(vkTex, state);
+            dummyPass->RegisterTexUsageAllAspecs(vkTex, state);
         }
 
 
@@ -1555,11 +1660,22 @@ namespace alloy::vk{
             auto vkColorTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
             VulkanCommandList::TextureState state{};
-            state.access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            if(ctAct.loadAction != alloy::LoadAction::DontCare)
-                state.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-            state.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            state.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            auto& aspectState = state.color;
+
+            //Always allow read on non-discard load
+            if(ctAct.loadAction != alloy::LoadAction::DontCare) {
+                aspectState.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            }
+
+            if(ctAct.loadAction != alloy::LoadAction::ReadOnly ||
+               !(dev->GetVkFeatures().supportReadOnlyAttachment)
+            ) {
+                aspectState.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            }
+
+            aspectState.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            aspectState.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            state.aspects = VK_IMAGE_ASPECT_COLOR_BIT;
             RegisterTexUsage(vkColorTex, state);
 
             if(ctAct.msaaResolveTarget) {
@@ -1567,67 +1683,110 @@ namespace alloy::vk{
                 auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
 
                 VulkanCommandList::TextureState destinationState{};
-                destinationState.access =  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                destinationState.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                destinationState.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                destinationState.aspects = VK_IMAGE_ASPECT_COLOR_BIT;
+                destinationState.color.access =  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                destinationState.color.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                destinationState.color.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 RegisterTexUsage(vkResolveTex, destinationState);
             }
         };
 
+
+        // Combined depth stencil
+
+
+        // Depth only
+        //   if LoadAction::ReadOnly
+        //     layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+        //   else
+        //     layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | WRITE_BIT
+        // Stencil only
+        //   if LoadAction::ReadOnly
+        //     layout = VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+        //   else
+        //     layout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL
+        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | WRITE_BIT
+
+        
+        VulkanCommandList::TextureState depthState{};
+        VulkanCommandList::TextureState stencilState{};
         if (fb.depthTargetAction.has_value())
         {
-            auto& vkTexView = fb.depthTargetAction->target->GetTexture();
+            const auto& dtAct = fb.depthTargetAction.value();
+
+            auto& vkTexView = dtAct.target->GetTexture();
             auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
-            VulkanCommandList::TextureState state{};
-            state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
+            VulkanCommandList::TextureState state{ .aspects = VK_IMAGE_ASPECT_DEPTH_BIT };
+            auto& aspectState = state.depth;
+            aspectState.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
                         | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
-            //Always writable
-            state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            if(fb.depthTargetAction->loadAction != alloy::LoadAction::DontCare) {
-                //Either clear or load means content is readable
-                state.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            aspectState.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+            //Always allow read on non-discard load
+            if(dtAct.loadAction != alloy::LoadAction::DontCare) {
+                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             }
 
-            state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            if(dtAct.loadAction != alloy::LoadAction::ReadOnly ||
+               !(dev->GetVkFeatures().supportReadOnlyAttachment)
+            ) {
+                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            } else {
+                //Read only access, let's use READ_OPTIMAL
+                aspectState.layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+            }
+
             RegisterTexUsage(vkDepthTex, state);
 
-            if(fb.depthTargetAction->msaaResolveTarget) {
-                auto& vkResolveTexView = fb.depthTargetAction->msaaResolveTarget->GetTexture();
+            if(dtAct.msaaResolveTarget) {
+                auto& vkResolveTexView = dtAct.msaaResolveTarget->GetTexture();
                 auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
 
-                VulkanCommandList::TextureState destinationState{};
-                destinationState.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                destinationState.stage = state.stage;
-                destinationState.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                VulkanCommandList::TextureState destinationState{.aspects = VK_IMAGE_ASPECT_DEPTH_BIT};
+                destinationState.depth.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                destinationState.depth.stage = state.depth.stage;
+                destinationState.depth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
                 RegisterTexUsage(vkResolveTex, destinationState);
             }
         }
 
         if(fb.stencilTargetAction.has_value())
         {
-            auto& vkTexView = fb.stencilTargetAction->target->GetTexture();
+            const auto& stAct = fb.stencilTargetAction.value();
+
+            auto& vkTexView = stAct.target->GetTexture();
             auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
 
-            VulkanCommandList::TextureState state{};
-            state.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
+            VulkanCommandList::TextureState state{ .aspects = VK_IMAGE_ASPECT_STENCIL_BIT };
+            auto& aspectState = state.stencil;
+            aspectState.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
                         | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 
-            if(fb.stencilTargetAction->storeAction != alloy::StoreAction::DontCare)
-            {
-                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-                             | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            } else {
-                state.access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-                state.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+            aspectState.layout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
+
+            //Always allow read on non-discard load
+            if(stAct.loadAction != alloy::LoadAction::DontCare) {
+                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             }
+
+            if(stAct.loadAction != alloy::LoadAction::ReadOnly ||
+               !(dev->GetVkFeatures().supportReadOnlyAttachment)
+            ) {
+                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            } else {
+                //Read only access, let's use READ_OPTIMAL
+                aspectState.layout = VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL;
+            }
+
             RegisterTexUsage(vkDepthTex, state);
 
 
-            //if(fb.stencilTargetAction->msaaResolveTarget) {
-            //    auto& vkResolveTexView = fb.stencilTargetAction->msaaResolveTarget->GetTexture();
+            //if(stAct.msaaResolveTarget) {
+            //    auto& vkResolveTexView = stAct.msaaResolveTarget->GetTexture();
             //    auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
             //
             //    VulkanCommandList::TextureState destinationState{};
@@ -1881,7 +2040,7 @@ namespace alloy::vk{
 
             auto& state = it->second;
 
-            if(_HasAccessHarzard(state.access, stateReq.access)) {
+            if(_HasAccessHazard(state.access, stateReq.access)) {
                 auto& action = bufferBarriers.emplace_back(
                     VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2_KHR
                 );
@@ -1901,6 +2060,38 @@ namespace alloy::vk{
 
         std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
 
+        auto _InsertBarrierIfHasAccessHazrard = [&](
+            const VulkanTexture* texture,
+            VkImageAspectFlags aspects,
+            const TextureState::AspectState& state,
+            const TextureState::AspectState& stateReq
+        ) {
+            if(state.layout == stateReq.layout &&
+               !_HasAccessHazard(state.access, stateReq.access)
+            ) {
+                return;
+            }
+
+            auto& desc = texture->GetDesc();
+            auto& action = texBarriers.emplace_back(
+                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
+            );
+            action.srcStageMask = state.stage;
+            action.srcAccessMask = state.access;
+            action.dstStageMask = stateReq.stage;
+            action.dstAccessMask = stateReq.access;
+            action.oldLayout = state.layout;
+            action.newLayout = stateReq.layout;
+            action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            action.image = texture->GetHandle();
+            action.subresourceRange.baseMipLevel = 0;
+            action.subresourceRange.levelCount = desc.mipLevels;
+            action.subresourceRange.baseArrayLayer = 0;
+            action.subresourceRange.layerCount = desc.arrayLayers;
+            action.subresourceRange.aspectMask = aspects;
+        };
+
         for(auto& [texture, stateReq] : currPassReqStates.textures) {
             //TextureState state {};
             //Search for current recorded state
@@ -1916,36 +2107,49 @@ namespace alloy::vk{
             }
 
             auto& state = it->second;
-
-            if( _HasAccessHarzard(state.access, stateReq.access) ||
-                state.layout != stateReq.layout) {
-
-                auto& desc = texture->GetDesc();
-                auto& action = texBarriers.emplace_back(
-                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
-                );
-                action.srcStageMask = state.stage;
-                action.srcAccessMask = state.access;
-                action.dstStageMask = stateReq.stage;
-                action.dstAccessMask = stateReq.access;
-                action.oldLayout = state.layout;
-                action.newLayout = stateReq.layout;
-                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.image = texture->GetHandle();
-                action.subresourceRange.baseMipLevel = 0;
-                action.subresourceRange.levelCount = desc.mipLevels;
-                action.subresourceRange.baseArrayLayer = 0;
-                action.subresourceRange.layerCount = desc.arrayLayers;
-
-                auto& aspectMask = action.subresourceRange.aspectMask;
-                if (desc.usage.depthStencil) {
-                    aspectMask = FormatHelpers::IsStencilFormat(desc.format)
-                        ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
-                        : VK_IMAGE_ASPECT_DEPTH_BIT;
+            auto& requestedState = _requestedStates.textures[texture];
+            if(stateReq.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
+                if(! (state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) ) {
+                    //Same insert like first access, but per-aspect
+                    state.color = stateReq.color;
+                    requestedState.color = stateReq.color;
+                } else {
+                    _InsertBarrierIfHasAccessHazrard(
+                        texture,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        state.color,
+                        stateReq.color
+                    );
                 }
-                else {
-                    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            }
+
+            if(stateReq.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
+                if(! (state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) ) {
+                    //Same insert like first access, but per-aspect
+                    state.depth = stateReq.depth;
+                    requestedState.depth = stateReq.depth;
+                } else {
+                    _InsertBarrierIfHasAccessHazrard(
+                        texture,
+                        VK_IMAGE_ASPECT_DEPTH_BIT,
+                        state.depth,
+                        stateReq.depth
+                    );
+                }
+            }
+
+            if(stateReq.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
+                if(! (state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ) {
+                    //Same insert like first access, but per-aspect
+                    state.stencil = stateReq.stencil;
+                    requestedState.stencil = stateReq.stencil;
+                } else {
+                    _InsertBarrierIfHasAccessHazrard(
+                        texture,
+                        VK_IMAGE_ASPECT_COLOR_BIT,
+                        state.stencil,
+                        stateReq.stencil
+                    );
                 }
             }
         }

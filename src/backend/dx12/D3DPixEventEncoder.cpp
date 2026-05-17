@@ -108,7 +108,7 @@ inline void PIXInsertGPUMarkerOnContextForEndEvent(_In_ ID3D12GraphicsCommandLis
     {
         //Small buffer optimization. Use 64 byte stack space
         static constexpr auto StrStoreSpaceQwordsAvail = (8 - PixEventHeaderSizeQwords);
-        std::uint64_t buffer[8];
+        std::uint64_t buffer[8] = {};
 
         std::uint64_t* destination = buffer;
         std::uint8_t* pBufferBegin = (std::uint8_t*)buffer;

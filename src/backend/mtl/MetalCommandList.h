@@ -181,11 +181,11 @@ public:
     // <param name="index">The color target index.</param>
     // <param name="viewport">The new <see cref="Viewport"/>.</param>
     virtual void SetViewports(const std::span<Viewport>& viewport) override;
-    virtual void SetFullViewports() override;
+    virtual void SetFullViewport() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
     //virtual void SetFullViewport(std::uint32_t index) = 0;
-    //virtual void SetFullViewports() = 0;
+    //virtual void SetFullViewport() = 0;
 
     // Sets the active scissor rectangle at the given index.
     // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
@@ -195,11 +195,11 @@ public:
     // <param name="width">The width of the scissor rectangle.</param>
     // <param name="height">The height of the scissor rectangle.</param>
     virtual void SetScissorRects(const std::span<Rect>&  rects) override;
-    virtual void SetFullScissorRects() override;
+    virtual void SetFullScissorRect() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
     //virtual void SetFullScissorRect(std::uint32_t index) = 0;
-    //virtual void SetFullScissorRects() = 0;
+    //virtual void SetFullScissorRect() = 0;
 
     // Draws primitives from the currently-bound state in this CommandList.
     // An index Buffer is not used.

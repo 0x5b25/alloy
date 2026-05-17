@@ -199,6 +199,8 @@ namespace alloy::dxc{
 
         IGraphicsDevice::Features _commonFeat;
 
+        uint32_t _dbgCookie; //Used by d3d12 debug callbacks registering
+
         DXCDevice(ID3D12Device* dev);
 
     public:

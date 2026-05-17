@@ -672,6 +672,8 @@ namespace alloy::vk
                 VK_DEV_CALL(_dev, vkResetFences(_dev->LogicalDev(), 1, &_imageAvailableFence));
                 res = VK_SUCCESS;
                 _currentImageInUse = false;
+            } else {
+                assert(false);
             }
         }
         if (res == VK_SUCCESS ){

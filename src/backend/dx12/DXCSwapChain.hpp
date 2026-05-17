@@ -47,20 +47,24 @@ namespace alloy::dxc {
     class DXCSwapChainRenderTarget : public DXCRenderTargetBase {
         common::sp<DXCSwapChain> _sc;
         const RenderTargetContainer& _rt;
+
+        int generation;
         
     public:
 
         DXCSwapChainRenderTarget(
             const common::sp<DXCSwapChain>& sc,
-            const RenderTargetContainer& rt
+            const RenderTargetContainer& rt,
+            int gen
         )
             : _sc(sc)
-            , _rt(rt) 
+            , _rt(rt)
+            , generation(gen)
         { }
         
-        virtual ITextureView& GetTexture() const override {return *_rt.tex.get();}
+        virtual ITextureView& GetTexture() const override;
 
-        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const override {return _rt.view;}
+        virtual D3D12_CPU_DESCRIPTOR_HANDLE GetHandle() const override;
     };
 
     class DXCSwapChainBackBuffer : public IFrameBuffer {
@@ -68,10 +72,13 @@ namespace alloy::dxc {
         common::sp<DXCSwapChain> _sc;
         const BackBufferContainer& _bb;
 
+        int generation;
+
     public:
         DXCSwapChainBackBuffer(
             common::sp<DXCSwapChain>&& sc,
-            const BackBufferContainer& bb
+            const BackBufferContainer& bb,
+            int gen
         );
 
         ~DXCSwapChainBackBuffer() override;
@@ -89,6 +96,7 @@ namespace alloy::dxc {
     
     class DXCSwapChain : public ISwapChain {
         friend class DXCSwapChainBackBuffer;
+        friend class DXCSwapChainRenderTarget;
 
         common::sp<DXCDevice> _dev;
 
@@ -110,12 +118,15 @@ namespace alloy::dxc {
         //VkFence _imageAvailableFence;
         //std::uint32_t _currentImageIndex;
 
+        int generation;
+
         DXCSwapChain(
             const common::sp<DXCDevice>& dev,
             const Description& desc
         ) : ISwapChain(desc)
           , _dev(dev)
           , _srgbColorSpace(desc.colorSrgb)
+          , generation(0)
         {
             _syncToVBlank = _newSyncToVBlank = desc.syncToVerticalBlank;
         }
@@ -155,6 +166,8 @@ namespace alloy::dxc {
     public:
         common::sp<IFrameBuffer> GetBackBuffer() override;
 
+        virtual uint32_t GetBackBufferIndex() override { return GetCurrentImageIdx(); }
+
         void Resize(
             std::uint32_t width, 
             std::uint32_t height) override;
@@ -173,8 +186,5 @@ namespace alloy::dxc {
 
         //virtual State SwapBuffers() override;
     };
-
-
-
 
 }

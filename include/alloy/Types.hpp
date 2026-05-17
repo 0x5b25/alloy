@@ -176,6 +176,11 @@ namespace alloy
         Double,
     };
 
+    // #TODO: add separate texture_view formats:
+    //   reading depth from combined depth stencil requires special format
+    //   like x32_u8 on apple metal to read D32Unorm_S8UInt
+    // #TODO: experiment with support for depth/stencil usage on R8_UInt or alike
+    //   single channel color formats.
     enum class PixelFormat : std::uint8_t{
         Unknown,
         R8_G8_B8_A8_UNorm,
