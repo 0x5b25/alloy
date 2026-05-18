@@ -200,6 +200,11 @@ bool Contains(T&& container, U&& element) {
             if(devCaps.resourceBindingModel != VulkanDevCaps::ResourceBindingModel::Legacy) {
                 features12.descriptorIndexing = true;
                 features12.descriptorBindingPartiallyBound = true;
+                features12.descriptorBindingUpdateUnusedWhilePending = true;
+                features12.descriptorBindingUniformBufferUpdateAfterBind = true;
+                features12.descriptorBindingSampledImageUpdateAfterBind = true;
+                features12.descriptorBindingStorageImageUpdateAfterBind = true;
+                features12.descriptorBindingStorageBufferUpdateAfterBind = true;
                 features12.runtimeDescriptorArray = true;
                 deviceFeatures.shaderUniformBufferArrayDynamicIndexing = true;
                 deviceFeatures.shaderSampledImageArrayDynamicIndexing = true;

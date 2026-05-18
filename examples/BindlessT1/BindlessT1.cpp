@@ -36,16 +36,42 @@ struct UniformBufferObject {
 
 class BindlessT1 : public IApp {
     static constexpr std::uint32_t TextureCapacity = 4;
+    static constexpr std::uint32_t TextureViewCount = 3;
     static constexpr std::uint32_t TextureWidth = 256;
     static constexpr std::uint32_t TextureHeight = 256;
-    static constexpr std::uint32_t TextureSlotA = 1;
-    static constexpr std::uint32_t TextureSlotB = 3;
+    static constexpr std::uint32_t DescriptorSlotA = 1;
+    static constexpr std::uint32_t DescriptorSlotB = 3;
+    static constexpr std::uint32_t StableTextureView = 0;
+    static constexpr std::uint32_t DynamicTextureViewA = 1;
+    static constexpr std::uint32_t DynamicTextureViewB = 2;
 
     enum LayoutSlot : std::uint32_t {
         UniformLayoutSlot = 0,
         TextureArrayLayoutSlot = 1,
         SamplerLayoutSlot = 2
     };
+
+    /* textureViews array from CPU side:
+     * +---------------------+
+     * | StableTextureView   |
+     * +---------------------+
+     * | DynamicTextureViewA |
+     * +---------------------+
+     * | DynamicTextureViewB |
+     * +---------------------+
+     * 
+     * ResLayout slots:             Descriptor slots
+     * +----------------------+    +--------------+
+     * | #0: UBO              |    | #0: UBO      |
+     * +----------------------+    +--------------+
+     * | #1: TextureArray [4] |    | #1: Tex [0]  | -> !Invalid!
+     * +----------------------+    | #2: Tex [1]  | -> StableTextureView
+     * | #2: Sampler          |    | #3: Tex [2]  | -> !Invalid!
+     * +----------------------+    | #4: Tex [3]  | -> DynamicTextureView A/B
+     *                             +--------------+
+     *                             | #5: Sampler  |
+     *                             +--------------+
+     */
 
     IAppRunner* _runner;
 
@@ -55,7 +81,7 @@ class BindlessT1 : public IApp {
     alloy::common::sp<alloy::IBuffer> uniformBuffer;
     void* pUniformBuffer = nullptr;
 
-    std::array<alloy::common::sp<alloy::ITextureView>, TextureCapacity> textureViews;
+    std::array<alloy::common::sp<alloy::ITextureView>, TextureViewCount> textureViews;
     alloy::common::sp<alloy::ISampler> sampler;
     alloy::common::sp<alloy::IMutableResourceSet> _resSet;
 
@@ -145,7 +171,7 @@ public:
         _CreateResources();
     }
 
-    virtual ~BindlessT1() override {}
+    virtual ~BindlessT1() override;
 
     virtual int GetExitCode() override { return 0; }
 
@@ -180,6 +206,10 @@ void BindlessT1::_CreateResources() {
     _CreateBuffers();
     _CreateTextures();
     _CreatePipeline();
+}
+
+BindlessT1::~BindlessT1() {
+    uniformBuffer->UnMap();
 }
 
 void BindlessT1::_CreateBuffers() {
@@ -303,17 +333,23 @@ void BindlessT1::_CreateTextures() {
     samplerDesc.maximumAnisotropy = 1;
     sampler = factory.CreateSampler(samplerDesc);
 
-    textureViews[TextureSlotA] = _CreateCheckerTexture(
+    textureViews[StableTextureView] = _CreateCheckerTexture(
         PackRGBA(20, 170, 225),
         PackRGBA(8, 34, 64),
         32,
-        "BindlessT1 Texture Slot 1");
+        "BindlessT1 Texture View 0");
 
-    textureViews[TextureSlotB] = _CreateCheckerTexture(
+    textureViews[DynamicTextureViewA] = _CreateCheckerTexture(
         PackRGBA(250, 210, 70),
         PackRGBA(120, 30, 165),
         16,
-        "BindlessT1 Texture Slot 3");
+        "BindlessT1 Texture View 1");
+
+    textureViews[DynamicTextureViewB] = _CreateCheckerTexture(
+        PackRGBA(70, 230, 120),
+        PackRGBA(105, 40, 25),
+        8,
+        "BindlessT1 Texture View 2");
 }
 
 void BindlessT1::_CreatePipeline() {
@@ -366,8 +402,8 @@ void BindlessT1::_CreatePipeline() {
     {
         auto& write = resSetDesc.initialWrites.emplace_back();
         write.layoutSlot = TextureArrayLayoutSlot;
-        write.firstArrayElement = TextureSlotA;
-        write.resources.push_back(textureViews[TextureSlotA]);
+        write.firstArrayElement = DescriptorSlotA;
+        write.resources.push_back(textureViews[StableTextureView]);
     }
     {
         auto& write = resSetDesc.initialWrites.emplace_back();
@@ -376,13 +412,6 @@ void BindlessT1::_CreatePipeline() {
         write.resources.push_back(sampler);
     }
     _resSet = factory.CreateMutableResourceSet(resSetDesc);
-
-    alloy::IMutableResourceSet::WriteBinding textureUpdate{};
-    textureUpdate.layoutSlot = TextureArrayLayoutSlot;
-    textureUpdate.firstArrayElement = TextureSlotB;
-    textureUpdate.resources.push_back(textureViews[TextureSlotB]);
-    _resSet->Update(
-        std::span<const alloy::IMutableResourceSet::WriteBinding>(&textureUpdate, 1));
 
     alloy::GraphicsPipelineDescription pipelineDescription{};
     pipelineDescription.resourceLayout = layout;
@@ -454,10 +483,20 @@ void BindlessT1::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
         fbWidth / static_cast<float>(fbHeight),
         0.1f,
         10.0f);
-    ubo.textureIndex =
-        (static_cast<std::uint32_t>(timeElapsedSec) & 1u) == 0
-            ? TextureSlotA
-            : TextureSlotB;
+    const auto tick = static_cast<std::uint32_t>(timeElapsedSec);
+    ubo.textureIndex = (tick & 1u) == 0 ? DescriptorSlotA : DescriptorSlotB;
+
+    const auto dynamicTextureView =
+        ((tick / 2u) & 1u) == 0
+            ? DynamicTextureViewA
+            : DynamicTextureViewB;
+
+    alloy::IMutableResourceSet::WriteBinding textureUpdate{};
+    textureUpdate.layoutSlot = TextureArrayLayoutSlot;
+    textureUpdate.firstArrayElement = DescriptorSlotB;
+    textureUpdate.resources.push_back(textureViews[dynamicTextureView]);
+    _resSet->Update(
+        std::span<const alloy::IMutableResourceSet::WriteBinding>(&textureUpdate, 1));
 
     memcpy(pUniformBuffer, &ubo, sizeof(ubo));
 

@@ -55,13 +55,15 @@ T1 is advertised only when the backend supports the complete alloy-level contrac
 - Descriptor array entries may be dynamically indexed.
 - Descriptor array entries may be partially populated.
 - Resource set entries may be updated after creation.
-- Updates are not allowed while the resource set version may be in flight.
-- There is no update-after-bind contract.
+- Updates may happen after a resource set has been bound or submitted.
+- There is no automatic descriptor snapshot or versioning contract.
+- The application owns hazards from overwriting entries that pending GPU work may read.
 - There is no global `ResourceDescriptorHeap[]` / `SamplerDescriptorHeap[]` shader ABI.
 
 For Vulkan this maps to Vulkan 1.2 descriptor indexing features such as descriptor arrays,
-partially bound bindings, and descriptor set updates. For DX12 and Metal it maps to rewriting
-descriptor table / argument table entries under the same lifetime rules.
+partially bound bindings, update-after-bind-capable bindings, and descriptor set updates. For
+DX12 and Metal it maps to rewriting descriptor table / argument table entries under the same
+user-synchronized entry hazard rules.
 
 T1 deliberately does not include variable descriptor count allocation. In Vulkan, variable
 descriptor count is an allocation optimization with awkward layout constraints, and it has no
@@ -118,15 +120,24 @@ SetGraphicsMutableResourceSet(mutableResourceSet);
 SetComputeMutableResourceSet(mutableResourceSet);
 ```
 
-T1 updates are valid only before the resource set is used by the GPU, or after all GPU work
-that used the previous contents has retired.
+T1 updates are legal after bind and after command-list submission. Alloy does not guarantee
+that an already submitted command list observes old descriptor contents. If an update
+overwrites an entry that pending GPU work may read, the application must provide the required
+synchronization or avoid reusing that entry until the relevant work retires.
 
-## No Update-After-Bind Contract
+## Update-After-Bind Contract
 
-Vulkan has update-after-bind features, but they do not provide a portable automatic snapshot
-model. DX12 and Metal also do not automatically version descriptor table or argument buffer
-storage. If descriptor memory is overwritten while the GPU may still read it, the engine owns
-the hazard.
+T1 allows update-after-bind in the narrow descriptor-storage sense: the CPU may rewrite the
+descriptor storage owned by a mutable resource set even after that set has been bound or after
+command lists using it have been submitted. The contract is entry-based, not set-based. Merely
+touching descriptor heap, descriptor table, or argument buffer storage that is referenced by
+pending work is not forbidden by Alloy.
+
+There is still no portable automatic snapshot model. DX12 and Metal do not automatically
+version descriptor table or argument buffer storage, and Vulkan update-after-bind features
+only make descriptor writes legal; they do not make overwriting an entry safe while pending
+GPU work may read that entry. If descriptor memory is overwritten while the GPU may still read
+the overwritten entry, the application owns the hazard.
 
 A portable automatic versioning system would need copy-on-write resource-set versions:
 
@@ -138,7 +149,7 @@ Old versions retire by GPU fence.
 ```
 
 That is useful, but it is not a small T1 requirement. It is deferred. The T1 contract instead
-forbids updating in-flight resource sets, with debug validation where practical.
+allows user-synchronized updates and leaves the door open to a future automatic versioning design.
 
 ## Null Descriptors
 
@@ -193,8 +204,10 @@ Layout creation:
 - Continue using `VkDescriptorSetLayout`.
 - Create descriptor array bindings with fixed `descriptorCount`.
 - Enable partially bound binding flags for T1 array bindings.
-- Use update-after-bind flags only if a later design explicitly adds a portable versioning
-  policy. Do not use them as the baseline T1 contract.
+- Enable update-after-bind flags for mutable T1 bindings so `vkUpdateDescriptorSets` remains
+  legal after bind/submission.
+- If the required update-after-bind features are unavailable, do not advertise the relaxed T1
+  update contract unless another backend strategy provides equivalent behavior.
 
 Resource set creation:
 
@@ -208,7 +221,9 @@ Updates:
 
 - Translate `layoutSlot + firstArrayElement` to `dstBinding + dstArrayElement`.
 - Emit `vkUpdateDescriptorSets`.
-- Reject updates to resource sets whose previous contents may still be in flight.
+- Do not reject updates only because the resource set may be in flight.
+- The application owns hazards from rewriting descriptor entries that pending GPU work may
+  read.
 
 Shader remapping:
 
@@ -219,21 +234,26 @@ Shader remapping:
 
 ## DX12 and Metal T1 Mapping
 
-DX12 and Metal should eventually advertise T1 under the same restricted lifetime contract.
+DX12 and Metal should eventually advertise T1 under the same user-synchronized update
+contract.
 
 DX12:
 
 - Mutable resource sets own descriptor table ranges.
 - Updates rewrite descriptors in the range.
 - Binding still uses descriptor table starts.
-- No update while in flight unless a future versioning system exists.
+- Updates are allowed after bind/submission.
+- The application owns hazards from rewriting descriptor entries that pending GPU work may
+  read.
 
 Metal:
 
 - Mutable resource sets own argument table storage.
 - Updates rewrite argument table entries.
 - Binding writes table addresses into the root argument buffer.
-- No update while in flight unless a future versioning system exists.
+- Updates are allowed after bind/submission.
+- The application owns hazards from rewriting argument table entries that pending GPU work may
+  read.
 
 This should be mechanical after the Vulkan T1 contract has been validated.
 
@@ -249,19 +269,19 @@ This should be mechanical after the Vulkan T1 contract has been validated.
 5. [x] Implement Vulkan T1 layout creation with fixed-size partially bound descriptor arrays.
 6. [x] Implement Vulkan mutable resource-set sparse initial writes and update writes.
     - [x] Cache Vulkan `layoutSlot -> descriptor set/binding` lookup in `VulkanResourceLayout`.
-7. [ ] Add debug validation for updates to in-flight mutable resource sets.
-8. [ ] Add a small shader smoke that dynamically indexes a declared descriptor array.
-    - [ ] Validate Vulkan T1 with a real renderer path.
+7. [ ] Add debug diagnostics for obvious entry rewrite hazards where practical.
+8. [x] Add a small shader smoke that dynamically indexes a declared descriptor array.
+    - [x] Validate Vulkan T1 with a real renderer path.
 9. [ ] After Vulkan is stable, implement DX12 and Metal T1 with the same public contract.
     - [x] Add explicit DX12 and Metal mutable resource-set factory/bind stubs.
-    - [ ] Implement DX12 mutable resource sets under the same no-update-while-in-flight contract.
-    - [ ] Implement Metal mutable resource sets under the same no-update-while-in-flight contract.
+    - [ ] Implement DX12 mutable resource sets under the same user-synchronized update contract.
+    - [ ] Implement Metal mutable resource sets under the same user-synchronized update contract.
     - [ ] Revisit whether DX12 and Metal should advertise `DescriptorHeap` before T2 APIs exist.
 
 ## Open Follow-Ups
 
 - Exact names and placement for `ResourceBindingModel` and the non-uniform indexing bit.
 - Whether `layoutSlot` should remain an integer index or become an opaque handle.
-- How command submission records resource-set usage for in-flight update validation.
+- How much debug diagnostics can infer about descriptor entry rewrite hazards.
 - Whether dummy descriptors should be installed in debug builds for easier failure diagnosis.
 - When to start T2 descriptor heap design after T1 stabilizes.

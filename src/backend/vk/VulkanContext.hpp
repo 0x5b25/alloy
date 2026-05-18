@@ -56,6 +56,11 @@ namespace alloy::vk
         bool SupportDescriptorIndexing() const {
             return features12.descriptorIndexing &&
                    features12.descriptorBindingPartiallyBound &&
+                   features12.descriptorBindingUpdateUnusedWhilePending &&
+                   features12.descriptorBindingUniformBufferUpdateAfterBind &&
+                   features12.descriptorBindingSampledImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageBufferUpdateAfterBind &&
                    features12.runtimeDescriptorArray &&
                    features.shaderUniformBufferArrayDynamicIndexing &&
                    features.shaderSampledImageArrayDynamicIndexing &&

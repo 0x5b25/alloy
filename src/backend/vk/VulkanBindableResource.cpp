@@ -123,6 +123,10 @@ namespace alloy::vk
         uint32_t currentSetIdx = 0;
         std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
 
+        const bool useDescriptorIndexing =
+                    dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                        != ResourceBindingModel::FixedBindings;
+
         for(auto& b : resBindings) {
             b.baseSetIndex = currentSetIdx;
             for(auto& s : b.sets) {
@@ -177,10 +181,16 @@ namespace alloy::vk
                         .binding = e.bindingSlot,
                         .valid = true
                     };
-                    bindingFlags.push_back(
-                        e.options.descriptorArray
-                            ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
-                            : 0);
+
+                    VkDescriptorBindingFlags flags = 0;
+                    if(useDescriptorIndexing) {
+                        flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                                 VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                        if(e.options.descriptorArray) {
+                            flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                        }
+                    }
+                    bindingFlags.push_back(flags);
                     //if (e.options.dynamicBinding) {
                     //    s.dynamicBufferCount += 1;
                     //}
@@ -215,10 +225,12 @@ namespace alloy::vk
                 dslCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
                 dslCI.bindingCount = bindings.size();
                 dslCI.pBindings = bindings.data();
+                if(useDescriptorIndexing) {
+                    dslCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                }
 
                 VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
-                if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-                       != ResourceBindingModel::FixedBindings)
+                if(useDescriptorIndexing)
                 {
                     bindingFlagsCI.sType =
                         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
