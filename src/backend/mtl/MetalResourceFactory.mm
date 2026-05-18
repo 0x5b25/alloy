@@ -1,6 +1,7 @@
 #include "MetalResourceFactory.h"
 
 #include <cassert>
+#include <stdexcept>
 
 #include "MetalPipeline.h"
 #include "MetalCommandList.h"
@@ -54,6 +55,12 @@ namespace alloy::mtl {
     //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
 
     MTL_RF_FOR_EACH_RES(MTL_IMPL_RF_CREATE_WITH_DESC)
+
+    common::sp<IMutableResourceSet> MetalResourceFactory::CreateMutableResourceSet(
+        const IMutableResourceSet::Description&
+    ) {
+        throw std::runtime_error("Metal mutable ResourceSet is not implemented yet.");
+    }
 
     common::sp<IShader> MetalResourceFactory::CreateShader(
         const IShader::Description& desc,

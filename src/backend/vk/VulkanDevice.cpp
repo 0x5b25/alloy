@@ -200,6 +200,22 @@ bool Contains(T&& container, U&& element) {
             if(devCaps.resourceBindingModel != VulkanDevCaps::ResourceBindingModel::Legacy) {
                 features12.descriptorIndexing = true;
                 features12.descriptorBindingPartiallyBound = true;
+                features12.runtimeDescriptorArray = true;
+                deviceFeatures.shaderUniformBufferArrayDynamicIndexing = true;
+                deviceFeatures.shaderSampledImageArrayDynamicIndexing = true;
+                deviceFeatures.shaderStorageBufferArrayDynamicIndexing = true;
+                deviceFeatures.shaderStorageImageArrayDynamicIndexing = true;
+                features12.shaderUniformTexelBufferArrayDynamicIndexing = true;
+                features12.shaderStorageTexelBufferArrayDynamicIndexing = true;
+
+                if(devCaps.SupportNonUniformResourceIndexing()) {
+                    features12.shaderUniformBufferArrayNonUniformIndexing = true;
+                    features12.shaderSampledImageArrayNonUniformIndexing = true;
+                    features12.shaderStorageBufferArrayNonUniformIndexing = true;
+                    features12.shaderStorageImageArrayNonUniformIndexing = true;
+                    features12.shaderUniformTexelBufferArrayNonUniformIndexing = true;
+                    features12.shaderStorageTexelBufferArrayNonUniformIndexing = true;
+                }
             }
 
             //Enable the descriptor buffer

@@ -53,6 +53,25 @@ namespace alloy::vk
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
         bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::Legacy; }
+        bool SupportDescriptorIndexing() const {
+            return features12.descriptorIndexing &&
+                   features12.descriptorBindingPartiallyBound &&
+                   features12.runtimeDescriptorArray &&
+                   features.shaderUniformBufferArrayDynamicIndexing &&
+                   features.shaderSampledImageArrayDynamicIndexing &&
+                   features.shaderStorageBufferArrayDynamicIndexing &&
+                   features.shaderStorageImageArrayDynamicIndexing &&
+                   features12.shaderUniformTexelBufferArrayDynamicIndexing &&
+                   features12.shaderStorageTexelBufferArrayDynamicIndexing;
+        }
+        bool SupportNonUniformResourceIndexing() const {
+            return features12.shaderUniformBufferArrayNonUniformIndexing &&
+                   features12.shaderSampledImageArrayNonUniformIndexing &&
+                   features12.shaderStorageBufferArrayNonUniformIndexing &&
+                   features12.shaderStorageImageArrayNonUniformIndexing &&
+                   features12.shaderUniformTexelBufferArrayNonUniformIndexing &&
+                   features12.shaderStorageTexelBufferArrayNonUniformIndexing;
+        }
         
         bool supportRayTracing;
 

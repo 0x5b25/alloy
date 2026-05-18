@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <span>
 
 namespace alloy
 {
@@ -70,7 +71,8 @@ namespace alloy
             alloy::common::BitFlags<IShader::Stage> stages;
             struct Options {
                 std::uint32_t writable : 1;
-            } options;
+                std::uint32_t descriptorArray : 1;
+            } options {};
         };
 
         struct Description{
@@ -156,6 +158,41 @@ namespace alloy
 
     public:
         const Description& GetDesc() const {return description;}
+
+        virtual void* GetNativeHandle() const {return nullptr; }
+    };
+
+    class IMutableResourceSet : public common::RefCntBase {
+
+    public:
+        struct WriteBinding {
+            uint32_t layoutSlot;
+            uint32_t firstArrayElement;
+            std::vector<common::sp<IBindableResource>> resources;
+        };
+
+        struct Description {
+            // The <see cref="ResourceLayout"/> describing the fixed resource capacity.
+            common::sp<IResourceLayout> layout;
+
+            // Sparse, slot-addressed writes applied during creation.
+            // layoutSlot indexes IResourceLayout::Description::shaderResources.
+            std::vector<WriteBinding> initialWrites;
+        };
+
+    protected:
+        Description description;
+
+        IMutableResourceSet(
+            const Description& desc
+        )
+            : description(desc)
+        {}
+
+    public:
+        const Description& GetDesc() const {return description;}
+
+        virtual void Update(const std::span<const WriteBinding>& writes) = 0;
 
         virtual void* GetNativeHandle() const {return nullptr; }
     };

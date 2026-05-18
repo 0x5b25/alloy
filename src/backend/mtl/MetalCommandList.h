@@ -151,6 +151,8 @@ public:
         const common::sp<IResourceSet>& rs
         //const std::vector<std::uint32_t>& dynamicOffsets
         ) override;
+    virtual void SetGraphicsMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs) override;
 
 
     virtual void SetPushConstants(
@@ -294,6 +296,8 @@ public:
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
 
 
         virtual void SetPushConstants(

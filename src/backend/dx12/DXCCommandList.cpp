@@ -18,6 +18,8 @@
 //#define USE_PIX
 //#include <WinPixEventRuntime/pix3.h>
 
+#include <stdexcept>
+
 namespace alloy::dxc
 {
 
@@ -764,6 +766,13 @@ namespace alloy::dxc
         //entry.offsets = dynamicOffsets;
     }
 
+    void DXCRenderCmdEnc::SetGraphicsMutableResourceSet(
+        const common::sp<IMutableResourceSet>&
+    ) {
+        throw std::runtime_error(
+            "DX12 mutable ResourceSet binding is not implemented yet.");
+    }
+
 
     void DXCRenderCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
@@ -1103,6 +1112,13 @@ namespace alloy::dxc
                 GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
             }
         });
+    }
+
+    void DXCComputeCmdEnc::SetComputeMutableResourceSet(
+        const common::sp<IMutableResourceSet>&
+    ) {
+        throw std::runtime_error(
+            "DX12 mutable ResourceSet binding is not implemented yet.");
     }
 
 

@@ -254,7 +254,7 @@ namespace alloy::vk
             VulkanCommandList::TextureState::AspectState state
         );
 
-        void RegisterResourceSet(VulkanResourceSet* rs);
+        void RegisterResourceSet(VulkanResourceSetBase* rs);
 
         void PushDebugGroup(const std::string& name, const Color4f&);
         void PopDebugGroup();
@@ -281,6 +281,8 @@ namespace alloy::vk
 
 
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
+        virtual void SetGraphicsMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
@@ -334,6 +336,8 @@ namespace alloy::vk
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

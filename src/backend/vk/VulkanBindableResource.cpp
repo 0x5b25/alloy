@@ -3,6 +3,7 @@
 #include "alloy/common/Common.hpp"
 
 #include <vector>
+#include <stdexcept>
 
 #include "VkTypeCvt.hpp"
 #include "VkCommon.hpp"
@@ -120,6 +121,7 @@ namespace alloy::vk
         // Alloy is following DX12 designs, but vulkan use shared register 
         // space for all types. We flat them out here
         uint32_t currentSetIdx = 0;
+        std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
 
         for(auto& b : resBindings) {
             b.baseSetIndex = currentSetIdx;
@@ -131,6 +133,8 @@ namespace alloy::vk
                 //    _descriptorTypes.reserve(s.elementInfo.size());
                 std::vector<VkDescriptorSetLayoutBinding> bindings;
                     bindings.reserve(s.elementIdInList.size());
+                std::vector<VkDescriptorBindingFlags> bindingFlags;
+                    bindingFlags.reserve(s.elementIdInList.size());
 
                 alloy::vk::DescriptorResourceCounts& drcs = s.resourceCounts;
                 //    .uniformBufferCount = uniformBufferCount,
@@ -155,12 +159,28 @@ namespace alloy::vk
                 for (auto& elemIdx : s.elementIdInList)
                 {
                     auto& e = elements[elemIdx];
+                    if(e.options.descriptorArray &&
+                       dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                           == ResourceBindingModel::FixedBindings)
+                    {
+                        throw std::runtime_error("Vulkan descriptor arrays require DescriptorIndexing support.");
+                    }
+
                     auto& b = bindings.emplace_back();
                     b.binding = e.bindingSlot;
                     b.descriptorCount = e.bindingCount;
                     VkDescriptorType descriptorType = VdToVkDescriptorType(e.kind, e.options);
                     b.descriptorType = VdToVkDescriptorType(e.kind, e.options);
                     b.stageFlags = VdToVkShaderStages(e.stages);
+                    slotLocations[elemIdx] = {
+                        .setIndexAllocated = s.setIndexAllocated,
+                        .binding = e.bindingSlot,
+                        .valid = true
+                    };
+                    bindingFlags.push_back(
+                        e.options.descriptorArray
+                            ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
+                            : 0);
                     //if (e.options.dynamicBinding) {
                     //    s.dynamicBufferCount += 1;
                     //}
@@ -196,7 +216,18 @@ namespace alloy::vk
                 dslCI.bindingCount = bindings.size();
                 dslCI.pBindings = bindings.data();
 
-                VkDescriptorSetLayout rawDsl;
+                VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
+                if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                       != ResourceBindingModel::FixedBindings)
+                {
+                    bindingFlagsCI.sType =
+                        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+                    bindingFlagsCI.bindingCount =
+                        static_cast<uint32_t>(bindingFlags.size());
+                    bindingFlagsCI.pBindingFlags = bindingFlags.data();
+                    dslCI.pNext = &bindingFlagsCI;
+                }
+
                 VK_CHECK(VK_DEV_CALL(dev, 
                     vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
             }
@@ -204,6 +235,7 @@ namespace alloy::vk
 
         auto dsl = new VulkanResourceLayout(dev, desc);
         dsl->_bindings = std::move(resBindings);
+        dsl->_slotLocations = std::move(slotLocations);
         dsl->_pushConstants = std::move(pushConstants);
         dsl->_pushConstantSize = pushConstantSize;
         //dsl->_dynamicBufferCount = dynamicBufferCount;
@@ -212,130 +244,270 @@ namespace alloy::vk
         return common::sp<IResourceLayout>(dsl);
     }
 
-    VulkanResourceSet::~VulkanResourceSet(){
+    namespace {
+        struct VulkanSetSlotLocation {
+            VkDescriptorSet set;
+            uint32_t binding;
+        };
 
+        // Maps an alloy resource layout slot to the concrete Vulkan descriptor
+        // set and binding used by this resource set allocation.
+        //
+        // layout:
+        //     Vulkan layout that owns the precomputed slot-to-set metadata.
+        // sets:
+        //     Descriptor sets allocated for the resource set, in flattened
+        //     Vulkan set-index order.
+        // layoutSlot:
+        //     Index into IResourceLayout::Description::shaderResources.
+        VulkanSetSlotLocation FindSlotLocation(
+            VulkanResourceLayout* layout,
+            const std::vector<_DescriptorSet>& sets,
+            uint32_t layoutSlot
+        ) {
+            auto location = layout->GetSlotLocation(layoutSlot);
+            if(!location.valid) {
+                throw std::invalid_argument(
+                    "ResourceSet write references a layout slot that is not in the layout.");
+            }
+
+            return {
+                .set = sets.at(location.setIndexAllocated).GetHandle(),
+                .binding = location.binding
+            };
+        }
+
+        std::vector<IMutableResourceSet::WriteBinding> MakeWritesFromBoundResources(
+            const IResourceSet::Description& desc
+        ) {
+            std::vector<IMutableResourceSet::WriteBinding> writes;
+            if(desc.boundResources.empty()) {
+                return writes;
+            }
+
+            auto& layoutDesc = desc.layout->GetDesc();
+            writes.reserve(layoutDesc.shaderResources.size());
+
+            uint32_t resIdx = 0;
+            for(uint32_t layoutSlot = 0;
+                layoutSlot < layoutDesc.shaderResources.size();
+                ++layoutSlot)
+            {
+                auto& slotDesc = layoutDesc.shaderResources[layoutSlot];
+                if(resIdx + slotDesc.bindingCount > desc.boundResources.size()) {
+                    throw std::invalid_argument(
+                        "ResourceSet boundResources does not match ResourceLayout capacity.");
+                }
+
+                auto& write = writes.emplace_back();
+                write.layoutSlot = layoutSlot;
+                write.firstArrayElement = 0;
+                write.resources.reserve(slotDesc.bindingCount);
+                for(uint32_t i = 0; i < slotDesc.bindingCount; ++i) {
+                    write.resources.push_back(desc.boundResources[resIdx++]);
+                }
+            }
+
+            if(resIdx != desc.boundResources.size()) {
+                throw std::invalid_argument(
+                    "ResourceSet boundResources contains more entries than ResourceLayout requires.");
+            }
+
+            return writes;
+        }
+        uint32_t GetRequiredBoundResourceCount(const IResourceLayout::Description& layoutDesc) {
+            uint32_t requiredBoundResourceCount = 0;
+            for(auto& slotDesc : layoutDesc.shaderResources) {
+                requiredBoundResourceCount += slotDesc.bindingCount;
+            }
+
+            return requiredBoundResourceCount;
+        }
+    }
+
+    void VulkanResourceSetBase::AllocateDescriptorSets() {
+        auto vkLayout = static_cast<VulkanResourceLayout*>(_layout.get());
+        auto& bindings = vkLayout->GetBindings();
+        for(auto& b : bindings) {
+            for(auto& s : b.sets) {
+                auto descriptorAllocationToken = _dev->AllocateDescriptorSet(s.layout);
+                _descSet.emplace_back(std::move(descriptorAllocationToken));
+            }
+        }
     }
 
     common::sp<IResourceSet> VulkanResourceSet::Make(
             const common::sp<VulkanDevice>& dev,
             const Description& desc
     ){
-        VulkanResourceLayout* vkLayout = static_cast<VulkanResourceLayout*>(desc.layout.get());
-
-        auto& bindings = vkLayout->GetBindings();
-        auto& boundResources = desc.boundResources;
-        auto& resSlotDescs = vkLayout->GetDesc().shaderResources;
-
-        //std::vector<sp<BindableResource>> _refCounts;
-        std::unordered_set<VulkanTexture*> texReadOnly, texRW;
-        
-        std::vector<_DescriptorSet> descSetsAllocated;
-
-        uint32_t resIdx = 0;
-        for(auto& b : bindings) {
-
-            for(auto& s : b.sets) {
-
-                auto descriptorAllocationToken = dev->AllocateDescriptorSet(s.layout);
-
-                //Write each entry separately to simplify resource allocation
-                for (auto& elemIdx : s.elementIdInList)
-                {
-                    auto& resSlotDesc = resSlotDescs[elemIdx];
-                    auto slotStartIdx = resSlotDesc.bindingSlot;
-                    auto slotCnt = resSlotDesc.bindingCount;
-                    auto type = resSlotDesc.kind;
-
-                    VkWriteDescriptorSet descriptorWrite {
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
-                    };
-
-                    descriptorWrite.descriptorCount = slotCnt;
-                    descriptorWrite.descriptorType = VdToVkResourceKind(type, false, resSlotDesc.options.writable);
-                    descriptorWrite.dstBinding = slotStartIdx;
-                    descriptorWrite.dstSet = descriptorAllocationToken.GetHandle();
-
-                    std::vector<VkDescriptorBufferInfo> bufferInfos;
-                    std::vector<VkDescriptorImageInfo> imageInfos;
-
-                    using _ResKind = IBindableResource::ResourceKind;
-
-                    switch(type){
-                        case _ResKind::UniformBuffer:
-                        case _ResKind::StorageBuffer: {
-                            bufferInfos.resize(slotCnt);
-                            descriptorWrite.pBufferInfo = bufferInfos.data();
-                        } break;
-
-                        case _ResKind::Texture:
-                        case _ResKind::Sampler:{
-                            imageInfos.resize(slotCnt);
-                            descriptorWrite.pImageInfo = imageInfos.data();
-                        } break;
-                    };
-
-                    for(auto i = 0; i <  slotCnt; i++) {
-                        auto pElemRes = boundResources[resIdx++].get();
-                        switch(type){
-                            case _ResKind::UniformBuffer:
-                            case _ResKind::StorageBuffer: {
-                                auto* range = PtrCast<BufferRange>(pElemRes);
-                                auto* rangedVkBuffer = static_cast<const VulkanBuffer*>(range->GetBufferObject());
-                                bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
-                                bufferInfos[i].offset = range->GetShape().GetOffsetInBytes();
-                                bufferInfos[i].range = range->GetShape().GetSizeInBytes();
-                                //_refCounts.push_back(boundResources[i]);
-                            } break;
-
-                            case _ResKind::Texture:{
-                                auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
-                                imageInfos[i].imageView = vkTexView->GetHandle();
-                                if(resSlotDesc.options.writable){
-                                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
-                                } else {
-                                    imageInfos[i].imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                                }
-                                
-                                auto vkTex = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-                                if(resSlotDesc.options.writable)
-                                    texRW.insert(vkTex);
-                                else
-                                    texReadOnly.insert(vkTex);
-                                //_sampledTextures.Add(Util.AssertSubtype<Texture, VkTexture>(texView.Target));
-                                //_refCounts.push_back(boundResources[i]);
-                            }break;
-
-
-                            case _ResKind::Sampler:{
-                                auto* sampler = PtrCast<VulkanSampler>(boundResources[elemIdx].get());
-                                imageInfos[i].sampler = sampler->GetHandle();
-                                //_refCounts.push_back(boundResources[i]);
-                            }break;
-                        }
-                    }
-
-                    VK_DEV_CALL(dev,
-                    vkUpdateDescriptorSets(
-                            dev->LogicalDev(), 
-                            1, 
-                            &descriptorWrite, 
-                            0,
-                            nullptr
-                        )
-                    );
-
-                }
-                descSetsAllocated.emplace_back(std::move(descriptorAllocationToken));
-            }
+        auto requiredBoundResourceCount =
+            GetRequiredBoundResourceCount(desc.layout->GetDesc());
+        if(desc.boundResources.size() != requiredBoundResourceCount) {
+            throw std::invalid_argument(
+                "Vulkan ResourceSet requires boundResources to exactly match ResourceLayout capacity.");
         }
 
-        
         auto descSet = new VulkanResourceSet(dev, desc);
-        descSet->_texReadOnly = std::move(texReadOnly);
-        descSet->_texRW = std::move(texRW);
-        descSet->_descSet = std::move(descSetsAllocated);
+        descSet->AllocateDescriptorSets();
+
+        if(!desc.boundResources.empty()) {
+            auto writes = MakeWritesFromBoundResources(desc);
+            descSet->UpdateInternal(writes);
+        }
+
+        descSet->description.boundResources = descSet->_boundResources;
 
         return common::sp(descSet);
+    }
+
+    VulkanResourceSet::~VulkanResourceSet(){
+
+    }
+
+    common::sp<IMutableResourceSet> VulkanMutableResourceSet::Make(
+            const common::sp<VulkanDevice>& dev,
+            const Description& desc
+    ){
+        if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+               == ResourceBindingModel::FixedBindings)
+        {
+            throw std::runtime_error("Vulkan mutable ResourceSet requires DescriptorIndexing support.");
+        }
+
+        auto descSet = new VulkanMutableResourceSet(dev, desc);
+        descSet->AllocateDescriptorSets();
+
+        if(!desc.initialWrites.empty()) {
+            descSet->UpdateInternal(desc.initialWrites);
+        }
+
+        return common::sp<IMutableResourceSet>(descSet);
+    }
+
+    VulkanMutableResourceSet::~VulkanMutableResourceSet(){
+
+    }
+
+    void VulkanResourceSetBase::UpdateInternal(
+        const std::span<const IMutableResourceSet::WriteBinding>& writes
+    ) {
+        auto vkLayout = static_cast<VulkanResourceLayout*>(_layout.get());
+        auto& slotDescs = vkLayout->GetDesc().shaderResources;
+
+        auto requiredBoundResourceCount =
+            GetRequiredBoundResourceCount(vkLayout->GetDesc());
+        if(_boundResources.size() < requiredBoundResourceCount) {
+            _boundResources.resize(requiredBoundResourceCount);
+        }
+
+        for(auto& write : writes) {
+            if(write.layoutSlot >= slotDescs.size()) {
+                throw std::out_of_range("ResourceSet write layoutSlot is out of range.");
+            }
+
+            auto& slotDesc = slotDescs[write.layoutSlot];
+            if(write.firstArrayElement + write.resources.size() > slotDesc.bindingCount) {
+                throw std::out_of_range("ResourceSet write exceeds layout slot bindingCount.");
+            }
+            if(write.resources.empty()) {
+                continue;
+            }
+
+            auto location = FindSlotLocation(
+                vkLayout,
+                _descSet,
+                write.layoutSlot);
+
+            std::vector<VkDescriptorBufferInfo> bufferInfos;
+            std::vector<VkDescriptorImageInfo> imageInfos;
+            VkWriteDescriptorSet descriptorWrite {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+            };
+
+            descriptorWrite.dstSet = location.set;
+            descriptorWrite.dstBinding = location.binding;
+            descriptorWrite.dstArrayElement = write.firstArrayElement;
+            descriptorWrite.descriptorCount =
+                static_cast<uint32_t>(write.resources.size());
+            descriptorWrite.descriptorType =
+                VdToVkDescriptorType(slotDesc.kind, slotDesc.options);
+
+            using _ResKind = IBindableResource::ResourceKind;
+            switch(slotDesc.kind) {
+                case _ResKind::UniformBuffer:
+                case _ResKind::StorageBuffer:
+                    bufferInfos.resize(write.resources.size());
+                    descriptorWrite.pBufferInfo = bufferInfos.data();
+                    break;
+                case _ResKind::Texture:
+                case _ResKind::Sampler:
+                    imageInfos.resize(write.resources.size());
+                    descriptorWrite.pImageInfo = imageInfos.data();
+                    break;
+            }
+
+            uint32_t linearBase = 0;
+            for(uint32_t i = 0; i < write.layoutSlot; ++i) {
+                linearBase += slotDescs[i].bindingCount;
+            }
+
+            for(uint32_t i = 0; i < write.resources.size(); ++i) {
+                if(write.resources[i] == nullptr) {
+                    throw std::invalid_argument("ResourceSet write contains a null resource.");
+                }
+
+                switch(slotDesc.kind) {
+                    case _ResKind::UniformBuffer:
+                    case _ResKind::StorageBuffer: {
+                        auto* range = PtrCast<BufferRange>(write.resources[i].get());
+                        auto* rangedVkBuffer =
+                            static_cast<const VulkanBuffer*>(range->GetBufferObject());
+                        bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
+                        bufferInfos[i].offset = range->GetShape().GetOffsetInBytes();
+                        bufferInfos[i].range = range->GetShape().GetSizeInBytes();
+                    } break;
+
+                    case _ResKind::Texture: {
+                        auto* vkTexView =
+                            PtrCast<VulkanTextureView>(write.resources[i].get());
+                        imageInfos[i].imageView = vkTexView->GetHandle();
+                        imageInfos[i].imageLayout = slotDesc.options.writable
+                            ? VK_IMAGE_LAYOUT_GENERAL
+                            : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                        auto vkTex =
+                            PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+                        if(slotDesc.options.writable) {
+                            _texRW.insert(vkTex);
+                        } else {
+                            _texReadOnly.insert(vkTex);
+                        }
+                    } break;
+
+                    case _ResKind::Sampler: {
+                        auto* sampler = PtrCast<VulkanSampler>(write.resources[i].get());
+                        imageInfos[i].sampler = sampler->GetHandle();
+                    } break;
+                }
+
+                _boundResources[
+                    linearBase + write.firstArrayElement + i] = write.resources[i];
+            }
+
+            VK_DEV_CALL(_dev,
+                vkUpdateDescriptorSets(
+                    _dev->LogicalDev(),
+                    1,
+                    &descriptorWrite,
+                    0,
+                    nullptr));
+        }
+    }
+
+    void VulkanMutableResourceSet::Update(
+        const std::span<const WriteBinding>& writes
+    ) {
+        UpdateInternal(writes);
     }
 
     //void VulkanResourceSet::VisitElements(ElementVisitor visitor) {

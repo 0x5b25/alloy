@@ -496,5 +496,3 @@ namespace alloy::dxc
     }
 
 } // namespace alloy
-
-

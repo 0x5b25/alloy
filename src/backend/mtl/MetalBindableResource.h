@@ -7,6 +7,7 @@
 #include <metal_irconverter/metal_irconverter.h>
 
 #include <vector>
+#include <span>
 
 namespace alloy::mtl {
 

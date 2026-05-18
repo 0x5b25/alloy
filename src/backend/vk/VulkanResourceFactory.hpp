@@ -37,6 +37,9 @@ namespace alloy::vk{
         
         VLD_RF_FOR_EACH_RES(VK_DECL_RF_CREATE_WITH_DESC)
 
+        common::sp<IMutableResourceSet> CreateMutableResourceSet(
+            const IMutableResourceSet::Description& description) override;
+
         common::sp<IGfxPipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) override;
         

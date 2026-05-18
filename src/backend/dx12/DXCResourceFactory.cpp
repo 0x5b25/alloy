@@ -1,6 +1,7 @@
 #include "DXCResourceFactory.hpp"
 
 #include <cassert>
+#include <stdexcept>
 
 #include "DXCPipeline.hpp"
 #include "DXCCommandList.hpp"
@@ -49,6 +50,12 @@ namespace alloy::dxc
     //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
 
     DXC_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
+
+    common::sp<IMutableResourceSet> DXCResourceFactory::CreateMutableResourceSet(
+        const IMutableResourceSet::Description&
+    ) {
+        throw std::runtime_error("DX12 mutable ResourceSet is not implemented yet.");
+    }
 
     common::sp<IShader> DXCResourceFactory::CreateShader(
         const IShader::Description& desc,

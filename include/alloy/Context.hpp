@@ -8,6 +8,12 @@
 
 namespace alloy {
 
+    enum class ResourceBindingModel : uint32_t {
+        FixedBindings,
+        DescriptorIndexing,
+        DescriptorHeap
+    };
+
     enum class Backend{
         /// <summary>
         /// Direct3D 11.
@@ -150,11 +156,13 @@ namespace alloy {
         struct Capabilities {
             uint32_t supportMeshShader : 1;
             uint32_t supportRayTracing : 1;
-            uint32_t supportBindless : 1;
             uint32_t supportDedicatedTransferQueue : 1;
             uint32_t isUMA : 1;
             uint32_t supportResizableBar : 1;
+            uint32_t supportNonUniformResourceIndexing : 1;
         } capabilities;
+
+        ResourceBindingModel resourceBindingModel = ResourceBindingModel::FixedBindings;
 
         std::vector<MemorySegmentProperties> memSegments;
 /*

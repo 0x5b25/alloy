@@ -15,6 +15,7 @@
 //standard library headers
 #include <vector>
 #include <optional>
+#include <span>
 
 //backend specific headers
 #include <d3d12.h>

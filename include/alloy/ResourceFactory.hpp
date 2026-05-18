@@ -40,6 +40,9 @@ namespace alloy
 
         VLD_RF_FOR_EACH_RES(VLD_RF_CREATE_WITH_DESC)
 
+        virtual common::sp<IMutableResourceSet> CreateMutableResourceSet(
+            const IMutableResourceSet::Description& description) = 0;
+
         virtual common::sp<IShader> CreateShader(
             const IShader::Description& description,
             const std::span<const std::uint8_t>& il) = 0;

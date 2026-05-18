@@ -26,6 +26,7 @@ namespace alloy
     class IComputePipeline;
     class IResourceLayout;
     class IResourceSet;
+    class IMutableResourceSet;
 
 
     class IRenderCommandEncoder {
@@ -64,6 +65,9 @@ namespace alloy
         virtual void SetGraphicsResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
+
+        virtual void SetGraphicsMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) = 0;
 
         #if 0 //Subsituted by load actions of renderpass
         // Clears the color target at the given index of the active <see cref="Framebuffer"/>.
@@ -175,6 +179,9 @@ namespace alloy
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
+
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) = 0;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

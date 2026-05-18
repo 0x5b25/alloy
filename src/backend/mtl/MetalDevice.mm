@@ -328,7 +328,8 @@ namespace alloy::mtl
 
         // Argument buffer is universally supported on 
         // metal shader converter target hardware 
-        info.capabilities.supportBindless = true;
+        info.capabilities.supportNonUniformResourceIndexing = true;
+        info.resourceBindingModel = ResourceBindingModel::DescriptorHeap;
 
         //#TODO: raytracing shaders default support in metal shader converter,
         // HW raytracing on apple M2+ devices

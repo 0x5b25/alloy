@@ -10,6 +10,7 @@
 #include <Metal/Metal.h>
 #include <metal_irconverter_runtime/metal_irconverter_runtime.h>
 #include <cassert>
+#include <stdexcept>
 
 namespace alloy::mtl {
 
@@ -212,6 +213,13 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
         //[_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
         //[_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
     }
+}
+
+void MetalRenderCmdEnc::SetGraphicsMutableResourceSet(
+    const common::sp<IMutableResourceSet>&
+) {
+    throw std::runtime_error(
+        "Metal mutable ResourceSet binding is not implemented yet.");
 }
 
 
@@ -545,6 +553,13 @@ void MetalRenderCmdEnc::DrawIndexed(
             //[_mtlEnc setVertexBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
             //[_mtlEnc setFragmentBuffer:mtlRS->GetHandle() offset:0 atIndex:kIRArgumentBufferBindPoint];
         }
+    }
+
+    void MetalComputeCmdEnc::SetComputeMutableResourceSet(
+        const common::sp<IMutableResourceSet>&
+    ) {
+        throw std::runtime_error(
+            "Metal mutable ResourceSet binding is not implemented yet.");
     }
 
     void MetalComputeCmdEnc::SetPushConstants(

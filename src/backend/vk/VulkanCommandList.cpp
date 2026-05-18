@@ -168,9 +168,9 @@ namespace alloy::vk{
     }
 
 
-    void VkCmdEncBase::RegisterResourceSet(VulkanResourceSet* vkrs) {
-        auto vkLayout = static_cast<VulkanResourceLayout*>(vkrs->GetDesc().layout.get());
-        auto& boundResources = vkrs->GetDesc().boundResources;
+    void VkCmdEncBase::RegisterResourceSet(VulkanResourceSetBase* vkrs) {
+        auto vkLayout = static_cast<VulkanResourceLayout*>(vkrs->GetLayout().get());
+        auto& boundResources = vkrs->GetBoundResources();
         auto& elems = vkLayout->GetDesc().shaderResources;
         auto& bindings = vkLayout->GetBindings();
 
@@ -179,54 +179,67 @@ namespace alloy::vk{
             for(auto& s : b.sets) {
                 for(auto elemIdx : s.elementIdInList) {
                     auto& elem = elems[elemIdx];
-                    auto& resource = boundResources[elemIdx];
-
-                    //#TODO: calculate first access stages
-                    VkPipelineStageFlagBits firstAccessBit =
-                        VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 
                     using _ResKind = IBindableResource::ResourceKind;
 
-                    switch (elem.kind) {
-                        case _ResKind::Texture: {
-                            auto* vkTexView = PtrCast<VulkanTextureView>(boundResources[elemIdx].get());
-                            auto texture = PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+                    uint32_t linearBase = 0;
+                    for(uint32_t i = 0; i < elemIdx; ++i) {
+                        linearBase += elems[i].bindingCount;
+                    }
 
-                            auto pixFormat = texture->GetDesc().format;
+                    for(uint32_t arrayIdx = 0; arrayIdx < elem.bindingCount; ++arrayIdx) {
+                        auto resourceIdx = linearBase + arrayIdx;
+                        if(resourceIdx >= boundResources.size() ||
+                           boundResources[resourceIdx] == nullptr)
+                        {
+                            continue;
+                        }
 
-                            VulkanCommandList::TextureState::AspectState aspectState {};
-                            aspectState.access = VK_ACCESS_SHADER_READ_BIT;
-                            if(elem.options.writable)
-                                aspectState.access |= VK_ACCESS_SHADER_WRITE_BIT;
-                            aspectState.layout = elem.options.writable ?
-                                VK_IMAGE_LAYOUT_GENERAL :
-                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                            aspectState.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
+                        switch (elem.kind) {
+                            case _ResKind::Texture: {
+                                auto* vkTexView =
+                                    PtrCast<VulkanTextureView>(boundResources[resourceIdx].get());
+                                auto texture = PtrCast<VulkanTexture>(
+                                    vkTexView->GetTextureObject().get());
 
-                            RegisterTexUsageAllAspecs(texture, aspectState);
-                            break;
+                                VulkanCommandList::TextureState::AspectState aspectState {};
+                                aspectState.access = VK_ACCESS_SHADER_READ_BIT;
+                                if(elem.options.writable)
+                                    aspectState.access |= VK_ACCESS_SHADER_WRITE_BIT;
+                                aspectState.layout = elem.options.writable ?
+                                    VK_IMAGE_LAYOUT_GENERAL :
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                                aspectState.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
+
+                                RegisterTexUsageAllAspecs(texture, aspectState);
+                                break;
+                            }
+                            case _ResKind::UniformBuffer: {
+                                auto* range =
+                                    PtrCast<BufferRange>(boundResources[resourceIdx].get());
+                                auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
+                                VulkanCommandList::BufferState state{};
+                                state.access = VK_ACCESS_UNIFORM_READ_BIT;
+                                state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+                                RegisterBufferUsage(buffer, state);
+                                break;
+                            }
+                            case _ResKind::StorageBuffer: {
+                                auto* range =
+                                    PtrCast<BufferRange>(boundResources[resourceIdx].get());
+                                auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
+                                VulkanCommandList::BufferState state{};
+                                state.access = VK_ACCESS_SHADER_READ_BIT;
+                                if(elem.options.writable)
+                                    state.access |= VK_ACCESS_SHADER_WRITE_BIT;
+                                state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+                                RegisterBufferUsage(buffer, state);
+                                break;
+                            }
+                            default:
+                                // Samplers don't need to be registered for usage
+                                break;
                         }
-                        case _ResKind::UniformBuffer: {
-                            auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
-                            auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                            VulkanCommandList::BufferState state{};
-                            state.access = VK_ACCESS_UNIFORM_READ_BIT;
-                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-                            RegisterBufferUsage(buffer, state);
-                            break;
-                        }
-                        case _ResKind::StorageBuffer: {
-                            auto* range = PtrCast<BufferRange>(boundResources[elemIdx].get());
-                            auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                            VulkanCommandList::BufferState state{};
-                            state.access = VK_ACCESS_SHADER_READ_BIT;
-                            state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-                            RegisterBufferUsage(buffer, state);
-                            break;
-                        }
-                        default:
-                            // Samplers don't need to be registered for usage
-                            break;
                     }
                 }
             }
@@ -672,6 +685,48 @@ namespace alloy::vk{
         //entry.offsets = dynamicOffsets;
     }
 
+    void VkRenderCmdEnc::SetGraphicsMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs
+    ){
+        assert(currentPipeline != nullptr);
+
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        uint32_t resourceSetCount = currentPipeline->GetResourceSetCount();
+
+        resources.insert(rs);
+        auto vkrs = PtrCast<VulkanMutableResourceSet>(rs.get());
+
+        RegisterResourceSet(vkrs);
+
+        recordedCmds.emplace_back([this, vkrs, pipelineLayout, resourceSetCount](
+            VkCommandBuffer cmdList
+        ){
+            auto& dss = vkrs->GetHandle();
+
+            assert(resourceSetCount == dss.size());
+
+            std::vector<VkDescriptorSet> descriptorSets;
+            descriptorSets.reserve(resourceSetCount);
+            for(auto& ds : dss)
+                descriptorSets.push_back(ds.GetHandle());
+
+            if (!descriptorSets.empty())
+            {
+                VK_DEV_CALL(dev,
+                vkCmdBindDescriptorSets(
+                    cmdList,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    pipelineLayout,
+                    0,
+                    descriptorSets.size(),
+                    descriptorSets.data(),
+                    0,
+                    nullptr));
+            }
+
+        });
+    }
+
 
     void VkRenderCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
                                            const std::span<uint32_t>& data,
@@ -757,6 +812,44 @@ namespace alloy::vk{
         //entry.isNewlyChanged = true;
         //entry.resSet = RefRawPtr(vkrs);
         //entry.offsets = dynamicOffsets;
+    }
+
+    void VkComputeCmdEnc::SetComputeMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs
+    ){
+        assert(currentPipeline != nullptr);
+
+        resources.insert(rs);
+        auto vkrs = PtrCast<VulkanMutableResourceSet>(rs.get());
+
+        RegisterResourceSet(vkrs);
+
+        recordedCmds.emplace_back([=, this](VkCommandBuffer cmdList){
+
+            auto& dss = vkrs->GetHandle();
+
+            auto resourceSetCount = currentPipeline->GetResourceSetCount();
+            assert(resourceSetCount == dss.size());
+
+            std::vector<VkDescriptorSet> descriptorSets;
+            descriptorSets.reserve(resourceSetCount);
+            for(auto& ds : dss)
+                descriptorSets.push_back(ds.GetHandle());
+
+            if (!descriptorSets.empty())
+            {
+                VK_DEV_CALL(dev,
+                    vkCmdBindDescriptorSets(
+                        cmdList,
+                        VK_PIPELINE_BIND_POINT_COMPUTE,
+                        currentPipeline->GetLayout(),
+                        0,
+                        descriptorSets.size(),
+                        descriptorSets.data(),
+                        0,
+                        nullptr));
+            }
+        });
     }
 
 

@@ -36,6 +36,12 @@ namespace alloy::vk
 
     VLD_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
 
+    common::sp<IMutableResourceSet> VulkanResourceFactory::CreateMutableResourceSet(
+        const IMutableResourceSet::Description& description
+    ) {
+        return VulkanMutableResourceSet::Make(_CreateNewDevHandle(), description);
+    }
+
     common::sp<VulkanDevice> VulkanResourceFactory::_CreateNewDevHandle(){
         auto dev = GetBase();
         dev->ref();

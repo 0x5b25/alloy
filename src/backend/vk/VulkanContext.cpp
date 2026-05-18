@@ -145,11 +145,12 @@ namespace alloy::vk
         }
 
         
-        if(IsExtSupported(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME)) {
-            resourceBindingModel = ResourceBindingModel::DescriptorBuffer;
-        } else if( devProps.apiVersion >= VK_VERSION_1_2 ||
-                   IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
-        ) {
+        const bool supportsDescriptorIndexing =
+            (devProps.apiVersion >= VK_VERSION_1_2 ||
+             IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) &&
+            SupportDescriptorIndexing();
+
+        if(supportsDescriptorIndexing) {
             resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
         } else {
             resourceBindingModel = ResourceBindingModel::Legacy;
@@ -272,7 +273,18 @@ namespace alloy::vk
         adp->info.capabilities.supportResizableBar = adp->_caps.isResizableBARSupported;
         adp->info.capabilities.supportMeshShader = adp->_caps.SupportMeshShader();
         adp->info.capabilities.supportRayTracing = adp->_caps.supportRayTracing;
-        adp->info.capabilities.supportBindless = adp->_caps.SupportBindless();
+        adp->info.capabilities.supportNonUniformResourceIndexing =
+            adp->_caps.SupportNonUniformResourceIndexing();
+        switch(adp->_caps.resourceBindingModel) {
+            case VulkanDevCaps::ResourceBindingModel::DescriptorIndexing:
+            case VulkanDevCaps::ResourceBindingModel::DescriptorBuffer:
+                adp->info.resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+                break;
+            case VulkanDevCaps::ResourceBindingModel::Legacy:
+            default:
+                adp->info.resourceBindingModel = ResourceBindingModel::FixedBindings;
+                break;
+        }
 
         {
             //Try find dedicated compute queue
