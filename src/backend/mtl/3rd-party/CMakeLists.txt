@@ -29,51 +29,6 @@ set_property(TARGET MetalShaderConverter PROPERTY FOLDER "3rd-party/mtl")
 
 message("******** Using ${CMAKE_OSX_SYSROOT} for build ********")
 
-function(alloy_install_metal_shader_converter)
-    set(oneValueArgs COMPONENT DESTINATION)
-    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
-
-    if(ARG_UNPARSED_ARGUMENTS)
-        message(FATAL_ERROR
-            "alloy_install_metal_shader_converter: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
-    endif()
-
-    if(NOT ARG_DESTINATION)
-        message(FATAL_ERROR
-            "alloy_install_metal_shader_converter: DESTINATION is required")
-    endif()
-
-    get_target_property(_mtl_sh_cvt_xcframework MetalShaderConverter IMPORTED_LOCATION)
-
-    if(NOT _mtl_sh_cvt_xcframework)
-        message(FATAL_ERROR
-            "MetalShaderConverter imported target does not have IMPORTED_LOCATION set")
-    endif()
-
-    if(NOT EXISTS "${_mtl_sh_cvt_xcframework}")
-        message(FATAL_ERROR
-            "MetalShaderConverter.xcframework was not found at '${_mtl_sh_cvt_xcframework}'. Run src/backend/mtl/3rd-party/MetalShaderConverter/package.sh first.")
-    endif()
-
-    set(_component_args)
-    if(ARG_COMPONENT)
-        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
-    endif()
-
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        install(DIRECTORY
-            "${_mtl_sh_cvt_xcframework}/macos-arm64_x86_64/MetalShaderConverter.framework"
-            DESTINATION "${ARG_DESTINATION}"
-            ${_component_args})
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR IOS)
-        message(FATAL_ERROR
-            "MetalShaderConverter iOS runtime deployment must use Xcode framework embedding/signing; copying the xcframework container into an app bundle is not a valid runtime layout.")
-    else()
-        message(FATAL_ERROR
-            "MetalShaderConverter runtime install is only supported for Apple platforms")
-    endif()
-endfunction()
-
 function(alloy_install_metal_shader_converter_xcframework)
     set(oneValueArgs COMPONENT DESTINATION)
     cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
