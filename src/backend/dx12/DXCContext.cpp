@@ -496,7 +496,7 @@ namespace alloy::dxc {
     
     common::sp<DXCContext> DXCContext::Make(const IContext::Options& opts) {
         //Init Agility SDK first
-        AgilitySDKLoader agilitySDK {opts.debug};
+        //AgilitySDKLoader agilitySDK {opts.debug};
 
         //Load the relevant dlls:
         //auto d3d12Dll = std::make_unique<D3D12DllLoader>();
@@ -549,10 +549,11 @@ namespace alloy::dxc {
         }
 
         return common::sp(new DXCContext(
-            std::move(agilitySDK),
+            //std::move(agilitySDK),
             std::move(*d3d12Dll),
             std::move(*dxgiDll),
-            dxgiFactory
+            dxgiFactory,
+            opts.debug
         ));
     }
 
@@ -653,18 +654,20 @@ namespace alloy::dxc {
         static_assert(sizeof(DWORD)==sizeof(uint32_t)); 
 
         uint32_t cookie = 0xffffffff;
-        if(_agilitySDK.IsDebugLayerDllLoaded()) {
+        //if (_agilitySDK.IsDebugLayerDllLoaded()) {
+        if (_debug) {
 
             ID3D12InfoQueue* pInfoQueue = nullptr;
             pDev->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
-            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-            //pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
 
             // Disable breaking on this warning because of a suspected bug in the D3D12 SDK layer, see #9084 for details.
             const int D3D12_MESSAGE_ID_FENCE_ZERO_WAIT_ = 1424; // not in all copies of d3d12sdklayers.h
             D3D12_MESSAGE_ID disabledMessages[] = { 
                 (D3D12_MESSAGE_ID)D3D12_MESSAGE_ID_FENCE_ZERO_WAIT_,
+                D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
                 D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
             };
             D3D12_INFO_QUEUE_FILTER filter = {};
@@ -694,7 +697,8 @@ namespace alloy::dxc {
 
     void DXCContext::UninstallDebugCallBack(ID3D12Device* pDev, uint32_t cookie) {
         if(cookie == 0xffffffff) return;
-        if(_agilitySDK.IsDebugLayerDllLoaded()) {
+        //if (_agilitySDK.IsDebugLayerDllLoaded()) {
+        if(_debug) {
             
             ID3D12InfoQueue* pInfoQueue = nullptr;
             pDev->QueryInterface(IID_PPV_ARGS(&pInfoQueue));

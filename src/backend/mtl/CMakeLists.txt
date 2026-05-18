@@ -99,8 +99,56 @@ target_link_libraries(Veldrid
 function(alloy_copy_metal_runtime_libs TARGET)
 endfunction()
 
-function(alloy_install_metal_runtime_libs PREFIX_PATH COMP_NAME)
-    install(CODE "MESSAGE(\"alloy: installing metal runtime libraries...\")" COMPONENT ${COMP_NAME})
-    #message("alloy: installing metal runtime libraries to ${PREFIX_PATH}...")
-    alloy_install_metal_shader_converter(${PREFIX_PATH} ${COMP_NAME})
+function(alloy_install_metal_runtime_deps)
+    set(oneValueArgs COMPONENT APPLE_FRAMEWORK_DESTINATION)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
+
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "alloy_install_metal_runtime_deps: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+    endif()
+
+    if(NOT ARG_APPLE_FRAMEWORK_DESTINATION)
+        message(FATAL_ERROR
+            "alloy_install_metal_runtime_deps: APPLE_FRAMEWORK_DESTINATION is required")
+    endif()
+
+    set(_component_args)
+    if(ARG_COMPONENT)
+        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
+    endif()
+
+    install(CODE "message(\"alloy: installing Metal runtime libraries...\")"
+        ${_component_args})
+
+    alloy_install_metal_shader_converter(
+        ${_component_args}
+        DESTINATION "${ARG_APPLE_FRAMEWORK_DESTINATION}")
+endfunction()
+
+function(alloy_install_metal_sdk_runtime_deps)
+    set(oneValueArgs COMPONENT APPLE_XCFRAMEWORK_DESTINATION)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
+
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "alloy_install_metal_sdk_runtime_deps: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+    endif()
+
+    if(NOT ARG_APPLE_XCFRAMEWORK_DESTINATION)
+        message(FATAL_ERROR
+            "alloy_install_metal_sdk_runtime_deps: APPLE_XCFRAMEWORK_DESTINATION is required")
+    endif()
+
+    set(_component_args)
+    if(ARG_COMPONENT)
+        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
+    endif()
+
+    install(CODE "message(\"alloy: installing Metal SDK runtime dependencies...\")"
+        ${_component_args})
+
+    alloy_install_metal_shader_converter_xcframework(
+        ${_component_args}
+        DESTINATION "${ARG_APPLE_XCFRAMEWORK_DESTINATION}")
 endfunction()

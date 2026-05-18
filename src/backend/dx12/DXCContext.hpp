@@ -197,23 +197,27 @@ namespace alloy::dxc {
     };
 
     class DXCContext : public IContext {
-        AgilitySDKLoader _agilitySDK;
+        //gilitySDKLoader _agilitySDK;
 
         D3D12DllLoader _d3d12Dll;
         DxgiDllLoader _dxgiDll;
 
         IDXGIFactory4* _factory;
+
+        bool _debug;
     public:
         DXCContext(
-            AgilitySDKLoader&& agilitySDK,
+            //AgilitySDKLoader&& agilitySDK,
             D3D12DllLoader&& d3d12Dll,
             DxgiDllLoader&& dxgiDll,
-            IDXGIFactory4* factory
+            IDXGIFactory4* factory,
+            bool debug
         ) 
-            : _agilitySDK(std::move(agilitySDK))
-            , _d3d12Dll(std::move(d3d12Dll))
+            //: _agilitySDK(std::move(agilitySDK))
+            : _d3d12Dll(std::move(d3d12Dll))
             , _dxgiDll(std::move(dxgiDll))
             , _factory(factory)
+            , _debug(debug)
         { }
         virtual ~DXCContext() override;
 

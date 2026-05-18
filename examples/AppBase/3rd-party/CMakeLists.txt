@@ -1,4 +1,4 @@
-# Using fetch content for 3rd-party libraries 
+# Using fetch content for 3rd-party libraries
 # to avoid adding these dependencies into main repo
 include(FetchContent)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchWinPix.cmake)
@@ -8,6 +8,7 @@ macro(fetch_git_repo URL TAG TARGET_NAME)
         ${TARGET_NAME}
         GIT_REPOSITORY ${URL}
         GIT_TAG        ${TAG}
+        EXCLUDE_FROM_ALL
     )
 
     message(STATUS "Fetching dependency ${TARGET_NAME} from ${URL}...")

@@ -100,8 +100,21 @@ target_link_libraries(Veldrid
 function(alloy_copy_vulkan_runtime_libs TARGET)
 endfunction()
 
-function(alloy_install_vulkan_runtime_libs COMP_NAME PREFIX_PATH)
+function(alloy_install_vulkan_runtime_deps)
+    set(oneValueArgs COMPONENT RUNTIME_DESTINATION)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
+
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "alloy_install_vulkan_runtime_deps: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+    endif()
+
+    set(_component_args)
+    if(ARG_COMPONENT)
+        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
+    endif()
+
     #message("alloy: installing vulkan runtime libraries to ${PREFIX_PATH}...")
-    
-    install(CODE "MESSAGE(\"alloy: installing vulkan runtime libraries...\")"  COMPONENT ${COMP_NAME})
+    install(CODE "message(\"alloy: installing Vulkan runtime libraries...\")"
+        ${_component_args})
 endfunction()

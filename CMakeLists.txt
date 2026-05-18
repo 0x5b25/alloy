@@ -4,6 +4,8 @@ project(veldridcpp
     DESCRIPTION "A C++ port of the legendary veldrid library"
     LANGUAGES C CXX)
 
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/AlloyInstall.cmake")
+
 set(VLD_MISC_HEADERS
     "include/alloy/backend/Backends.hpp"
     "include/alloy/common/Common.hpp"
@@ -11,6 +13,8 @@ set(VLD_MISC_HEADERS
     "include/alloy/common/RefCnt.hpp"
     "include/alloy/common/Waitable.hpp"
     "include/alloy/common/BitFlags.hpp"
+    "include/alloy/common/ETS.hpp"
+    "include/alloy/common/Singleton.hpp"
 )
 
 set(VLD_MISC_SRCS
@@ -24,6 +28,7 @@ set(VLD_MISC_SRCS
 
 
 set(VLD_IFACE_HEADERS
+    "include/alloy/alloy.hpp"
     "include/alloy/Context.hpp"
     "include/alloy/RenderPass.hpp"
     "include/alloy/CommandQueue.hpp"
@@ -213,46 +218,15 @@ function(alloy_copy_runtime_libs TARGET)
     endif()
 endfunction()
 
-function(alloy_install_runtime_libs PREFIX_PATH COMP_NAME)
-
-    install(CODE "MESSAGE(\"alloy: installing runtime libraries for each backend to ${PREFIX_PATH}...\")"  COMPONENT ${COMP_NAME})
-    if(${VLD_BACKEND_DXC})
-        alloy_install_dxc_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
-    endif()
-
-    if(${VLD_BACKEND_VK})
-        alloy_install_vulkan_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
-    endif()
-
-    if(${VLD_BACKEND_MTL})
-        alloy_install_metal_runtime_libs(${PREFIX_PATH} ${COMP_NAME})
-    endif()
-endfunction()
-
 if(${ALLOY_BUILD_TESTS})
     add_subdirectory("demo")
 endif()
 
-if(ALLOY_INSTALL_LIBS)
-    message("Will install libraries to ${ALLOY_INSTALL_LIBS}")
-    install(TARGETS Veldrid LIBRARY DESTINATION "${ALLOY_INSTALL_LIBS}")
-endif()
+install(TARGETS Veldrid
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT alloy
+    FILE_SET vld_headers DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" COMPONENT alloy)
 
-if(ALLOY_INSTALL_HEADERS)
-    message("Will install headers to ${ALLOY_INSTALL_HEADERS}")
-    install(TARGETS Veldrid FILE_SET vld_headers DESTINATION "${ALLOY_INSTALL_HEADERS}")
-endif()
-
-
-if(ALLOY_INSTALL_RUNTIME_DEPS)
-    message("Will install runtime dependencies to ${ALLOY_INSTALL_RUNTIME_DEPS}")
-    alloy_install_runtime_libs("${ALLOY_INSTALL_RUNTIME_DEPS}" NO)
-endif()
-
-
-#install(TARGETS Veldrid 
-#    COMPONENT alloy
-#    FILE_SET vld_headers DESTINATION "${CMAKE_INSTALL_PREFIX}/include"
-#    RUNTIME              DESTINATION "${CMAKE_INSTALL_PREFIX}/bin"
-#    LIBRARY              DESTINATION "${CMAKE_INSTALL_PREFIX}/lib")
-
+alloy_install_runtime_deps(
+    COMPONENT alloy
+    RUNTIME_DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    APPLE_XCFRAMEWORK_DESTINATION "${CMAKE_INSTALL_LIBDIR}/xcframeworks")

@@ -92,14 +92,41 @@ target_link_libraries(Veldrid
     )
 
 
-function(alloy_install_dxc_runtime_libs PREFIX_PATH COMP_NAME)
-        
-    install(CODE "MESSAGE(\"alloy: installing directx 12 runtime libraries...\")"  
-        COMPONENT ${COMP_NAME})
+function(alloy_install_dxc_runtime_deps)
+    set(oneValueArgs COMPONENT RUNTIME_DESTINATION DX12_DESTINATION)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
 
-    alloy_install_agility_sdk_binaries(${PREFIX_PATH} ${COMP_NAME})
-    alloy_install_pix_runtime_binaries(${PREFIX_PATH} ${COMP_NAME})
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "alloy_install_dxc_runtime_deps: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+    endif()
 
+    if(NOT ARG_RUNTIME_DESTINATION)
+        message(FATAL_ERROR
+            "alloy_install_dxc_runtime_deps: RUNTIME_DESTINATION is required")
+    endif()
+
+    if(NOT ARG_DX12_DESTINATION)
+        set(ARG_DX12_DESTINATION "${ARG_RUNTIME_DESTINATION}/D3D12")
+    endif()
+
+    set(_component_args)
+    if(ARG_COMPONENT)
+        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
+    endif()
+
+    install(CODE "message(\"alloy: installing DirectX 12 runtime libraries...\")"
+        ${_component_args})
+
+    alloy_install_agility_sdk_runtime_deps(
+        ${_component_args}
+        DX12_DESTINATION "${ARG_DX12_DESTINATION}")
+
+    if(COMMAND alloy_install_pix_runtime_deps)
+        alloy_install_pix_runtime_deps(
+            ${_component_args}
+            RUNTIME_DESTINATION "${ARG_RUNTIME_DESTINATION}")
+    endif()
 endfunction()
 
 function(alloy_copy_dxc_runtime_libs TARGET)

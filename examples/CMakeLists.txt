@@ -30,13 +30,18 @@ function(alloy_add_example_executable TARGET_NAME)
         # Apply rpaths as target properties so we don't depend on the
         # CMAKE_* variables happening to be in scope at add_executable
         # time. BUILD_RPATH covers running from the build tree, while
-        # INSTALL_RPATH covers the installed/packaged layout where the
-        # dylibs sit next to the executable.
+        # INSTALL_RPATH covers the installed/packaged layout where
+        # frameworks sit next to the executable for examples.
         set_target_properties(${TARGET_NAME} PROPERTIES
             INSTALL_RPATH "@executable_path"
             BUILD_RPATH "@executable_path;@loader_path"
         )
     endif()
+
+    alloy_install_target(${TARGET_NAME}
+        COMPONENT ${TARGET_NAME}
+        RUNTIME_DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        BUNDLE_DESTINATION ".")
 
 endfunction()
 

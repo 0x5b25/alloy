@@ -78,33 +78,36 @@ function(agility_sdk_copy_binaries TARGET)
 endfunction()
 
 
-function(alloy_install_agility_sdk_binaries PREFIX_PATH COMP_NAME)
+function(alloy_install_agility_sdk_runtime_deps)
+    set(oneValueArgs COMPONENT DX12_DESTINATION)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
+
+    if(ARG_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "alloy_install_agility_sdk_runtime_deps: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
+    endif()
+
+    if(NOT ARG_DX12_DESTINATION)
+        message(FATAL_ERROR
+            "alloy_install_agility_sdk_runtime_deps: DX12_DESTINATION is required")
+    endif()
 
     get_target_property(AGILITY_Core_DLL_PATH AgilitySDK AGILITY_Core_DLL)
     get_target_property(AGILITY_DX12SDKLayers_DLL_PATH AgilitySDK AGILITY_DX12SDKLayers_DLL)
 
-    if(COMP_NAME)
-        message("Agility SDK install using component ${COMP_NAME} into ${PREFIX_PATH}")
-        install(
-            PROGRAMS
-                ${AGILITY_Core_DLL_PATH}
-                ${AGILITY_DX12SDKLayers_DLL_PATH}
-            DESTINATION
-                ${PREFIX_PATH}/D3D12
-            COMPONENT
-                ${COMP_NAME}
-        )
-    else()
-
-        install(
-            PROGRAMS
-                ${AGILITY_Core_DLL_PATH}
-                ${AGILITY_DX12SDKLayers_DLL_PATH}
-            DESTINATION
-                ${PREFIX_PATH}/D3D12
-            )
+    set(_component_args)
+    if(ARG_COMPONENT)
+        list(APPEND _component_args COMPONENT "${ARG_COMPONENT}")
     endif()
 
+    install(
+        PROGRAMS
+            ${AGILITY_Core_DLL_PATH}
+            ${AGILITY_DX12SDKLayers_DLL_PATH}
+        DESTINATION
+            "${ARG_DX12_DESTINATION}"
+        ${_component_args}
+    )
 endfunction()
 
 # Export DXC variables for use in parent projects
