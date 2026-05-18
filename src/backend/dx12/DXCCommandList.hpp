@@ -213,7 +213,7 @@ namespace alloy::dxc
             D3D12_RESOURCE_STATES state
         );
 
-        void RegisterResourceSet(DXCResourceSet* d3drs);
+        void RegisterResourceSet(DXCResourceSetBase* d3drs);
 
         D3D12_RESOURCE_STATES GetBufferState(DXCBuffer* tex) const;
         D3D12_RESOURCE_STATES GetTexState(DXCTexture* tex) const;

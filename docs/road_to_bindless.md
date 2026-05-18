@@ -239,9 +239,16 @@ contract.
 
 DX12:
 
+- All DX12 resource binding tiers can advertise Alloy T1.
 - Mutable resource sets own descriptor table ranges.
 - Updates rewrite descriptors in the range.
 - Binding still uses descriptor table starts.
+- On tier 1 hardware, descriptor table entries that would otherwise be unpopulated are
+  initialized or rewritten to null/default descriptors.
+- On tier 2 hardware, combined CBV/SRV/UAV heap entries that would otherwise be unpopulated
+  are initialized or rewritten to null descriptors.
+- On tier 3 hardware, null/unpopulated writes may be a no-op that only drops Alloy resource
+  references.
 - Updates are allowed after bind/submission.
 - The application owns hazards from rewriting descriptor entries that pending GPU work may
   read.
@@ -274,7 +281,7 @@ This should be mechanical after the Vulkan T1 contract has been validated.
     - [x] Validate Vulkan T1 with a real renderer path.
 9. [ ] After Vulkan is stable, implement DX12 and Metal T1 with the same public contract.
     - [x] Add explicit DX12 and Metal mutable resource-set factory/bind stubs.
-    - [ ] Implement DX12 mutable resource sets under the same user-synchronized update contract.
+    - [x] Implement DX12 mutable resource sets under the same user-synchronized update contract.
     - [ ] Implement Metal mutable resource sets under the same user-synchronized update contract.
     - [ ] Revisit whether DX12 and Metal should advertise `DescriptorHeap` before T2 APIs exist.
 

@@ -163,6 +163,10 @@ namespace alloy::dxc {
         bool SupportBindless() const { 
             return shader_model >= D3D_SHADER_MODEL_6_6; //provides descriptor heap indexing
         }
+
+        bool SupportDescriptorIndexing() const {
+            return true;
+        }
     
         uint32_t ResourceBindingTier() const {
             switch(options.ResourceBindingTier) {

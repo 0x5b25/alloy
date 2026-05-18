@@ -152,7 +152,7 @@ class BindlessT1 : public IApp {
         transferBuffer->UnMap();
     }
 
-    void _RequireVulkanT1();
+    void _RequireT1();
     void _CreateResources();
     void _CreateBuffers();
     void _CreateTextures();
@@ -185,23 +185,18 @@ public:
     virtual void OnFrameBegin(uint32_t frameIdx) {}
 };
 
-void BindlessT1::_RequireVulkanT1() {
+void BindlessT1::_RequireT1() {
     auto dev = _runner->GetRenderService()->GetDevice();
     const auto& adapterInfo = dev->GetAdapter().GetAdapterInfo();
 
-    if(adapterInfo.apiVersion.backend != alloy::Backend::Vulkan) {
-        throw std::runtime_error(
-            "BindlessT1 currently targets Vulkan. Select the Vulkan backend before running this example.");
-    }
-
     if(adapterInfo.resourceBindingModel == alloy::ResourceBindingModel::FixedBindings) {
         throw std::runtime_error(
-            "BindlessT1 requires Vulkan descriptor indexing support.");
+            "BindlessT1 requires descriptor indexing support.");
     }
 }
 
 void BindlessT1::_CreateResources() {
-    _RequireVulkanT1();
+    _RequireT1();
     _fence = _runner->GetRenderService()->GetDevice()->GetResourceFactory().CreateSyncEvent();
     _CreateBuffers();
     _CreateTextures();

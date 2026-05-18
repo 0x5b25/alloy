@@ -169,10 +169,10 @@ namespace alloy::vk{
 
 
     void VkCmdEncBase::RegisterResourceSet(VulkanResourceSetBase* vkrs) {
-        auto vkLayout = static_cast<VulkanResourceLayout*>(vkrs->GetLayout().get());
-        auto& boundResources = vkrs->GetBoundResources();
-        auto& elems = vkLayout->GetDesc().shaderResources;
-        auto& bindings = vkLayout->GetBindings();
+        const auto& vkLayout = vkrs->GetLayout();
+        const auto& boundResources = vkrs->GetBoundResources();
+        const auto& elems = vkLayout.GetDesc().shaderResources;
+        const auto& bindings = vkLayout.GetBindings();
 
 
         for(auto& b : bindings) {

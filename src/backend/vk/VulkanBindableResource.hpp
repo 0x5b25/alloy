@@ -100,7 +100,7 @@ namespace alloy::vk{
     protected:
         
         common::sp<VulkanDevice> _dev;
-        common::sp<IResourceLayout> _layout;
+        common::sp<VulkanResourceLayout> _layout;
 
         std::vector<alloy::vk::_DescriptorSet> _descSet;
         std::vector<common::sp<IBindableResource>> _boundResources;
@@ -112,14 +112,11 @@ namespace alloy::vk{
 
         VulkanResourceSetBase(
             const common::sp<VulkanDevice>& dev,
-            const common::sp<IResourceLayout>& layout
-        )
-            : _dev(dev)
-            , _layout(layout)
-        {}
+            const common::sp<VulkanResourceLayout>& layout
+        );
 
     public:
-        const common::sp<IResourceLayout>& GetLayout() const { return _layout; }
+        const VulkanResourceLayout& GetLayout() const { return *_layout; }
         const std::vector<common::sp<IBindableResource>>& GetBoundResources() const { return _boundResources; }
         const auto& GetHandle() const { return _descSet; }
     };
@@ -128,13 +125,14 @@ namespace alloy::vk{
         VulkanResourceSet(
             const common::sp<VulkanDevice>& dev,
             const Description& desc
-        ) 
-            : IResourceSet(desc)
-            , VulkanResourceSetBase(dev, desc.layout)
-        {}
+        );
 
     public:
-        ~VulkanResourceSet();
+        ~VulkanResourceSet() override;
+        
+        virtual const IResourceLayout& GetLayout() const override {
+            return VulkanResourceSetBase::GetLayout();
+        }
 
         static common::sp<IResourceSet> Make(
             const common::sp<VulkanDevice>& dev,
@@ -146,18 +144,19 @@ namespace alloy::vk{
         VulkanMutableResourceSet(
             const common::sp<VulkanDevice>& dev,
             const Description& desc
-        )
-            : IMutableResourceSet(desc)
-            , VulkanResourceSetBase(dev, desc.layout)
-        {}
+        );
 
     public:
-        ~VulkanMutableResourceSet();
+        ~VulkanMutableResourceSet() override;
 
         static common::sp<IMutableResourceSet> Make(
             const common::sp<VulkanDevice>& dev,
             const Description& desc
         );
+
+        virtual const IResourceLayout& GetLayout() const override {
+            return VulkanResourceSetBase::GetLayout();
+        }
 
         void Update(const std::span<const WriteBinding>& writes) override;
     };

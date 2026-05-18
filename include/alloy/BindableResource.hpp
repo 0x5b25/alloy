@@ -147,17 +147,17 @@ namespace alloy
             std::vector<common::sp<IBindableResource>> boundResources;
         };
 
-    protected:
-        Description description;
-
-        IResourceSet(
-            const Description& desc
-        ) 
-            : description(desc)
-        {}
+    //protected:
+    //    Description description;
+    //
+    //    IResourceSet(
+    //        const Description& desc
+    //    ) 
+    //        : description(desc)
+    //    {}
 
     public:
-        const Description& GetDesc() const {return description;}
+        virtual const IResourceLayout& GetLayout() const = 0;
 
         virtual void* GetNativeHandle() const {return nullptr; }
     };
@@ -180,17 +180,17 @@ namespace alloy
             std::vector<WriteBinding> initialWrites;
         };
 
-    protected:
-        Description description;
-
-        IMutableResourceSet(
-            const Description& desc
-        )
-            : description(desc)
-        {}
+    //protected:
+    //
+    //    IMutableResourceSet(
+    //        const Description& desc
+    //    )
+    //        : description(desc)
+    //    {}
 
     public:
-        const Description& GetDesc() const {return description;}
+        //const Description& GetDesc() const {return description;}
+        virtual const IResourceLayout& GetLayout() const = 0;
 
         virtual void Update(const std::span<const WriteBinding>& writes) = 0;
 

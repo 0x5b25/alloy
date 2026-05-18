@@ -201,54 +201,67 @@ namespace alloy::dxc
     }
 
 
-    void DXCCmdEncBase::RegisterResourceSet(DXCResourceSet* d3drs) {
-        auto dxcLayout = static_cast<DXCResourceLayout*>(d3drs->GetDesc().layout.get());
-        auto& boundResources = d3drs->GetDesc().boundResources;
-        auto& elemDescs = dxcLayout->GetDesc().shaderResources;
-        auto& elems = d3drs->GetDesc().boundResources;
+    void DXCCmdEncBase::RegisterResourceSet(DXCResourceSetBase* d3drs) {
+        const auto& dxcLayout = d3drs->GetLayout();
+        const auto& boundResources = d3drs->GetBoundResources();
+        const auto& elemDescs = dxcLayout.GetDesc().shaderResources;
 
         std::vector<DXCBuffer*> bufReadOnly, bufRW;
         std::vector<DXCTexture*> texReadOnly, texRW;
 
-        for(unsigned i = 0; i < elemDescs.size(); i++) {
+        for(uint32_t layoutSlot = 0; layoutSlot < elemDescs.size(); layoutSlot++) {
 
-            auto& elemDesc = elemDescs[i];
-            auto& elem = elems[i];
+            auto& elemDesc = elemDescs[layoutSlot];
+            auto location = dxcLayout.GetSlotLocation(layoutSlot);
 
             using _ResKind = IBindableResource::ResourceKind;
 
-            switch (elemDesc.kind) {
-                case _ResKind::Texture: {
-                    auto* texView = PtrCast<DXCTextureView>(elem.get());
-                    auto texture = PtrCast<DXCTexture>(texView->GetTextureObject().get());
-                    if(elemDesc.options.writable) {
-                        texRW.push_back(texture);
-                    } else {
-                        texReadOnly.push_back(texture);
-                    }
-                } break;
-                case _ResKind::UniformBuffer: {
-                    auto* range = PtrCast<BufferRange>(elem.get());
-                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
-                    bufReadOnly.push_back(buffer);
-                } break;
-                case _ResKind::StorageBuffer: {
-                    auto* range = PtrCast<BufferRange>(elem.get());
-                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
-                    auto usage = buffer->GetDesc().usage;
-                    if(elemDesc.options.writable) {
-                        assert(usage.structuredBufferReadWrite != 0);
-                        bufRW.push_back(buffer);
-                    } else {
-                        assert(usage.structuredBufferReadOnly != 0 ||
-                               usage.structuredBufferReadWrite != 0);
-                        bufReadOnly.push_back(buffer);
-                    }
+            for(uint32_t arrayElement = 0;
+                arrayElement < elemDesc.bindingCount;
+                ++arrayElement)
+            {
+                auto resourceIndex = location.linearResourceOffset + arrayElement;
+                if(resourceIndex >= boundResources.size() ||
+                   boundResources[resourceIndex] == nullptr)
+                {
+                    continue;
+                }
 
-                } break;
-                default:
-                    // Samplers don't need to be registered for usage
-                    break;
+                auto& elem = boundResources[resourceIndex];
+
+                switch (elemDesc.kind) {
+                    case _ResKind::Texture: {
+                        auto* texView = PtrCast<DXCTextureView>(elem.get());
+                        auto texture = PtrCast<DXCTexture>(texView->GetTextureObject().get());
+                        if(elemDesc.options.writable) {
+                            texRW.push_back(texture);
+                        } else {
+                            texReadOnly.push_back(texture);
+                        }
+                    } break;
+                    case _ResKind::UniformBuffer: {
+                        auto* range = PtrCast<BufferRange>(elem.get());
+                        auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
+                        bufReadOnly.push_back(buffer);
+                    } break;
+                    case _ResKind::StorageBuffer: {
+                        auto* range = PtrCast<BufferRange>(elem.get());
+                        auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
+                        auto usage = buffer->GetDesc().usage;
+                        if(elemDesc.options.writable) {
+                            assert(usage.structuredBufferReadWrite != 0);
+                            bufRW.push_back(buffer);
+                        } else {
+                            assert(usage.structuredBufferReadOnly != 0 ||
+                                   usage.structuredBufferReadWrite != 0);
+                            bufReadOnly.push_back(buffer);
+                        }
+
+                    } break;
+                    default:
+                        // Samplers don't need to be registered for usage
+                        break;
+                }
             }
         }
 
@@ -767,10 +780,22 @@ namespace alloy::dxc
     }
 
     void DXCRenderCmdEnc::SetGraphicsMutableResourceSet(
-        const common::sp<IMutableResourceSet>&
+        const common::sp<IMutableResourceSet>& rs
     ) {
-        throw std::runtime_error(
-            "DX12 mutable ResourceSet binding is not implemented yet.");
+        resources.insert(rs);
+
+        auto d3dkrs = PtrCast<DXCMutableResourceSet>(rs.get());
+
+        RegisterResourceSet(d3dkrs);
+
+        recordedCmds.emplace_back([d3dkrs, this]() {
+            auto& heaps = d3dkrs->GetHeaps();
+            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+
+            for(uint32_t i = 0; i < heaps.size(); i++) {
+                GetCmdList()->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            }
+        });
     }
 
 
@@ -1115,10 +1140,22 @@ namespace alloy::dxc
     }
 
     void DXCComputeCmdEnc::SetComputeMutableResourceSet(
-        const common::sp<IMutableResourceSet>&
+        const common::sp<IMutableResourceSet>& rs
     ) {
-        throw std::runtime_error(
-            "DX12 mutable ResourceSet binding is not implemented yet.");
+        resources.insert(rs);
+
+        auto d3dkrs = PtrCast<DXCMutableResourceSet>(rs.get());
+
+        RegisterResourceSet(d3dkrs);
+
+        recordedCmds.emplace_back([d3dkrs, this]() {
+            auto& heaps = d3dkrs->GetHeaps();
+            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+
+            for(uint32_t i = 0; i < heaps.size(); i++) {
+                GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+            }
+        });
     }
 
 

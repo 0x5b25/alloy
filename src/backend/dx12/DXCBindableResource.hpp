@@ -52,6 +52,17 @@ namespace alloy::dxc {
 
         std::uint32_t _rootConstantCount;
         uint32_t _heapCount;
+
+    public:
+        struct SlotLocation {
+            uint32_t heapIndex;
+            uint32_t startingDescriptorIndex;
+            uint32_t linearResourceOffset;
+            bool valid = false;
+        };
+
+    private:
+        std::vector<SlotLocation> _slotLocations;
     
         DXCResourceLayout(
             const common::sp<DXCDevice>& dev,
@@ -76,41 +87,78 @@ namespace alloy::dxc {
         //const DescriptorResourceCounts& GetResourceCounts() const {return _drcs;}
 
         std::uint32_t GetHeapCount() const { return _heapCount; }
+        const SlotLocation& GetSlotLocation(uint32_t layoutSlot) const {
+            return _slotLocations.at(layoutSlot);
+        }
+    };
+
+    class DXCResourceSetBase {
+    protected:
+        common::sp<DXCDevice> dev;
+        common::sp<DXCResourceLayout> _layout;
+        std::vector<ID3D12DescriptorHeap*> _descHeap;
+
+        // Linear array to track resources written in.
+        std::vector<common::sp<IBindableResource>> _boundResources;
+
+        DXCResourceSetBase( const common::sp<DXCDevice>& dev,
+                            const common::sp<DXCResourceLayout>& layout
+        );
+
+        void AllocateDescriptorHeaps();
+        void UpdateInternal(const std::span<const IMutableResourceSet::WriteBinding>& writes);
+
+    public:
+        ~DXCResourceSetBase();
+
+        const DXCResourceLayout& GetLayout() const { return *_layout; }
+        const std::vector<common::sp<IBindableResource>>& GetBoundResources() const {
+            return _boundResources;
+        }
+        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const { return _descHeap; }
     };
     
-    class DXCResourceSet : public IResourceSet{ //Actually d3d12 descriptor heap?
+    class DXCResourceSet : public IResourceSet, public DXCResourceSetBase {
     public:
         //using ElementVisitor = std::function<void(VulkanResourceLayout*)>;
     private:
-//
-    //    _DescriptorSet _descSet;
-        common::sp<DXCDevice> dev;
-//
-    //    std::unordered_set<VulkanTexture*> _texReadOnly, _texRW;
-//  
-        std::vector<ID3D12DescriptorHeap*> _descHeap;
 
         DXCResourceSet(
             const common::sp<DXCDevice>& dev,
             const Description& desc
-        ) 
-            : IResourceSet(desc)
-            , dev(dev)
-        {}
+        );
 
     public:
         virtual ~DXCResourceSet() override;
+
+        virtual const IResourceLayout& GetLayout() const override {
+            return DXCResourceSetBase::GetLayout();
+        }
 
         static common::sp<IResourceSet> Make(
             const common::sp<DXCDevice>& dev,
             const Description& desc
         );
-//
-    //    //const VkDescriptorSet& GetHandle() const { return _descSet.GetHandle(); }
-//
-//
-    //    //void TransitionImageLayoutsIfNeeded(VkCommandBuffer cb);
-    //    void VisitElements(ElementVisitor visitor);
-        const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const { return _descHeap; }
+    };
+
+    class DXCMutableResourceSet : public IMutableResourceSet, public DXCResourceSetBase {
+        DXCMutableResourceSet(
+            const common::sp<DXCDevice>& dev,
+            const Description& desc
+        );
+    public:
+        ~DXCMutableResourceSet() override;
+
+        static common::sp<IMutableResourceSet> Make(
+            const common::sp<DXCDevice>& dev,
+            const Description& desc
+        );
+
+        
+        virtual const IResourceLayout& GetLayout() const override {
+            return DXCResourceSetBase::GetLayout();
+        }
+
+        void Update(const std::span<const WriteBinding>& writes) override;
     };
 }

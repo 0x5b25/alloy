@@ -31,6 +31,7 @@ namespace alloy::dxc
     V(Sampler)\
     /*V(Shader)*/\
     V(ResourceSet)\
+    V(MutableResourceSet)\
     V(ResourceLayout)\
     V(SwapChain)
 
@@ -51,11 +52,11 @@ namespace alloy::dxc
 
     DXC_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
 
-    common::sp<IMutableResourceSet> DXCResourceFactory::CreateMutableResourceSet(
-        const IMutableResourceSet::Description&
-    ) {
-        throw std::runtime_error("DX12 mutable ResourceSet is not implemented yet.");
-    }
+    //common::sp<IMutableResourceSet> DXCResourceFactory::CreateMutableResourceSet(
+    //    const IMutableResourceSet::Description& description
+    //) {
+    //    return DXCMutableResourceSet::Make(_CreateNewDevHandle(), description);
+    //}
 
     common::sp<IShader> DXCResourceFactory::CreateShader(
         const IShader::Description& desc,

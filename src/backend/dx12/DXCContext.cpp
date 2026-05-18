@@ -376,9 +376,13 @@ namespace alloy::dxc {
         info.capabilities.supportRayTracing = _caps.SupportRayTracing();
         info.capabilities.supportResizableBar = _caps.SupportReBAR();
         info.capabilities.supportNonUniformResourceIndexing = _caps.SupportBindless();
-        info.resourceBindingModel = _caps.SupportBindless()
-            ? ResourceBindingModel::DescriptorHeap
-            : ResourceBindingModel::FixedBindings;
+        if(_caps.SupportBindless()) {
+            info.resourceBindingModel = ResourceBindingModel::DescriptorHeap;
+        } else if(_caps.SupportDescriptorIndexing()) {
+            info.resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+        } else {
+            info.resourceBindingModel = ResourceBindingModel::FixedBindings;
+        }
 
         uint32_t full_heap_count = D3D12_MAX_SHADER_VISIBLE_DESCRIPTOR_HEAP_SIZE_TIER_1;
         uint32_t uav_count = 8;

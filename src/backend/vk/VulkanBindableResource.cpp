@@ -337,9 +337,19 @@ namespace alloy::vk
         }
     }
 
+
+    VulkanResourceSetBase::VulkanResourceSetBase(
+        const common::sp<VulkanDevice>& dev,
+        const common::sp<VulkanResourceLayout>& layout
+    )
+        : _dev(dev)
+        , _layout(layout)
+        , _boundResources(GetRequiredBoundResourceCount(_layout->GetDesc()))
+    { }
+
+
     void VulkanResourceSetBase::AllocateDescriptorSets() {
-        auto vkLayout = static_cast<VulkanResourceLayout*>(_layout.get());
-        auto& bindings = vkLayout->GetBindings();
+        auto& bindings = _layout->GetBindings();
         for(auto& b : bindings) {
             for(auto& s : b.sets) {
                 auto descriptorAllocationToken = _dev->AllocateDescriptorSet(s.layout);
@@ -367,10 +377,16 @@ namespace alloy::vk
             descSet->UpdateInternal(writes);
         }
 
-        descSet->description.boundResources = descSet->_boundResources;
-
         return common::sp(descSet);
     }
+
+    VulkanResourceSet::VulkanResourceSet(
+        const common::sp<VulkanDevice>& dev,
+        const Description& desc
+    ) 
+        : IResourceSet()
+        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout))
+    { }
 
     VulkanResourceSet::~VulkanResourceSet(){
 
@@ -396,6 +412,14 @@ namespace alloy::vk
         return common::sp<IMutableResourceSet>(descSet);
     }
 
+    VulkanMutableResourceSet::VulkanMutableResourceSet(
+        const common::sp<VulkanDevice>& dev,
+        const Description& desc
+    )
+        : IMutableResourceSet()
+        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout))
+    { }
+
     VulkanMutableResourceSet::~VulkanMutableResourceSet(){
 
     }
@@ -403,14 +427,9 @@ namespace alloy::vk
     void VulkanResourceSetBase::UpdateInternal(
         const std::span<const IMutableResourceSet::WriteBinding>& writes
     ) {
-        auto vkLayout = static_cast<VulkanResourceLayout*>(_layout.get());
-        auto& slotDescs = vkLayout->GetDesc().shaderResources;
+        auto& slotDescs = _layout->GetDesc().shaderResources;
 
-        auto requiredBoundResourceCount =
-            GetRequiredBoundResourceCount(vkLayout->GetDesc());
-        if(_boundResources.size() < requiredBoundResourceCount) {
-            _boundResources.resize(requiredBoundResourceCount);
-        }
+        assert(_boundResources.size() == GetRequiredBoundResourceCount(_layout->GetDesc()));
 
         for(auto& write : writes) {
             if(write.layoutSlot >= slotDescs.size()) {
@@ -426,7 +445,7 @@ namespace alloy::vk
             }
 
             auto location = FindSlotLocation(
-                vkLayout,
+                _layout.get(),
                 _descSet,
                 write.layoutSlot);
 

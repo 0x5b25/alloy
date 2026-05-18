@@ -669,6 +669,12 @@ void ImGuiAlloyBackend::_CreateDeviceObjects(const ImGui_ImplAlloy_InitInfo& ini
     _submitFenceValue = 0;
 }
 
+struct _FontTexContainer {
+    common::sp<ITexture> texture;
+    common::sp<ISampler> sampler;
+    common::sp<IResourceSet> resourceSet;
+};
+
 
 void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
     switch (tex->Status) {
@@ -737,8 +743,14 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
 
             auto resSet = gd->GetResourceFactory().CreateResourceSet(rsDesc);
 
-        // Store your data, and acknowledge creation.
-        tex->SetTexID((ImTextureID)resSet.release()); // Specify backend-specific ImTextureID identifier which will be stored in ImDrawCmd.
+            auto pContainer = new _FontTexContainer {
+                .texture = fontTex,
+                .sampler = samp,
+                .resourceSet = resSet,
+            };
+
+            // Store your data, and acknowledge creation.
+            tex->SetTexID((ImTextureID)pContainer); // Specify backend-specific ImTextureID identifier which will be stored in ImDrawCmd.
         }
 
         // We don't set tex->Status to ImTextureStatus_OK to let the code fallthrough below.
@@ -751,11 +763,8 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         // Upload a rectangle of pixels to the existing texture
         // - We only ever write to textures regions which have never been used before!
         // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
-        auto rs = (alloy::IResourceSet*)tex->GetTexID();
-        auto pTexView = static_cast<alloy::ITextureView*>(
-            rs->GetDesc().boundResources.front().get());
-        const auto& texViewDesc = pTexView->GetDesc();
-        auto pAlloyTex = pTexView->GetTextureObject();
+        auto pContainer = (_FontTexContainer*)tex->GetTexID();
+        auto pAlloyTex = pContainer->texture;
         // - Use tex->UpdateRect.x/y, tex->UpdateRect.w/h to obtain the block position and size.
         //   - Use tex->Updates[] to obtain individual sub-regions within tex->UpdateRect. Not recommended.
         // - Read from our CPU-side copy of the texture and copy to your graphics API.
@@ -799,7 +808,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
 
         pass.CopyBufferToTexture(
             copyBuffer, upload_pitch_dst, upload_buffer_size,
-            pAlloyTex, {upload_x, upload_y, 0}, texViewDesc.baseMipLevel, texViewDesc.baseArrayLayer,
+            pAlloyTex, {upload_x, upload_y, 0}, 0, 0,
             {upload_w, upload_h, 1}
         );
 
@@ -830,8 +839,8 @@ void ImGuiAlloyBackend::_DestroyTexture(ImTextureData* tex) {
     // Destroy texture
     // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
     // - Destroy texture in your graphics API.
-    auto rs = (alloy::IResourceSet*)tex->GetTexID();
-    rs->unref();
+    auto pContainer = (_FontTexContainer*)tex->GetTexID();
+    delete pContainer;
 
     // Acknowledge destruction
     tex->SetTexID(ImTextureID_Invalid);
