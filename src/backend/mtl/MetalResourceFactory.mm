@@ -30,6 +30,7 @@ namespace alloy::mtl {
     V(Sampler)\
     /*V(Shader)*/\
     V(ResourceSet)\
+    V(MutableResourceSet)\
     V(ResourceLayout)\
     V(SwapChain)
 
@@ -56,11 +57,6 @@ namespace alloy::mtl {
 
     MTL_RF_FOR_EACH_RES(MTL_IMPL_RF_CREATE_WITH_DESC)
 
-    common::sp<IMutableResourceSet> MetalResourceFactory::CreateMutableResourceSet(
-        const IMutableResourceSet::Description&
-    ) {
-        throw std::runtime_error("Metal mutable ResourceSet is not implemented yet.");
-    }
 
     common::sp<IShader> MetalResourceFactory::CreateShader(
         const IShader::Description& desc,

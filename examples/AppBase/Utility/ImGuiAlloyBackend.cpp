@@ -49,6 +49,11 @@ public:
 
 };
 
+struct TexIDContainer {
+    common::sp<ITexture> texture;
+    common::sp<ISampler> sampler;
+    common::sp<IResourceSet> resourceSet;
+};
 
 struct VERTEX_CONSTANT_BUFFER_DX12
 {
@@ -328,8 +333,8 @@ void ImGuiAlloyBackend::RenderDrawData(
 
                 // Bind texture, Draw
                 //D3D12_GPU_DESCRIPTOR_HANDLE texture_handle = {};
-                auto texRS = (alloy::IResourceSet*)pcmd->GetTexID();
-                renderPass.SetGraphicsResourceSet(common::ref_sp(texRS));
+                auto pContainer = (TexIDContainer*)pcmd->GetTexID();
+                renderPass.SetGraphicsResourceSet(pContainer->resourceSet);
                 renderPass.DrawIndexed(pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
             }
         }
@@ -435,7 +440,7 @@ void ImGuiAlloyBackend::_CreateRenderPipeline(const ImGui_ImplAlloy_InitInfo& in
         };
         desc.colorAttachments[0].format = initInfo.renderTargetFormat;
         //desc.depthStencilAttachment
-        
+
         if(initInfo.depthStencilFormat != alloy::PixelFormat::Unknown) {
             desc.depthStencilAttachment = {.depthStencilFormat = initInfo.depthStencilFormat};
         }
@@ -653,8 +658,6 @@ void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
         fontRS = gd->GetResourceFactory().CreateResourceSet(rsDesc);
     }
 
-
-
     // Store our identifier
     io.Fonts->SetTexID((ImTextureID)fontRS.get());
 #endif
@@ -668,13 +671,6 @@ void ImGuiAlloyBackend::_CreateDeviceObjects(const ImGui_ImplAlloy_InitInfo& ini
     _submitFence = gd->GetResourceFactory().CreateSyncEvent();
     _submitFenceValue = 0;
 }
-
-struct _FontTexContainer {
-    common::sp<ITexture> texture;
-    common::sp<ISampler> sampler;
-    common::sp<IResourceSet> resourceSet;
-};
-
 
 void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
     switch (tex->Status) {
@@ -743,7 +739,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
 
             auto resSet = gd->GetResourceFactory().CreateResourceSet(rsDesc);
 
-            auto pContainer = new _FontTexContainer {
+            auto pContainer = new TexIDContainer {
                 .texture = fontTex,
                 .sampler = samp,
                 .resourceSet = resSet,
@@ -763,7 +759,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         // Upload a rectangle of pixels to the existing texture
         // - We only ever write to textures regions which have never been used before!
         // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
-        auto pContainer = (_FontTexContainer*)tex->GetTexID();
+        auto pContainer = (TexIDContainer*)tex->GetTexID();
         auto pAlloyTex = pContainer->texture;
         // - Use tex->UpdateRect.x/y, tex->UpdateRect.w/h to obtain the block position and size.
         //   - Use tex->Updates[] to obtain individual sub-regions within tex->UpdateRect. Not recommended.
@@ -839,7 +835,7 @@ void ImGuiAlloyBackend::_DestroyTexture(ImTextureData* tex) {
     // Destroy texture
     // - Use tex->TexID or tex->BackendUserData to retrieve your stored data.
     // - Destroy texture in your graphics API.
-    auto pContainer = (_FontTexContainer*)tex->GetTexID();
+    auto pContainer = (TexIDContainer*)tex->GetTexID();
     delete pContainer;
 
     // Acknowledge destruction

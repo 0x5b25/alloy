@@ -18,7 +18,7 @@ common::sp<MetalSwapChain> MetalSwapChain::Make(
         const Description& desc
 ) {
     @autoreleasepool{
-        
+
         auto swapChain = CreateSurface(dev->GetHandle(), desc.source);
         if(!swapChain) {
             return nullptr;
@@ -79,7 +79,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
 
 
     MetalSwapChain::MetalSwapChain(
-        const common::sp<MetalDevice> &dev, 
+        const common::sp<MetalDevice> &dev,
         CAMetalLayer *layer,
         const Description& desc
     )
@@ -151,7 +151,7 @@ std::uint32_t MetalSwapChain::GetHeight() const {
                 _currentCt = [_layer nextDrawable];
                 [_currentCt retain];
 
-                _currentFrameIdx ++; 
+                _currentFrameIdx ++;
                 if(_currentFrameIdx >= _layer.maximumDrawableCount) {
                     _currentFrameIdx = 0;
                 }
@@ -160,10 +160,10 @@ std::uint32_t MetalSwapChain::GetHeight() const {
 
         common::sp<MetalTexture> dsTex;
         if(!_dsTex.empty())
-            dsTex = _dsTex[_currentDs];
+            dsTex = _dsTex[_currentFrameIdx];
 
         auto fb = new MetalSCFB(common::ref_sp(this), _currentCt, dsTex);
-            
+
 
         return common::sp(fb);
     }
@@ -187,17 +187,17 @@ std::uint32_t MetalSwapChain::GetHeight() const {
         auto rawTex = _drawable.texture;
 
         ITexture::Description texDesc{};
-        
+
         switch([rawTex textureType]) {
-                
+
             case MTLTextureType1D: texDesc.type = ITexture::Description::Type::Texture1D; break;
             case MTLTextureType2D: texDesc.type = ITexture::Description::Type::Texture2D; break;
             case MTLTextureType3D: texDesc.type = ITexture::Description::Type::Texture3D; break;
             default:
-                
+
                 break;
         }
-        
+
         texDesc.width = [rawTex width];
         texDesc.height = [rawTex height];
         texDesc.depth = [rawTex depth];
@@ -213,9 +213,9 @@ std::uint32_t MetalSwapChain::GetHeight() const {
             default:
                 break;
         }
-        
+
         texDesc.format = MtlToAlPixelFormat([rawTex pixelFormat]);///#TODO: add format support
-            
+
 
         auto vldTex = MetalTexture::WrapNative(_sc->GetDevice(), texDesc, rawTex);
 

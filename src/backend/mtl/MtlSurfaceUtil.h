@@ -10,4 +10,4 @@ struct MtlSurfaceContainer{
 };
 
 
-CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src);
+CAMetalLayer* CreateSurface(id<MTLDevice> gd, const alloy::SwapChainSource* src);

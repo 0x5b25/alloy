@@ -13,11 +13,15 @@ namespace alloy::mtl {
 
     class MetalDevice;
     class MetalResourceSet;
+    class MetalMutableResourceSet;
+    class MetalResourceSetBase;
     
     //Implement DX12-like root signature and descriptor tables
     class MetalResourceLayout : public IResourceLayout {
         
         friend class MetalResourceSet;
+        friend class MetalResourceSetBase;
+        friend class MetalMutableResourceSet;
     public:
         struct PushConstantInfo {
             uint32_t bindingSlot;
@@ -26,12 +30,20 @@ namespace alloy::mtl {
             uint32_t offsetInDwords;
         };
 
+        struct SlotLocation {
+            uint32_t heapIndex;
+            uint32_t startingDescriptorIndex;
+            uint32_t linearResourceOffset;
+            bool valid = false;
+        };
+
     private:
         common::sp<MetalDevice> _dev;
         
         IRRootSignature* _rootSig;
         uint32_t _descHeapCount;
         std::vector<PushConstantInfo> _pushConstants;
+        std::vector<SlotLocation> _slotLocations;
 
         uint64_t _rootSigSizeInBytes;
         
@@ -52,38 +64,87 @@ namespace alloy::mtl {
 
         uint32_t GetDescHeapCount() const { return _descHeapCount; }
         const std::vector<PushConstantInfo>& GetPushConstants() const { return _pushConstants; }
+        const SlotLocation& GetSlotLocation(uint32_t layoutSlot) const {
+            return _slotLocations.at(layoutSlot);
+        }
         
         uint64_t GetRootSigSizeInBytes() const { return _rootSigSizeInBytes; }
     };
 
-    //Descriptor heap is implemented as a argument buffer
-    //using explicit layout binding model for IR converter
-    class MetalResourceSet : public IResourceSet {
-        
+    // Descriptor heap is implemented as an argument buffer using the explicit
+    // layout binding model expected by MetalShaderConverter.
+    class MetalResourceSetBase {
+    protected:
+        common::sp<MetalDevice> _dev;
+        common::sp<MetalResourceLayout> _layout;
         id<MTLBuffer> _argBuf;
 
         uint64_t _shaderResHeapGPUVA;
         uint64_t _samplerHeapGPUVA;
+        uint64_t _combinedResHeapSize;
+        uint64_t _samplerHeapSize;
+        std::vector<common::sp<IBindableResource>> _boundResources;
+
+        MetalResourceSetBase(
+            const common::sp<MetalDevice>& dev,
+            const common::sp<MetalResourceLayout>& layout);
+
+        ~MetalResourceSetBase();
+
+        void AllocateArgumentBuffer();
+        void UpdateInternal(const std::span<const IMutableResourceSet::WriteBinding>& writes);
         
     public:
-        
-        MetalResourceSet(const IResourceSet::Description& desc);
-        
-        virtual ~MetalResourceSet() override;
-        
-        
-        
-        static common::sp<MetalResourceSet> Make (const common::sp<MetalDevice>& dev,
-                                                 const IResourceSet::Description& desc)
-        { return common::sp(new MetalResourceSet(desc)); }
-        
-        //const id<MTLBuffer> GetHandle() const { return _argBuf; }
+        const MetalResourceLayout& GetLayout() const { return *_layout; }
         
         std::vector<id<MTLResource>> GetUseResources() const;
 
         uint64_t GetShaderResHeapGPUVA() const { return _shaderResHeapGPUVA; }
         uint64_t GetSamplerHeapGPUVA() const { return _samplerHeapGPUVA; }
-        
+
+        id<MTLBuffer> GetHandle() const { return _argBuf; }
+    };
+
+    class MetalResourceSet : public IResourceSet, public MetalResourceSetBase {
+        MetalResourceSet(
+            const common::sp<MetalDevice>& dev,
+            const IResourceSet::Description& desc);
+
+    public:
+        virtual ~MetalResourceSet() override;
+
+        static common::sp<MetalResourceSet> Make(
+            const common::sp<MetalDevice>& dev,
+            const IResourceSet::Description& desc);
+
+        virtual const IResourceLayout& GetLayout() const override {
+            return MetalResourceSetBase::GetLayout();
+        }
+
+        virtual void* GetNativeHandle() const override { return GetHandle(); }
+    };
+
+    class MetalMutableResourceSet
+        : public IMutableResourceSet
+        , public MetalResourceSetBase {
+        MetalMutableResourceSet(
+            const common::sp<MetalDevice>& dev,
+            const IMutableResourceSet::Description& desc);
+
+    public:
+        virtual ~MetalMutableResourceSet() override;
+
+        static common::sp<IMutableResourceSet> Make(
+            const common::sp<MetalDevice>& dev,
+            const IMutableResourceSet::Description& desc);
+
+        virtual const IResourceLayout& GetLayout() const override {
+            return MetalResourceSetBase::GetLayout();
+        }
+
+        void Update(const std::span<const WriteBinding>& writes) override;
+
+        virtual void* GetNativeHandle() const override { return GetHandle(); }
     };
 
 }

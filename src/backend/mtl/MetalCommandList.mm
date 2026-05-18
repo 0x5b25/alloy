@@ -10,9 +10,41 @@
 #include <Metal/Metal.h>
 #include <metal_irconverter_runtime/metal_irconverter_runtime.h>
 #include <cassert>
-#include <stdexcept>
+#include <cstring>
 
 namespace alloy::mtl {
+
+namespace {
+    void SetRootArgumentBufferHeaps(
+        std::vector<uint8_t>& argBuffer,
+        uint64_t shaderResourceHeapGPUVA,
+        uint64_t samplerHeapGPUVA
+    ) {
+        if(argBuffer.empty()) {
+            return;
+        }
+
+        size_t offset = 0;
+        auto writeHeapAddress = [&](uint64_t heapGPUVA) {
+            if(!heapGPUVA) {
+                return;
+            }
+
+            assert(offset + sizeof(heapGPUVA) <= argBuffer.size());
+            if(offset + sizeof(heapGPUVA) <= argBuffer.size()) {
+                std::memcpy(argBuffer.data() + offset, &heapGPUVA, sizeof(heapGPUVA));
+            }
+            offset += sizeof(heapGPUVA);
+        };
+
+        if(shaderResourceHeapGPUVA) {
+            writeHeapAddress(shaderResourceHeapGPUVA);
+        }
+        if(samplerHeapGPUVA) {
+            writeHeapAddress(samplerHeapGPUVA);
+        }
+    }
+}
 
 
 MetalCommandList::MetalCommandList(const common::sp<MetalDevice>& dev,
@@ -185,27 +217,18 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
         auto mtlRS = common::PtrCast<MetalResourceSet>(rs.get());
 
         auto usedRes = mtlRS->GetUseResources();
-        [_mtlEnc useResources:usedRes.data()
-                        count:usedRes.size()
-                        usage:MTLResourceUsageRead | MTLResourceUsageWrite
-                       stages:MTLRenderStageVertex | MTLRenderStageFragment
-        ];
-
-        id<MTLSamplerState> sampler;
-
-        auto layout = _drawResources.boundPipeline->GetPipelineLayout();
-
-        auto pHeap =(uint64_t*)_drawResources.argBuffer.data();
-        auto shResVA = mtlRS->GetShaderResHeapGPUVA();
-        auto sampVA = mtlRS->GetSamplerHeapGPUVA();
-        if(shResVA) {
-            *pHeap = shResVA;
-            pHeap++;
+        if(!usedRes.empty()) {
+            [_mtlEnc useResources:usedRes.data()
+                            count:usedRes.size()
+                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
+                           stages:MTLRenderStageVertex | MTLRenderStageFragment
+            ];
         }
-        if(sampVA) {
-            *pHeap = sampVA;
-            pHeap++;
-        }
+
+        SetRootArgumentBufferHeaps(
+            _drawResources.argBuffer,
+            mtlRS->GetShaderResHeapGPUVA(),
+            mtlRS->GetSamplerHeapGPUVA());
 
         //[_mtlEnc useResource:sampler usage:MTLResourceUsageRead];
         //[_mtlEnc useResources:(id<MTLResource>  _Nonnull const * _Nonnull) count:(NSUInteger) usage:(MTLResourceUsage) stages:(MTLRenderStages)]
@@ -216,10 +239,29 @@ void MetalRenderCmdEnc::SetGraphicsResourceSet(
 }
 
 void MetalRenderCmdEnc::SetGraphicsMutableResourceSet(
-    const common::sp<IMutableResourceSet>&
+    const common::sp<IMutableResourceSet>& rs
 ) {
-    throw std::runtime_error(
-        "Metal mutable ResourceSet binding is not implemented yet.");
+    assert(_drawResources.boundPipeline != nullptr);
+
+    @autoreleasepool {
+        resources.insert(rs);
+
+        auto mtlRS = common::PtrCast<MetalMutableResourceSet>(rs.get());
+
+        auto usedRes = mtlRS->GetUseResources();
+        if(!usedRes.empty()) {
+            [_mtlEnc useResources:usedRes.data()
+                            count:usedRes.size()
+                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
+                           stages:MTLRenderStageVertex | MTLRenderStageFragment
+            ];
+        }
+
+        SetRootArgumentBufferHeaps(
+            _drawResources.argBuffer,
+            mtlRS->GetShaderResHeapGPUVA(),
+            mtlRS->GetSamplerHeapGPUVA());
+    }
 }
 
 
@@ -260,7 +302,7 @@ void MetalRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport) {
 }
 
 void MetalRenderCmdEnc::SetFullViewport() {
-    
+
     Viewport vp[1];
     bool vpIsSet = false;
 
@@ -277,15 +319,15 @@ void MetalRenderCmdEnc::SetFullViewport() {
         vpIsSet = true;
     };
 
-    for(auto& rt : _fb.colorTargetActions) {
+    for(auto& rt : _actions.colorTargetActions) {
         auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
         _SetVP(texDesc);
         break;
     }
 
     if(!vpIsSet) {
-        if(_fb.depthTargetAction) {
-            auto& dt = _fb.depthTargetAction.value();
+        if(_actions.depthTargetAction) {
+            auto& dt = _actions.depthTargetAction.value();
             auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             vpIsSet = true;
@@ -293,14 +335,14 @@ void MetalRenderCmdEnc::SetFullViewport() {
     }
 
     if(!vpIsSet) {
-        if(_fb.stencilTargetAction) {
-            auto& st = _fb.stencilTargetAction.value();
+        if(_actions.stencilTargetAction) {
+            auto& st = _actions.stencilTargetAction.value();
             auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             vpIsSet = true;
         }
     }
-    
+
     assert(vpIsSet && "Pass with no render / depth / stencil targets!");
 
     SetViewports(vp);
@@ -338,31 +380,31 @@ void MetalRenderCmdEnc::SetFullScissorRect() {
         srIsSet = true;
     };
 
-    for(auto& rt : _fb.colorTargetActions) {
+    for(auto& rt : _actions.colorTargetActions) {
         auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
         _SetSR(texDesc);
         break;
     }
 
     if(!srIsSet) {
-        if(_fb.depthTargetAction) {
-            auto& dt = _fb.depthTargetAction.value();
+        if(_actions.depthTargetAction) {
+            auto& dt = _actions.depthTargetAction.value();
             auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
             _SetSR(texDesc);
         }
     }
 
     if(!srIsSet) {
-        if(_fb.stencilTargetAction) {
-            auto& st = _fb.stencilTargetAction.value();
+        if(_actions.stencilTargetAction) {
+            auto& st = _actions.stencilTargetAction.value();
             auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
             _SetSR(texDesc);
         }
     }
 
     assert(srIsSet && "Pass with no render / depth / stencil targets!");
-    
-    SetScissorRects(rects);
+
+    SetScissorRects(sr);
 }
 
 void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
@@ -528,24 +570,17 @@ void MetalRenderCmdEnc::DrawIndexed(
             auto mtlRS = common::PtrCast<MetalResourceSet>(rs.get());
 
             auto usedRes = mtlRS->GetUseResources();
-            [_mtlEnc useResources:usedRes.data()
-                        count:usedRes.size()
-                        usage:MTLResourceUsageRead | MTLResourceUsageWrite
-            ];
-
-            auto layout = _compResources.boundPipeline->GetPipelineLayout();
-
-            auto pHeap =(uint64_t*)_compResources.argBuffer.data();
-            auto shResVA = mtlRS->GetShaderResHeapGPUVA();
-            auto sampVA = mtlRS->GetSamplerHeapGPUVA();
-            if(shResVA) {
-                *pHeap = shResVA;
-                pHeap++;
+            if(!usedRes.empty()) {
+                [_mtlEnc useResources:usedRes.data()
+                            count:usedRes.size()
+                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
+                ];
             }
-            if(sampVA) {
-                *pHeap = sampVA;
-                pHeap++;
-            }
+
+            SetRootArgumentBufferHeaps(
+                _compResources.argBuffer,
+                mtlRS->GetShaderResHeapGPUVA(),
+                mtlRS->GetSamplerHeapGPUVA());
 
             //[_mtlEnc useResource:sampler usage:MTLResourceUsageRead];
             //[_mtlEnc useResources:(id<MTLResource>  _Nonnull const * _Nonnull) count:(NSUInteger) usage:(MTLResourceUsage) stages:(MTLRenderStages)]
@@ -556,10 +591,28 @@ void MetalRenderCmdEnc::DrawIndexed(
     }
 
     void MetalComputeCmdEnc::SetComputeMutableResourceSet(
-        const common::sp<IMutableResourceSet>&
+        const common::sp<IMutableResourceSet>& rs
     ) {
-        throw std::runtime_error(
-            "Metal mutable ResourceSet binding is not implemented yet.");
+        assert(_compResources.boundPipeline != nullptr);
+
+        @autoreleasepool {
+            resources.insert(rs);
+
+            auto mtlRS = common::PtrCast<MetalMutableResourceSet>(rs.get());
+
+            auto usedRes = mtlRS->GetUseResources();
+            if(!usedRes.empty()) {
+                [_mtlEnc useResources:usedRes.data()
+                            count:usedRes.size()
+                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
+                ];
+            }
+
+            SetRootArgumentBufferHeaps(
+                _compResources.argBuffer,
+                mtlRS->GetShaderResHeapGPUVA(),
+                mtlRS->GetSamplerHeapGPUVA());
+        }
     }
 
     void MetalComputeCmdEnc::SetPushConstants(
