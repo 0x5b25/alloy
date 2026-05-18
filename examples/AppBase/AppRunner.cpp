@@ -243,6 +243,11 @@ int AppRunner::Run(IApp* pUserApp) {
         _dev->PresentToSwapChain(_swapChain.get());
     }
 
+    // Clear the strong ref to command list to
+    // safely release resources
+    _dev->WaitForIdle();
+    _submission = nullptr;
+
     return pUserApp->GetExitCode();
 }
 
@@ -356,7 +361,7 @@ void AppRunner::TearDownImGui() {
 }
 
 void AppRunner::TearDownAlloyEnv() {
-    _dev->WaitForIdle();
+
 }
 
 

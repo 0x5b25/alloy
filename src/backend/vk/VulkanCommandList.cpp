@@ -94,18 +94,43 @@ namespace alloy::vk{
             //This is a first time use
             firstState.textures.insert({ tex, state });
         }
+        else {
+            // Per-aspect checks also needed
+            auto& firstStateEntry = res->second;
 
-        auto& currState = lastState.textures[tex];
+            if ((state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) &&
+                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_COLOR_BIT)
+            ) {
+                firstStateEntry.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
+                firstStateEntry.color = state.color;
+            }
 
-        currState.aspects |= state.aspects;
+            if ((state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) &&
+                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_DEPTH_BIT)
+                ) {
+                firstStateEntry.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+                firstStateEntry.depth = state.depth;
+            }
+
+            if ((state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) &&
+                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_STENCIL_BIT)
+                ) {
+                firstStateEntry.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+                firstStateEntry.stencil = state.stencil;
+            }
+        }
+
+        auto& lastStateEntry = lastState.textures[tex];
+
+        lastStateEntry.aspects |= state.aspects;
         if(state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
-            currState.color = state.color;
+            lastStateEntry.color = state.color;
         }
         if(state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-            currState.depth = state.depth;
+            lastStateEntry.depth = state.depth;
         }
         if(state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-            currState.stencil = state.stencil;
+            lastStateEntry.stencil = state.stencil;
         }
     }
 
