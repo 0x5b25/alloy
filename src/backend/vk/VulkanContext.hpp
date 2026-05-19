@@ -27,12 +27,14 @@ namespace alloy::vk
         VkPhysicalDeviceVulkan12Properties properties12;
         VkPhysicalDeviceVulkan13Properties properties13;
         VkPhysicalDeviceVulkan14Properties properties14;
+        VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProperties;
 
         VkPhysicalDeviceFeatures features;
         VkPhysicalDeviceVulkan11Features features11;
         VkPhysicalDeviceVulkan12Features features12;
         VkPhysicalDeviceVulkan13Features features13;
         VkPhysicalDeviceVulkan14Features features14;
+        VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures;
 
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
 
@@ -53,6 +55,10 @@ namespace alloy::vk
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
         bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::Legacy; }
+        bool SupportDescriptorBuffer() const {
+            return descriptorBufferFeatures.descriptorBuffer != 0 &&
+                   features12.bufferDeviceAddress != 0;
+        }
         bool SupportDescriptorIndexing() const {
             return features12.descriptorIndexing &&
                    features12.descriptorBindingPartiallyBound &&

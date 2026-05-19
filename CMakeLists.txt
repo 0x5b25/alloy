@@ -30,6 +30,7 @@ set(VLD_MISC_SRCS
 set(VLD_IFACE_HEADERS
     "include/alloy/alloy.hpp"
     "include/alloy/Context.hpp"
+    "include/alloy/DescriptorHeap.hpp"
     "include/alloy/RenderPass.hpp"
     "include/alloy/CommandQueue.hpp"
     "include/alloy/Buffer.hpp"

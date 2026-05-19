@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Context.hpp"
+#include "DescriptorHeap.hpp"
 #include "RenderPass.hpp"
 #include "CommandQueue.hpp"
 #include "Buffer.hpp"

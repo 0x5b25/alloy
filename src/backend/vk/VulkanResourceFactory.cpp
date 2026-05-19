@@ -10,6 +10,7 @@
 #include "VulkanTexture.hpp"
 #include "VulkanShader.hpp"
 #include "VulkanBindableResource.hpp"
+#include "VulkanDescriptorHeap.hpp"
 #include "VulkanSwapChain.hpp"
 #include "VulkanFramebuffer.hpp"
 
@@ -40,6 +41,18 @@ namespace alloy::vk
         const IMutableResourceSet::Description& description
     ) {
         return VulkanMutableResourceSet::Make(_CreateNewDevHandle(), description);
+    }
+
+    common::sp<IResourceDescriptorHeap> VulkanResourceFactory::CreateResourceDescriptorHeap(
+        const IResourceDescriptorHeap::Description& description
+    ) {
+        return VulkanResourceDescriptorHeap::Make(_CreateNewDevHandle(), description);
+    }
+
+    common::sp<ISamplerDescriptorHeap> VulkanResourceFactory::CreateSamplerDescriptorHeap(
+        const ISamplerDescriptorHeap::Description& description
+    ) {
+        return VulkanSamplerDescriptorHeap::Make(_CreateNewDevHandle(), description);
     }
 
     common::sp<VulkanDevice> VulkanResourceFactory::_CreateNewDevHandle(){

@@ -13,6 +13,7 @@
 #include "alloy/Shader.hpp"
 #include "alloy/CommandList.hpp"
 #include "alloy/BindableResource.hpp"
+#include "alloy/DescriptorHeap.hpp"
 #include "alloy/SyncObjects.hpp"
 #include "alloy/SwapChain.hpp"
 
@@ -42,6 +43,12 @@ namespace alloy
 
         virtual common::sp<IMutableResourceSet> CreateMutableResourceSet(
             const IMutableResourceSet::Description& description) = 0;
+
+        virtual common::sp<IResourceDescriptorHeap> CreateResourceDescriptorHeap(
+            const IResourceDescriptorHeap::Description& description) { return nullptr; }
+
+        virtual common::sp<ISamplerDescriptorHeap> CreateSamplerDescriptorHeap(
+            const ISamplerDescriptorHeap::Description& description) { return nullptr; }
 
         virtual common::sp<IShader> CreateShader(
             const IShader::Description& description,

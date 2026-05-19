@@ -40,6 +40,12 @@ namespace alloy::vk{
         common::sp<IMutableResourceSet> CreateMutableResourceSet(
             const IMutableResourceSet::Description& description) override;
 
+        common::sp<IResourceDescriptorHeap> CreateResourceDescriptorHeap(
+            const IResourceDescriptorHeap::Description& description) override;
+
+        common::sp<ISamplerDescriptorHeap> CreateSamplerDescriptorHeap(
+            const ISamplerDescriptorHeap::Description& description) override;
+
         common::sp<IGfxPipeline> CreateGraphicsPipeline(
             const GraphicsPipelineDescription& description) override;
         

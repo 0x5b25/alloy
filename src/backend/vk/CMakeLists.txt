@@ -34,6 +34,8 @@ set(VLD_BACKEND_VK_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/VulkanDevice.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanResourceFactory.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanResourceFactory.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/VulkanDescriptorHeap.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/VulkanDescriptorHeap.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanTexture.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/VulkanFramebuffer.cpp"

@@ -79,9 +79,13 @@ T2 is the full bindless target.
   GPU records.
 - The backend exposes standalone descriptor heap/table allocation.
 - Descriptor handles become incrementable or index-like values.
-- Vulkan requires `VK_EXT_descriptor_buffer` for T2.
-- Vulkan does not provide a T2 fallback without `VK_EXT_descriptor_buffer`; descriptor-indexing
-  global arrays remain a T1 engine convention.
+- Vulkan's baseline T2 path maps the heap ABI to descriptor-indexing-backed typed global
+  arrays, because Vulkan descriptor layouts remain typed even when descriptor buffers are
+  available.
+- Vulkan can optionally use `VK_EXT_descriptor_buffer` for descriptor storage and binding, but
+  it must still honor `VkDescriptorSetLayout` packing, descriptor sizes, and binding offsets.
+- Vulkan should leave room for `VK_EXT_mutable_descriptor_type` as a higher-fidelity resource
+  heap path where support is available.
 - DX12 maps to native shader-visible descriptor heaps.
 - Metal maps to argument buffer table storage.
 
@@ -232,7 +236,7 @@ bound heaps.
 
 T2 does not remove the top-level resource layout. The layout still owns the backend binding
 ABI: the DX12 root signature, the Vulkan pipeline layout, and Metal's first-level argument
-buffer or root signature. A T2-capable layout may combine ordinary bindful slots with global
+buffer layout AKA `IRRootSignature`. A T2-capable layout may combine ordinary bindful slots with global
 descriptor heap access.
 
 Bindful resources remain declared in `IResourceLayout::Description::shaderResources`.
@@ -331,12 +335,25 @@ DX12:
 
 Vulkan:
 
-- Require `VK_EXT_descriptor_buffer`; without it the Vulkan backend must not advertise T2.
-- Descriptor writes materialize backend descriptor bytes and copy them into descriptor-buffer
-  storage.
-- Command encoding binds descriptor buffers and offsets for the resource and sampler heaps.
-- Descriptor-indexing-backed global arrays remain a valid T1 engine strategy, but they are
-  not part of the Alloy T2 contract.
+- Vulkan cannot pull global heap bindings out of thin air. T2 pipelines still need a
+  `VkPipelineLayout` containing backend-owned descriptor set layouts for the global heap ABI.
+- Baseline Vulkan T2 should reserve typed global heap sets or bindings for storage buffers,
+  sampled images, storage images, and samplers. `dxil-spirv` can fold CBV/uniform-buffer heap
+  access into the storage-buffer path when configured that way.
+- Descriptor heap creation allocates descriptor storage for those typed arrays. Implementations
+  may use fixed descriptor counts, variable descriptor count sets, or descriptor buffers behind
+  the same Alloy heap object.
+- `VK_EXT_descriptor_buffer` is an optional implementation strategy, not the baseline T2
+  requirement. It removes descriptor pool/set allocation from the hot path, but descriptor bytes
+  are still laid out according to `VkDescriptorSetLayout`; `vkGetDescriptorSetLayoutSizeEXT`
+  and `vkGetDescriptorSetLayoutBindingOffsetEXT` remain part of the contract.
+- `VK_EXT_mutable_descriptor_type` should remain an explicit future path. Current planning
+  data has it at roughly 81% coverage for Vulkan 1.2+ Linux devices and roughly 62% coverage
+  on Windows, which is high enough to matter on platforms where Vulkan is primary. If used,
+  it may reduce the number of typed heap sets or better approximate a D3D12-style resource
+  heap, but it must not be required for baseline T2.
+- Command encoding binds the currently active resource and sampler heaps by binding the backend
+  descriptor sets or descriptor-buffer offsets associated with those typed arrays.
 
 Metal:
 
@@ -350,8 +367,12 @@ Metal:
 `ResourceBindingModel::DescriptorHeap` should be advertised only when the backend implements
 the complete T2 contract: resource and sampler descriptor heap creation, allocation, writes,
 command binding, pipeline heap ABI selection, and shader remapping. A backend should not
-report T2 merely because the native API has one relevant feature bit. For Vulkan, the
-required feature is specifically `VK_EXT_descriptor_buffer`; descriptor indexing alone is T1.
+report T2 merely because the native API has one relevant feature bit. For Vulkan, descriptor
+indexing alone is not enough unless the backend also implements the Alloy heap ABI: reserved
+global heap layouts, heap object creation, heap binding, update-after-bind semantics, and
+shader remapping from `ResourceDescriptorHeap[]` / `SamplerDescriptorHeap[]` to the backend
+typed arrays. `VK_EXT_descriptor_buffer` and `VK_EXT_mutable_descriptor_type` are optional
+implementation paths, not standalone capability signals.
 
 Adapter limits should grow explicit heap limits before the API lands:
 
@@ -384,6 +405,11 @@ case.
   descriptors, and direct buffer bindings that do not consume shader-visible heap state.
 - Whether T1 and T2 renderer descriptor managers can share one lifetime/retirement policy
   while keeping separate shader-access frontend code.
+- Whether Vulkan should default to four typed global heap sets, a smaller number of sets with
+  multiple typed bindings, or a `VK_EXT_mutable_descriptor_type` path when that extension is
+  available.
+- Whether Vulkan should use `VK_EXT_descriptor_buffer` only as an optimization after the
+  descriptor-indexing typed-array baseline is working.
 
 ## T1 Public API Direction
 

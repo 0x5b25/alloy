@@ -226,6 +226,12 @@ bool Contains(T&& container, U&& element) {
             //Enable the descriptor buffer
             if(devCaps.resourceBindingModel == VulkanDevCaps::ResourceBindingModel::DescriptorBuffer) {
                 devExtensions.push_back(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+                features12.bufferDeviceAddress = true;
+
+                auto& descriptorBufferFeatures
+                    = featureStructs.Append<VkPhysicalDeviceDescriptorBufferFeaturesEXT,
+                                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT>();
+                descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
             }
         }
 
@@ -363,6 +369,9 @@ bool Contains(T&& container, U&& element) {
         allocatorInfo.physicalDevice = adp->GetHandle();
         allocatorInfo.device = dev->_dev;
         allocatorInfo.instance = adp->GetCtx().GetHandle();
+        if (devCaps.resourceBindingModel == VulkanDevCaps::ResourceBindingModel::DescriptorBuffer) {
+            allocatorInfo.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        }
 
         VmaVulkanFunctions fn{};
         fn.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
@@ -582,6 +591,13 @@ bool Contains(T&& container, U&& element) {
             || (desc.usage.structuredBufferReadOnly))
         {
             usages |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+        if (dev->GetDevCaps().resourceBindingModel == VulkanDevCaps::ResourceBindingModel::DescriptorBuffer &&
+            (desc.usage.uniformBuffer ||
+             desc.usage.structuredBufferReadOnly ||
+             desc.usage.structuredBufferReadWrite))
+        {
+            usages |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         }
         if ((desc.usage.indirectBuffer))
         {
