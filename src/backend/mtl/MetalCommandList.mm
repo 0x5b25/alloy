@@ -267,7 +267,7 @@ void MetalRenderCmdEnc::SetGraphicsMutableResourceSet(
 
 void MetalRenderCmdEnc::SetPushConstants(
     std::uint32_t pushConstantIndex,
-    const std::span<uint32_t>& data,
+    std::span<const uint32_t> data,
     std::uint32_t destOffsetIn32BitValues
 ) {
     @autoreleasepool {
@@ -282,7 +282,7 @@ void MetalRenderCmdEnc::SetPushConstants(
     }
 }
 
-void MetalRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport) {
+void MetalRenderCmdEnc::SetViewports(std::span<const Viewport> viewport) {
     @autoreleasepool {
         std::vector<MTLViewport> mtlVps { };
         mtlVps.reserve(viewport.size());
@@ -349,7 +349,7 @@ void MetalRenderCmdEnc::SetFullViewport() {
 }
 
 
-void MetalRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects) {
+void MetalRenderCmdEnc::SetScissorRects(std::span<const Rect>& rects) {
 
     std::vector<MTLScissorRect> mtlRects { };
     mtlRects.reserve(rects.size());
@@ -617,7 +617,7 @@ void MetalRenderCmdEnc::DrawIndexed(
 
     void MetalComputeCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
+        std::span<const uint32_t> data,
         std::uint32_t destOffsetIn32BitValues
     ) {
         @autoreleasepool {
@@ -902,7 +902,7 @@ void MetalTransferCmdEnc::CopyBuffer(
         const common::sp<BufferRange>& source,
         std::uint32_t sourceBytesPerRow,
         std::uint32_t sourceBytesPerImage,
-        const common::sp<ITexture>& destination,
+        const common::sp<ITextureView>& destination,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
@@ -929,7 +929,7 @@ void MetalTransferCmdEnc::CopyBuffer(
     }
 
     void MetalTransferCmdEnc::CopyTextureToBuffer(
-        const common::sp<ITexture>& source,
+        const common::sp<ITextureView>& source,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
@@ -974,11 +974,11 @@ void MetalTransferCmdEnc::CopyBuffer(
         /// <param name="depth">The depth in texels of the copy region.</param>
         /// <param name="layerCount">The number of array layers to copy.</param>
     void MetalTransferCmdEnc::CopyTexture(
-        const common::sp<ITexture>& source,
+        const common::sp<ITextureView>& source,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
-        const common::sp<ITexture>& destination,
+        const common::sp<ITextureView>& destination,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,

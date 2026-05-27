@@ -76,118 +76,106 @@
 namespace alloy
 {
     enum class PipelineStage {
-        //Umberlla stages
-        All,
-        Draw,
-        NonPixelShading,
-        AllShading,
-        //Per stage
-        //TopOfPipe,
-        //BottomOfPipe,
-        INPUT_ASSEMBLER,
-        VERTEX_SHADING,
-        PIXEL_SHADING,
-        DEPTH_STENCIL,
-        RENDER_TARGET,
-        COMPUTE_SHADING,
-        RAYTRACING,
-        COPY,
-        RESOLVE,
-        EXECUTE_INDIRECT,
-        EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO,
-        BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-        COPY_RAYTRACING_ACCELERATION_STRUCTURE,
-        //SPLIT, //used in pairs, indicates sync across commandlists
+        // Umbrella scopes / coarse aliases.
+        AllCommands,
+        AllGraphics,
+        AllShaders,
+
+        // Common explicit stages.
+        DrawIndirect,
+        VertexInput,
+        VertexShader,
+        MeshShader,
+        FragmentShader,
+        DepthStencil,
+        ColorOutput,
+        ComputeShader,
+        RayTracing,
+        Copy,
+        BuildAS,
 
         ALLOY_BITFLAG_MAX,
 
-        None
+        // Not a bit flag. Use an empty PipelineStages mask for "no stages".
+        //None
     };
 
     enum class ResourceAccess {
-        COMMON,
-        VERTEX_BUFFER,
-        CONSTANT_BUFFER,
-        INDEX_BUFFER,
-        RENDER_TARGET,
-        UNORDERED_ACCESS,
-        DepthStencilWritable,
-        DepthStencilReadOnly,
-        SHADER_RESOURCE,
-        STREAM_OUTPUT,
-        INDIRECT_ARGUMENT,
-        
-        COPY_DEST,
-        COPY_SOURCE,
-        RESOLVE_DEST,
-        RESOLVE_SOURCE,
-        RAYTRACING_ACCELERATION_STRUCTURE_READ,
-        RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
-        SHADING_RATE_SOURCE,
+        IndirectArgumentRead,
+        VertexBufferRead,
+        IndexBufferRead,
+        ConstantBufferRead,
+
+        ShaderResourceRead,
+        UnorderedAccess,
+
+        RenderTarget,
+        DepthStencilRead,
+        DepthStencilWrite,
+
+        CopySource,
+        CopyDest,
+
+        AccelerationStructureRead,
+        AccelerationStructureWrite,
+
+        Present,
 
         ALLOY_BITFLAG_MAX,
-        ///#TODO:TBD for indirect draw/dispatch
-        None,
-        PREDICATION = INDIRECT_ARGUMENT,
+
+        // Not a bit flag. Use an empty ResourceAccesses mask for "no access".
+        //None
 
     };
 
 
     enum class TextureLayout {
-        COMMON = 0,
-        PRESENT,
-        COMMON_READ,
-        RENDER_TARGET,
-        UNORDERED_ACCESS,
-        DEPTH_STENCIL_WRITE,
-        DEPTH_STENCIL_READ,
-        SHADER_RESOURCE,
-        COPY_SOURCE,
-        COPY_DEST,
-        RESOLVE_SOURCE,
-        RESOLVE_DEST,
-        SHADING_RATE_SOURCE,
-        
-        UNDEFINED	/*= 0xffffffff*/,
+        Undefined,
+        General,
+        ShaderReadOnly,
+        Storage,
+        ColorAttachment,
+        DepthStencilReadOnly,
+        DepthStencilWrite,
+        CopySource,
+        CopyDest,
+        ResolveSource,
+        ResolveDest,
+        Present,
     };
 
 
     using PipelineStages = common::BitFlags<PipelineStage>;
+    using PipelineStageMask = PipelineStages;
 
     using ResourceAccesses = common::BitFlags<ResourceAccess>;
+    using ResourceAccessMask = ResourceAccesses;
 
-    struct MemoryBarrierDescription {
-        //Sync stages
-        PipelineStages stagesBefore;
-        PipelineStages stagesAfter;
-        //Resource access
-        ResourceAccesses accessBefore;
-        ResourceAccesses accessAfter;
+    struct ResourceState {
+        PipelineStageMask stages;
+        ResourceAccessMask access;
     };
 
-    struct MemoryBarrierResource {};
+    struct TextureState {
+        PipelineStageMask stages;
+        ResourceAccessMask access;
+        TextureLayout layout;
+    };
+
+    struct BufferBarrierOp {
+        common::sp<alloy::BufferRange> buffer; //#TODO: Use BufferRange
+        ResourceState from;
+        ResourceState to;
+    };
+
+    struct TextureBarrierOp {
+        common::sp<ITextureView> texture;
+        TextureState from;
+        TextureState to;
+    };
+
+    using BarrierOp = std::variant<BufferBarrierOp, TextureBarrierOp>;
     
-    struct BufferBarrierResource {
-        common::sp<alloy::IBuffer> resource;
-    };
-
-    struct TextureBarrierResource {
-        TextureLayout fromLayout;
-        TextureLayout toLayout;
-        common::sp<ITexture> resource;
-    };
-
-    struct BarrierDescription {
-        MemoryBarrierDescription memBarrier;
-
-        std::variant< MemoryBarrierResource,
-                       BufferBarrierResource,
-                       TextureBarrierResource> resourceInfo;
-
-    };
-    
-
-
 } // namespace alloy
 
 

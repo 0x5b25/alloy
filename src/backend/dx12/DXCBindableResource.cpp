@@ -481,9 +481,9 @@ namespace alloy::dxc
                     switch (slotDesc.kind)
                     {
                     case IBindableResource::ResourceKind::UniformBuffer : {
-                        auto* range = PtrCast<BufferRange>(elem.get());
-                        auto* rangedDXCBuffer =
-                            static_cast<const DXCBuffer*>(range->GetBufferObject());
+                        const auto* range = PtrCast<BufferRange>(elem.get());
+                        const auto* rangedDXCBuffer =
+                            PtrCast<DXCBuffer>(range->GetBufferObject().get());
 
                         auto baseGPUAddr = rangedDXCBuffer->GetHandle()->GetGPUVirtualAddress();
                         auto byteCnt = range->GetShape().GetSizeInBytes();
@@ -507,7 +507,7 @@ namespace alloy::dxc
                             if(slotDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
                                 auto* range = PtrCast<BufferRange>(elem.get());
                                 auto* rangedDXCBuffer =
-                                    static_cast<const DXCBuffer*>(range->GetBufferObject());
+                                    PtrCast<DXCBuffer>(range->GetBufferObject().get());
                                 auto& shape = range->GetShape();
 
                                 uavDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -518,8 +518,8 @@ namespace alloy::dxc
 
                                 pRes = rangedDXCBuffer->GetHandle();
                             } else {
-                                auto* texView = PtrCast<ITextureView>(elem.get());
-                                auto* dxcTex =
+                                const auto* texView = PtrCast<ITextureView>(elem.get());
+                                const auto* dxcTex =
                                     PtrCast<DXCTexture>(texView->GetTextureObject().get());
                                 auto& texDesc = dxcTex->GetDesc();
                                 auto& viewDesc = texView->GetDesc();
@@ -577,9 +577,9 @@ namespace alloy::dxc
                             ID3D12Resource* pRes;
 
                             if(slotDesc.kind == IBindableResource::ResourceKind::StorageBuffer) {
-                                auto* range = PtrCast<BufferRange>(elem.get());
-                                auto* rangedDXCBuffer =
-                                    static_cast<const DXCBuffer*>(range->GetBufferObject());
+                                const auto* range = PtrCast<BufferRange>(elem.get());
+                                const auto* rangedDXCBuffer =
+                                    PtrCast<DXCBuffer>(range->GetBufferObject().get());
                                 auto& shape = range->GetShape();
 
                                 srvDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -702,6 +702,16 @@ namespace alloy::dxc
                                 + i ] = write.resources[i];
             }
         }
+    }
+
+    
+    IBindableResource* DXCResourceSetBase::GetBoundResource(
+        uint32_t layoutSlot,
+        uint32_t firstArrayElement
+    ) {
+        auto linearBase = _layout->GetSlotLocation(layoutSlot).linearResourceOffset;
+
+        return _boundResources[linearBase + firstArrayElement].get();
     }
 
 

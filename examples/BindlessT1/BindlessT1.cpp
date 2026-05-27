@@ -266,6 +266,7 @@ alloy::common::sp<alloy::ITextureView> BindlessT1::_CreateCheckerTexture(
 
     auto texture = factory.CreateTexture(texDesc);
     texture->SetDebugName(debugName);
+    auto texView = factory.CreateTextureView(texture);
 
     const auto uploadPitchSrc = texDesc.width * 4;
     const auto uploadPitchDst = (uploadPitchSrc + 256 - 1u) & ~(256 - 1u);
@@ -299,19 +300,54 @@ alloy::common::sp<alloy::ITextureView> BindlessT1::_CreateCheckerTexture(
 
     auto cmdList = dev->GetGfxCommandQueue()->CreateCommandList();
     cmdList->Begin();
+
+    alloy::BarrierOp barrier[1] = {{alloy::TextureBarrierOp{
+        .texture = texView,
+        .from = {
+            .stages = {},
+            .access = {},
+            .layout = alloy::TextureLayout::Undefined,
+        },
+        .to = {
+            .stages = alloy::PipelineStage::Copy,
+            .access = alloy::ResourceAccess::CopyDest,
+            .layout = alloy::TextureLayout::CopyDest,
+        }
+    }}};
+
+    cmdList->Barrier(barrier);
+
     auto& pass = cmdList->BeginTransferPass();
 
     pass.CopyBufferToTexture(
         uploadRange,
         uploadPitchDst,
         uploadBufferSize,
-        texture,
+        texView,
         {0, 0, 0},
         0,
         0,
         {texDesc.width, texDesc.height, 1});
 
     cmdList->EndPass();
+
+    
+    barrier[0] = {alloy::TextureBarrierOp{
+        .texture = texView,
+        .from = {
+            .stages = alloy::PipelineStage::Copy,
+            .access = alloy::ResourceAccess::CopyDest,
+            .layout = alloy::TextureLayout::CopyDest,
+        },
+        .to = {
+            .stages = alloy::PipelineStage::AllCommands,
+            .access = alloy::ResourceAccess::ShaderResourceRead,
+            .layout = alloy::TextureLayout::ShaderReadOnly,
+        }
+    }};
+
+    cmdList->Barrier(barrier);
+
     cmdList->End();
 
     dev->GetGfxCommandQueue()->SubmitCommand(cmdList.get());
@@ -373,7 +409,6 @@ void BindlessT1::_CreatePipeline() {
         elem.bindingCount = TextureCapacity;
         elem.kind = ElemKind::Texture;
         elem.stages = alloy::IShader::Stage::Fragment;
-        elem.options.descriptorArray = 1;
     }
 
     {

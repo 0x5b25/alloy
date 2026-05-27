@@ -50,7 +50,7 @@ public:
 };
 
 struct TexIDContainer {
-    common::sp<ITexture> texture;
+    common::sp<ITextureView> texture;
     common::sp<ISampler> sampler;
     common::sp<IResourceSet> resourceSet;
 };
@@ -557,22 +557,23 @@ void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
         auto cmd = gd->GetGfxCommandQueue()->CreateCommandList();
         cmd->Begin();
         {
-            alloy::BarrierDescription barrier{
-                .memBarrier = {
-                    .stagesBefore = alloy::PipelineStages{},
-                    .stagesAfter = alloy::PipelineStage::All,
-                    .accessBefore = alloy::ResourceAccesses{},
-                    .accessAfter = alloy::ResourceAccess::COMMON,
-                },
-
-                .resourceInfo = alloy::TextureBarrierResource {
-                    .fromLayout = alloy::TextureLayout::UNDEFINED,
-                    .toLayout = alloy::TextureLayout::COMMON,
-                    .resource = fontTex
+            auto fontTexView = gd->GetResourceFactory().CreateTextureView(fontTex);
+            alloy::BarrierOp barriers[] = {
+                alloy::TextureBarrierOp {
+                    .texture = fontTexView,
+                    .from = {
+                        .stages = alloy::PipelineStages{},
+                        .access = alloy::ResourceAccesses{},
+                        .layout = alloy::TextureLayout::Undefined,
+                    },
+                    .to = {
+                        .stages = alloy::PipelineStage::AllCommands,
+                        .access = alloy::ResourceAccesses{},
+                        .layout = alloy::TextureLayout::General,
+                    },
                 }
-                //.barriers = { texBarrier, dsBarrier }
             };
-            cmd->Barrier({barrier});
+            cmd->Barrier(barriers);
         }
 
         cmd->End();
@@ -601,22 +602,23 @@ void ImGuiAlloyBackend::_CreateFontsTexture(const ImGui_ImplAlloy_InitInfo&) {
         auto cmd = gd->GetGfxCommandQueue()->CreateCommandList();
         cmd->Begin();
         {
-            alloy::BarrierDescription barrier{
-                .memBarrier = {
-                    .stagesBefore = alloy::PipelineStage::All,
-                    .stagesAfter = alloy::PipelineStage::All,
-                    .accessBefore = alloy::ResourceAccess::COMMON,
-                    .accessAfter = alloy::ResourceAccess::SHADER_RESOURCE,
-                },
-
-                .resourceInfo = alloy::TextureBarrierResource {
-                    .fromLayout = alloy::TextureLayout::COMMON,
-                    .toLayout = alloy::TextureLayout::SHADER_RESOURCE,
-                    .resource = fontTex
+            auto fontTexView = gd->GetResourceFactory().CreateTextureView(fontTex);
+            alloy::BarrierOp barriers[] = {
+                alloy::TextureBarrierOp {
+                    .texture = fontTexView,
+                    .from = {
+                        .stages = alloy::PipelineStage::AllCommands,
+                        .access = alloy::ResourceAccesses{},
+                        .layout = alloy::TextureLayout::General,
+                    },
+                    .to = {
+                        .stages = alloy::PipelineStage::FragmentShader,
+                        .access = alloy::ResourceAccess::ShaderResourceRead,
+                        .layout = alloy::TextureLayout::ShaderReadOnly,
+                    },
                 }
-                //.barriers = { texBarrier, dsBarrier }
             };
-            cmd->Barrier({barrier});
+            cmd->Barrier(barriers);
         }
         cmd->End();
         //submit and wait
@@ -673,8 +675,13 @@ void ImGuiAlloyBackend::_CreateDeviceObjects(const ImGui_ImplAlloy_InitInfo& ini
 }
 
 void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
+    // Decide how we insert the update barriers.
+    // First time: undefined->copy_dest, copy_dest->shader_resource
+    // Subsequent: shader_resource->copy_dest, copy_dest->shader_resource
+    bool isFirstTimeUpdate = false;
     switch (tex->Status) {
     case ImTextureStatus_WantCreate: {
+        isFirstTimeUpdate = true;
         // Create texture based on tex->Width, tex->Height.
         // - Most backends only support tex->Format == ImTextureFormat_RGBA32.
         // - Backends for particularly memory constrained platforms may support tex->Format == ImTextureFormat_Alpha8.
@@ -688,7 +695,7 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         IM_ASSERT(tex->TexID == ImTextureID_Invalid && tex->BackendUserData == nullptr);
         IM_ASSERT(tex->Format == ImTextureFormat_RGBA32);
 
-        common::sp<ITexture> fontTex;
+        common::sp<ITextureView> fontTexView;
         {
             ITexture::Description desc {};
 
@@ -703,8 +710,10 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
             desc.usage.sampled = 1;
             desc.format = alloy::PixelFormat::R8_G8_B8_A8_UNorm;
 
-            fontTex = gd->GetResourceFactory().CreateTexture(desc);
+            auto fontTex = gd->GetResourceFactory().CreateTexture(desc);
             fontTex->SetDebugName("ImGUI text atlas");
+
+            fontTexView = gd->GetResourceFactory().CreateTextureView(fontTex);
         }
 
         //Create sampler
@@ -733,14 +742,14 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
             rsDesc.layout = pipelineLayout;
             rsDesc.boundResources = {
                 //BufferRange::MakeByteBuffer(mvpBuffer),
-                gd->GetResourceFactory().CreateTextureView(fontTex),
+                fontTexView,
                 samp
             };
 
             auto resSet = gd->GetResourceFactory().CreateResourceSet(rsDesc);
 
             auto pContainer = new TexIDContainer {
-                .texture = fontTex,
+                .texture = fontTexView,
                 .sampler = samp,
                 .resourceSet = resSet,
             };
@@ -800,6 +809,25 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
         auto cmdQ = gd->GetGfxCommandQueue();
         auto cmdList = cmdQ->CreateCommandList();
         cmdList->Begin();
+
+        alloy::BarrierOp barrier[1] = {alloy::TextureBarrierOp{
+            .texture = pAlloyTex,
+            .from = {
+                .stages = alloy::PipelineStage::AllCommands,
+                .access = {},
+                .layout = isFirstTimeUpdate?
+                    alloy::TextureLayout::Undefined :
+                    alloy::TextureLayout::ShaderReadOnly,
+            },
+            .to = {
+                .stages = alloy::PipelineStage::Copy,
+                .access = alloy::ResourceAccess::CopyDest,
+                .layout = alloy::TextureLayout::CopyDest,
+            },
+        }};
+
+        cmdList->Barrier(barrier);
+
         auto& pass = cmdList->BeginTransferPass();
 
         pass.CopyBufferToTexture(
@@ -807,6 +835,22 @@ void ImGuiAlloyBackend::_UpdateTexture(ImTextureData* tex) {
             pAlloyTex, {upload_x, upload_y, 0}, 0, 0,
             {upload_w, upload_h, 1}
         );
+
+        barrier[0] = alloy::TextureBarrierOp{
+            .texture = pAlloyTex,
+            .from = {
+                .stages = alloy::PipelineStage::Copy,
+                .access = alloy::ResourceAccess::CopyDest,
+                .layout = alloy::TextureLayout::CopyDest,
+            },
+            .to = {
+                .stages = alloy::PipelineStage::AllCommands,
+                .access = alloy::ResourceAccess::ShaderResourceRead,
+                .layout = alloy::TextureLayout::ShaderReadOnly,
+            }
+        };
+
+        cmdList->Barrier(barrier);
 
         cmdList->EndPass();
         cmdList->End();

@@ -577,6 +577,20 @@ namespace alloy
             }
         }
 
+        
+        ITextureView::Aspect GetAspectFromPixelFormat(const PixelFormat& format) {
+            if(IsDepthStencilFormat(format)) {
+                if(IsStencilFormat(format)) {
+                    return ITextureView::Aspect::DepthStencil;
+                }
+
+                return ITextureView::Aspect::Depth;
+            } else {
+                return ITextureView::Aspect::Color;
+            }
+
+        }
+
     }
 } // namespace Veldrid::Helpers
 

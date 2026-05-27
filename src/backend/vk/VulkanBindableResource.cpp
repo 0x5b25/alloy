@@ -35,17 +35,20 @@ namespace alloy::vk
     }
 
     VulkanResourceLayout::~VulkanResourceLayout(){
-        for(auto& b : _bindings)
-            for (const auto& info : b.sets) {
-                VK_DEV_CALL(_dev, 
-                    vkDestroyDescriptorSetLayout(_dev->LogicalDev(), info.layout, nullptr));
-            }
+        for(auto& s : _sets)
+            VK_DEV_CALL(_dev, 
+                vkDestroyDescriptorSetLayout(_dev->LogicalDev(), s.layout, nullptr));
     }
     
     common::sp<IResourceLayout> VulkanResourceLayout::Make(
         const common::sp<VulkanDevice>& dev,
         const Description& desc
     ){
+        
+        const bool useDescriptorIndexing =
+                    dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                        != ResourceBindingModel::FixedBindings;
+
         std::vector<PushConstantInfo> pushConstants;
         uint32_t pushConstantSize = 0;
 
@@ -60,198 +63,113 @@ namespace alloy::vk
         }
 
         auto& elements = desc.shaderResources;
-
-        //Count the set numbers for each descriptor types
         
-        //Register bind info for each kind separately
-        std::vector<ResourceBindInfo> resBindings;
-        
-        //Sort the elements and build the mapping info
-        for(uint32_t i = 0; i < elements.size(); i++) {
-            auto& e = elements[i];
+        std::vector<ResourceSetInfo> sets;
+        std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
+        // Also builds the 
+        // desc.shaderResources -> ResSet::Desc.boundResources index mapping 
+        {
+            uint32_t linearBase = 0;
+            for(uint32_t i = 0; i < elements.size(); i++) {
+                const auto& e = elements[i];
+                auto vkType = VdToVkDescriptorType(e.kind, e.options);
 
-            VulkanResourceLayout::BindType bindType;
-
-            switch (e.kind)
-            {
-            case IBindableResource::ResourceKind::UniformBuffer : {
-                bindType = VulkanResourceLayout::BindType::UniformBuffer;
-            }break;
-            case IBindableResource::ResourceKind::StorageBuffer :
-            case IBindableResource::ResourceKind::Texture : {
-                if(e.options.writable)
-                    bindType = VulkanResourceLayout::BindType::ShaderResourceReadWrite;
-                else
-                    bindType = VulkanResourceLayout::BindType::ShaderResourceReadOnly;
-
-            }break;
-            case IBindableResource::ResourceKind::Sampler : {
-                bindType = VulkanResourceLayout::BindType::Sampler;
-            }break;
-            }
-
-
-            ResourceBindInfo* pBindInfo = nullptr;
-            for(auto& b : resBindings) {
-                if(bindType == b.type) { 
-                    pBindInfo = &b;
-                    break;
+                ResourceSetInfo* set = nullptr;
+                uint32_t setIdx = 0;
+                for(setIdx = 0; setIdx < sets.size(); ++setIdx) {
+                    if(sets[setIdx].type == vkType) {
+                        set = &sets[setIdx];
+                        break;
+                    }
                 }
-            }
 
-            if(!pBindInfo) {
-                pBindInfo = &resBindings.emplace_back(bindType);
-            }
-            
-            BindSetInfo* pSetInfo = nullptr;
-            for(auto& s : pBindInfo->sets) {
-                if(e.bindingSpace == s.regSpaceDesignated) { 
-                    pSetInfo = &s;
-                    break;
+                if(!set) {
+                    set = &sets.emplace_back();
+                    set->type = vkType;
                 }
+
+                auto bindingCnt = set->bindings.size();
+                auto& b = set->bindings.emplace_back();
+
+
+                slotLocations[i].setIndexAllocated = setIdx;
+                slotLocations[i].bindingAllocated = bindingCnt;
+                slotLocations[i].linearResourceOffset = linearBase;
+
+                b.regIdxDesignated = e.bindingSlot;
+                b.bindSlotAllocated = bindingCnt;
+                b.regSpaceDesignated = e.bindingSpace;
+                b.bindSetAllocated = setIdx;
+                b.indexInShaderResources = i;
+
+                set->elementCnt += e.bindingCount;
+                linearBase += e.bindingCount;
             }
-            if(!pSetInfo) {
-                pSetInfo = &pBindInfo->sets.emplace_back(e.bindingSpace);
-            }
-            
-            pSetInfo->elementIdInList.emplace_back(i);
         }
 
-        // In DX12, each resource types' register spaces are counted separately
-        // Alloy is following DX12 designs, but vulkan use shared register 
-        // space for all types. We flat them out here
-        uint32_t currentSetIdx = 0;
-        std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
+        // Create the layouts
+        for(uint32_t i = 0; i < sets.size(); i++) {
+            auto& s = sets[i];
 
-        const bool useDescriptorIndexing =
-                    dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-                        != ResourceBindingModel::FixedBindings;
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+                    bindings.reserve(s.bindings.size());
+            
+            std::vector<VkDescriptorBindingFlags> bindingFlags;
+                    bindingFlags.reserve(s.bindings.size());
 
-        for(auto& b : resBindings) {
-            b.baseSetIndex = currentSetIdx;
-            for(auto& s : b.sets) {
-                s.setIndexAllocated = currentSetIdx;
-                currentSetIdx++;
+            for(const auto& b : s.bindings) {
 
-                //std::vector<VkDescriptorType> _descriptorTypes;
-                //    _descriptorTypes.reserve(s.elementInfo.size());
-                std::vector<VkDescriptorSetLayoutBinding> bindings;
-                    bindings.reserve(s.elementIdInList.size());
-                std::vector<VkDescriptorBindingFlags> bindingFlags;
-                    bindingFlags.reserve(s.elementIdInList.size());
+                const auto& bindingDesc = desc.shaderResources[
+                    b.indexInShaderResources
+                ];
 
-                alloy::vk::DescriptorResourceCounts& drcs = s.resourceCounts;
-                //    .uniformBufferCount = uniformBufferCount,
-                //    .sampledImageCount = sampledImageCount,
-                //    .samplerCount = samplerCount,
-                //    .storageBufferCount = storageBufferCount,
-                //    .storageImageCount = storageImageCount,
-                //    .uniformBufferDynamicCount = uniformBufferDynamicCount,
-                //    .storageBufferDynamicCount = storageBufferDynamicCount
-                //};
+                assert(s.type ==
+                    VdToVkDescriptorType(bindingDesc.kind, bindingDesc.options));
 
-                //std::uint32_t uniformBufferCount = 0;
-                //std::uint32_t uniformBufferDynamicCount = 0;
-                //std::uint32_t sampledImageCount = 0;
-                //std::uint32_t samplerCount = 0;
-                //std::uint32_t storageBufferCount = 0;
-                //std::uint32_t storageBufferDynamicCount = 0;
-                //std::uint32_t storageImageCount = 0;
+                auto& binding = bindings.emplace_back();
+            
+                binding.binding = b.bindSlotAllocated;
+                binding.descriptorCount = bindingDesc.bindingCount;
+                binding.descriptorType = s.type;
+                binding.stageFlags = VdToVkShaderStages(bindingDesc.stages);
 
-                //unsigned dynamicBufferCount = 0;
 
-                for (auto& elemIdx : s.elementIdInList)
-                {
-                    auto& e = elements[elemIdx];
-                    if(e.options.descriptorArray &&
-                       dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-                           == ResourceBindingModel::FixedBindings)
-                    {
-                        throw std::runtime_error("Vulkan descriptor arrays require DescriptorIndexing support.");
-                    }
-
-                    auto& b = bindings.emplace_back();
-                    b.binding = e.bindingSlot;
-                    b.descriptorCount = e.bindingCount;
-                    VkDescriptorType descriptorType = VdToVkDescriptorType(e.kind, e.options);
-                    b.descriptorType = VdToVkDescriptorType(e.kind, e.options);
-                    b.stageFlags = VdToVkShaderStages(e.stages);
-                    slotLocations[elemIdx] = {
-                        .setIndexAllocated = s.setIndexAllocated,
-                        .binding = e.bindingSlot,
-                        .valid = true
-                    };
-
-                    VkDescriptorBindingFlags flags = 0;
-                    if(useDescriptorIndexing) {
-                        flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                                 VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-                        if(e.options.descriptorArray) {
-                            flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-                        }
-                    }
-                    bindingFlags.push_back(flags);
-                    //if (e.options.dynamicBinding) {
-                    //    s.dynamicBufferCount += 1;
-                    //}
-
-                    switch (descriptorType)
-                    {
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLER:
-                            drcs.samplerCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-                            drcs.sampledImageCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                            drcs.storageImageCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-                            drcs.uniformBufferCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                            drcs.uniformBufferDynamicCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-                            drcs.storageBufferCount += e.bindingCount;
-                            break;
-                        case VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-                            drcs.storageBufferDynamicCount += e.bindingCount;
-                            break;
-                    }
-                }
-
-                VkDescriptorSetLayoutCreateInfo dslCI{};
-                dslCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-                dslCI.bindingCount = bindings.size();
-                dslCI.pBindings = bindings.data();
+                VkDescriptorBindingFlags flags = 0;
                 if(useDescriptorIndexing) {
-                    dslCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                    flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
                 }
-
-                VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
-                if(useDescriptorIndexing)
-                {
-                    bindingFlagsCI.sType =
-                        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-                    bindingFlagsCI.bindingCount =
-                        static_cast<uint32_t>(bindingFlags.size());
-                    bindingFlagsCI.pBindingFlags = bindingFlags.data();
-                    dslCI.pNext = &bindingFlagsCI;
-                }
-
-                VK_CHECK(VK_DEV_CALL(dev, 
-                    vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
+                bindingFlags.push_back(flags);
             }
+
+            
+            VkDescriptorSetLayoutCreateInfo dslCI{};
+            dslCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            dslCI.bindingCount = bindings.size();
+            dslCI.pBindings = bindings.data();
+            if(useDescriptorIndexing) {
+                dslCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            }
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
+            if(useDescriptorIndexing) {
+                bindingFlagsCI.sType =
+                    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+                bindingFlagsCI.bindingCount = bindingFlags.size();
+                bindingFlagsCI.pBindingFlags = bindingFlags.data();
+                dslCI.pNext = &bindingFlagsCI;
+            }
+
+            VK_CHECK(VK_DEV_CALL(dev, 
+                vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
         }
 
         auto dsl = new VulkanResourceLayout(dev, desc);
-        dsl->_bindings = std::move(resBindings);
+        dsl->_sets = std::move(sets);
         dsl->_slotLocations = std::move(slotLocations);
         dsl->_pushConstants = std::move(pushConstants);
         dsl->_pushConstantSize = pushConstantSize;
-        //dsl->_dynamicBufferCount = dynamicBufferCount;
-        //dsl->_drcs = drcs;
 
         return common::sp<IResourceLayout>(dsl);
     }
@@ -278,14 +196,9 @@ namespace alloy::vk
             uint32_t layoutSlot
         ) {
             auto location = layout->GetSlotLocation(layoutSlot);
-            if(!location.valid) {
-                throw std::invalid_argument(
-                    "ResourceSet write references a layout slot that is not in the layout.");
-            }
-
             return {
                 .set = sets.at(location.setIndexAllocated).GetHandle(),
-                .binding = location.binding
+                .binding = location.bindingAllocated
             };
         }
 
@@ -340,22 +253,29 @@ namespace alloy::vk
 
     VulkanResourceSetBase::VulkanResourceSetBase(
         const common::sp<VulkanDevice>& dev,
-        const common::sp<VulkanResourceLayout>& layout
+        const common::sp<VulkanResourceLayout>& layout,
+        bool isMutable
     )
         : _dev(dev)
         , _layout(layout)
         , _boundResources(GetRequiredBoundResourceCount(_layout->GetDesc()))
+        , _isMutable(isMutable)
     { }
 
 
     void VulkanResourceSetBase::AllocateDescriptorSets() {
-        auto& bindings = _layout->GetBindings();
-        for(auto& b : bindings) {
-            for(auto& s : b.sets) {
-                auto descriptorAllocationToken = _dev->AllocateDescriptorSet(s.layout);
-                _descSet.emplace_back(std::move(descriptorAllocationToken));
-            }
+        auto& sets = _layout->GetResSetInfo();
+        for(auto& s : sets) {
+            auto descriptorAllocationToken = _dev->AllocateDescriptorSet(
+                s.layout,
+                s.type,
+                s.elementCnt,
+                false,
+                _isMutable
+            );
+            _descSet.emplace_back(std::move(descriptorAllocationToken));
         }
+        
     }
 
     common::sp<IResourceSet> VulkanResourceSet::Make(
@@ -385,7 +305,7 @@ namespace alloy::vk
         const Description& desc
     ) 
         : IResourceSet()
-        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout))
+        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout), false)
     { }
 
     VulkanResourceSet::~VulkanResourceSet(){
@@ -417,7 +337,7 @@ namespace alloy::vk
         const Description& desc
     )
         : IMutableResourceSet()
-        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout))
+        , VulkanResourceSetBase(dev, common::SPCast<VulkanResourceLayout>(desc.layout), true)
     { }
 
     VulkanMutableResourceSet::~VulkanMutableResourceSet(){
@@ -477,11 +397,6 @@ namespace alloy::vk
                     break;
             }
 
-            uint32_t linearBase = 0;
-            for(uint32_t i = 0; i < write.layoutSlot; ++i) {
-                linearBase += slotDescs[i].bindingCount;
-            }
-
             for(uint32_t i = 0; i < write.resources.size(); ++i) {
                 if(write.resources[i] == nullptr) {
                     throw std::invalid_argument("ResourceSet write contains a null resource.");
@@ -490,16 +405,16 @@ namespace alloy::vk
                 switch(slotDesc.kind) {
                     case _ResKind::UniformBuffer:
                     case _ResKind::StorageBuffer: {
-                        auto* range = PtrCast<BufferRange>(write.resources[i].get());
-                        auto* rangedVkBuffer =
-                            static_cast<const VulkanBuffer*>(range->GetBufferObject());
+                        const auto* range = PtrCast<BufferRange>(write.resources[i].get());
+                        const auto* rangedVkBuffer =
+                            PtrCast<VulkanBuffer>(range->GetBufferObject().get());
                         bufferInfos[i].buffer = rangedVkBuffer->GetHandle();
                         bufferInfos[i].offset = range->GetShape().GetOffsetInBytes();
                         bufferInfos[i].range = range->GetShape().GetSizeInBytes();
                     } break;
 
                     case _ResKind::Texture: {
-                        auto* vkTexView =
+                        const auto* vkTexView =
                             PtrCast<VulkanTextureView>(write.resources[i].get());
                         imageInfos[i].imageView = vkTexView->GetHandle();
                         imageInfos[i].imageLayout = slotDesc.options.writable
@@ -520,6 +435,7 @@ namespace alloy::vk
                         imageInfos[i].sampler = sampler->GetHandle();
                     } break;
                 }
+                auto linearBase = _layout->GetSlotLocation(write.layoutSlot).linearResourceOffset;
 
                 _boundResources[
                     linearBase + write.firstArrayElement + i] = write.resources[i];
@@ -533,6 +449,15 @@ namespace alloy::vk
                     0,
                     nullptr));
         }
+    }
+
+    IBindableResource* VulkanResourceSetBase::GetBoundResource(
+        uint32_t layoutSlot,
+        uint32_t firstArrayElement
+    ) {
+        auto linearBase = _layout->GetSlotLocation(layoutSlot).linearResourceOffset;
+
+        return _boundResources[linearBase + firstArrayElement].get();
     }
 
     void VulkanMutableResourceSet::Update(

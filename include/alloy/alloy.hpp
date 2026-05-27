@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Context.hpp"
+#include "DescriptorHeap.hpp"
 #include "RenderPass.hpp"
 #include "CommandQueue.hpp"
 #include "Buffer.hpp"
@@ -9,7 +10,6 @@
 #include "BindableResource.hpp"
 #include "SyncObjects.hpp"
 #include "FixedFunctions.hpp"
-#include "FrameBuffer.hpp"
 #include "GraphicsDevice.hpp"
 #include "Helpers.hpp"
 #include "Pipeline.hpp"

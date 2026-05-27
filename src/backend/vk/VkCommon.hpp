@@ -6,7 +6,7 @@
 #include <string>
 
 /// @brief Helper macro to test the result of Vulkan calls which can return an error.
-#define VK_CHECK(x)                                                 \
+#define VK_CHECK(x, ...)                                            \
 	do                                                              \
 	{                                                               \
 		VkResult err = x;                                           \
@@ -17,7 +17,7 @@
 		}                                                           \
 	} while (0)
 
-#define VK_ASSERT(expr)                                             \
+#define VK_ASSERT(expr, ...)                                        \
 	do                                                              \
 	{                                                               \
 		if (!(expr))                                                \
@@ -78,6 +78,7 @@ struct VkDevExtNames {
     constexpr static auto VK_KHR_CREATE_RENDERPASS2 = "VK_KHR_create_renderpass2";
 
     constexpr static auto VK_EXT_DESCRIPTOR_BUFFER = "VK_EXT_descriptor_buffer";
+    constexpr static auto VK_EXT_MUTABLE_DESCRIPTOR_TYPE = "VK_EXT_mutable_descriptor_type";
     //For pre-vk1.2 extensions
     constexpr static auto VK_EXT_DESCRIPTOR_INDEXING = "VK_EXT_descriptor_indexing";
 };

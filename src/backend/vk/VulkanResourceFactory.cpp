@@ -7,11 +7,11 @@
 #include "VulkanDevice.hpp"
 #include "VulkanPipeline.hpp"
 #include "VulkanCommandList.hpp"
+//#include "VulkanDescriptorHeap.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanShader.hpp"
 #include "VulkanBindableResource.hpp"
 #include "VulkanSwapChain.hpp"
-#include "VulkanFramebuffer.hpp"
 
 namespace alloy::vk
 {
@@ -24,22 +24,33 @@ namespace alloy::vk
         return Vulkan##ResType ::Make(_CreateNewDevHandle(), description); \
     }
 
-#define VLD_RF_FOR_EACH_RES(V) \
-    V(FrameBuffer)\
+#define VK_RF_FOR_EACH_RES(V) \
     V(Texture)\
     V(Buffer)\
     V(Sampler)\
     /*V(Shader)*/\
+    V(MutableResourceSet)\
     V(ResourceSet)\
     V(ResourceLayout)\
     V(SwapChain)
 
-    VLD_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
+    VK_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
 
-    common::sp<IMutableResourceSet> VulkanResourceFactory::CreateMutableResourceSet(
-        const IMutableResourceSet::Description& description
+
+    common::sp<IResourceDescriptorHeap> VulkanResourceFactory::CreateResourceDescriptorHeap(
+        const IResourceDescriptorHeap::Description& description
     ) {
-        return VulkanMutableResourceSet::Make(_CreateNewDevHandle(), description);
+        assert(false);
+        return nullptr;
+        //return VulkanResourceDescriptorHeap::Make(_CreateNewDevHandle(), description);
+    }
+
+    common::sp<ISamplerDescriptorHeap> VulkanResourceFactory::CreateSamplerDescriptorHeap(
+        const ISamplerDescriptorHeap::Description& description
+    ) {
+        assert(false);
+        return nullptr;
+        //return VulkanSamplerDescriptorHeap::Make(_CreateNewDevHandle(), description);
     }
 
     common::sp<VulkanDevice> VulkanResourceFactory::_CreateNewDevHandle(){
@@ -90,16 +101,7 @@ namespace alloy::vk
         return VulkanTextureView::Make(RefRawPtr(vkTex), description);
     }
 
-
-    common::sp<IRenderTarget> VulkanResourceFactory::CreateRenderTarget(
-        const common::sp<ITextureView>& texView
-    ) {
-        return common::sp(new VulkanRenderTarget(common::SPCast<VulkanTextureView>(texView)));
-    }
-
     common::sp<IEvent> VulkanResourceFactory::CreateSyncEvent() {
        return VulkanFence::Make(_CreateNewDevHandle());
     }
-
-
 } // namespace alloy

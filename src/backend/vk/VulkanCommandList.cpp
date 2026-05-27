@@ -9,289 +9,50 @@
 #include "VulkanTexture.hpp"
 #include "VulkanContext.hpp"
 #include "backend/vk/VulkanPipeline.hpp"
-//#include "VulkanResourceBarrier.hpp"
+#include "VulkanResourceBarrier.hpp"
 
 #include <ranges>
 
 namespace alloy::vk{
-    const VkAccessFlags READ_MASK =
-        VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
-        VK_ACCESS_INDEX_READ_BIT |
-        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
-        VK_ACCESS_UNIFORM_READ_BIT |
-        VK_ACCESS_INPUT_ATTACHMENT_READ_BIT |
-        VK_ACCESS_SHADER_READ_BIT |
-        //VK_ACCESS_SHADER_WRITE_BIT = 0x00000040,
-        VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-        //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT = 0x00000100,
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-        //VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT = 0x00000400,
-        VK_ACCESS_TRANSFER_READ_BIT |
-        //VK_ACCESS_TRANSFER_WRITE_BIT = 0x00001000,
-        VK_ACCESS_HOST_READ_BIT |
-        //VK_ACCESS_HOST_WRITE_BIT = 0x00004000,
-        VK_ACCESS_MEMORY_READ_BIT |
-        //VK_ACCESS_MEMORY_WRITE_BIT = 0x00010000,
-        // Provided by VK_VERSION_1_3
-        //VK_ACCESS_NONE |
-        // Provided by VK_EXT_transform_feedback
-        //VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT = 0x02000000,
-        // Provided by VK_EXT_transform_feedback
-        VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT |
-        // Provided by VK_EXT_transform_feedback
-        //VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT = 0x08000000,
-        // Provided by VK_EXT_conditional_rendering
-        VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT |
-        // Provided by VK_EXT_blend_operation_advanced
-        VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT |
-        // Provided by VK_KHR_acceleration_structure
-        VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR |
-        // Provided by VK_KHR_acceleration_structure
-        //VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR = 0x00400000,
-        // Provided by VK_EXT_fragment_density_map
-        VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT |
-        // Provided by VK_KHR_fragment_shading_rate
-        VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR |
-        // Provided by VK_NV_device_generated_commands
-        VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_NV;
-        // Provided by VK_NV_device_generated_commands
-        //VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV = 0x00040000,
-        // Provided by VK_NV_shading_rate_image
 
-    constexpr bool _IsReadAccess(VkAccessFlags access) {
-        return (READ_MASK & access) != 0;
-    }
-
-    constexpr bool _HasAccessHazard(VkAccessFlags src, VkAccessFlags dst) {
-        return (src != VK_ACCESS_NONE && dst != VK_ACCESS_NONE)
-            && ((~READ_MASK)&(src | dst));
-        //find anyone with a write access
-    }
-
-    void VkCmdEncBase::RegisterBufferUsage(
-        VulkanBuffer* buffer,
-        const VulkanCommandList::BufferState& state
-    ) {
-
-        //Find usages
-        auto res = firstState.buffers.find(buffer);
-        if (res == firstState.buffers.end()) {
-            //This is a first time use
-            firstState.buffers.insert({ buffer, state });
-        }
-
-        lastState.buffers[buffer] = state;
-    }
-
-    void VkCmdEncBase::RegisterTexUsage(
-        VulkanTexture* tex,
-        const VulkanCommandList::TextureState& state
-    ) {
-
-        //Find usages
-        auto res = firstState.textures.find(tex);
-        if (res == firstState.textures.end()) {
-            //This is a first time use
-            firstState.textures.insert({ tex, state });
-        }
-        else {
-            // Per-aspect checks also needed
-            auto& firstStateEntry = res->second;
-
-            if ((state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) &&
-                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_COLOR_BIT)
-            ) {
-                firstStateEntry.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
-                firstStateEntry.color = state.color;
-            }
-
-            if ((state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) &&
-                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_DEPTH_BIT)
-                ) {
-                firstStateEntry.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
-                firstStateEntry.depth = state.depth;
-            }
-
-            if ((state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) &&
-                !(firstStateEntry.aspects & VK_IMAGE_ASPECT_STENCIL_BIT)
-                ) {
-                firstStateEntry.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
-                firstStateEntry.stencil = state.stencil;
-            }
-        }
-
-        auto& lastStateEntry = lastState.textures[tex];
-
-        lastStateEntry.aspects |= state.aspects;
-        if(state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
-            lastStateEntry.color = state.color;
-        }
-        if(state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-            lastStateEntry.depth = state.depth;
-        }
-        if(state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-            lastStateEntry.stencil = state.stencil;
-        }
-    }
-
-    
-    void VkCmdEncBase::RegisterTexUsageAllAspecs(
-        VulkanTexture* tex,
-        VulkanCommandList::TextureState::AspectState aspectState
-    ) {
-        //Infer aspects from pixel format
-        auto pixFormat = tex->GetDesc().format;
-
-        VulkanCommandList::TextureState state{};
-        //Add each aspects separately. image_barrier2 supports separate
-        // layouts on each aspect
-
-        //Color format and depth/stencil format are mutually exclusive
-        bool isColorFormat = true;
-        if(FormatHelpers::IsDepthStencilFormat(pixFormat)) {
-            isColorFormat = false;
-            state.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
-            state.depth = aspectState;
-        }
-        if(FormatHelpers::IsStencilFormat(pixFormat)) {
-            isColorFormat = false;
-            state.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
-            state.stencil = aspectState;
-        }
-
-        if(isColorFormat) {
-            state.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
-            state.color = aspectState;
-        }
-        
-        RegisterTexUsage(tex, state);
-    }
-
-
-    void VkCmdEncBase::RegisterResourceSet(VulkanResourceSetBase* vkrs) {
-        const auto& vkLayout = vkrs->GetLayout();
-        const auto& boundResources = vkrs->GetBoundResources();
-        const auto& elems = vkLayout.GetDesc().shaderResources;
-        const auto& bindings = vkLayout.GetBindings();
-
-
-        for(auto& b : bindings) {
-            for(auto& s : b.sets) {
-                for(auto elemIdx : s.elementIdInList) {
-                    auto& elem = elems[elemIdx];
-
-                    using _ResKind = IBindableResource::ResourceKind;
-
-                    uint32_t linearBase = 0;
-                    for(uint32_t i = 0; i < elemIdx; ++i) {
-                        linearBase += elems[i].bindingCount;
-                    }
-
-                    for(uint32_t arrayIdx = 0; arrayIdx < elem.bindingCount; ++arrayIdx) {
-                        auto resourceIdx = linearBase + arrayIdx;
-                        if(resourceIdx >= boundResources.size() ||
-                           boundResources[resourceIdx] == nullptr)
-                        {
-                            continue;
-                        }
-
-                        switch (elem.kind) {
-                            case _ResKind::Texture: {
-                                auto* vkTexView =
-                                    PtrCast<VulkanTextureView>(boundResources[resourceIdx].get());
-                                auto texture = PtrCast<VulkanTexture>(
-                                    vkTexView->GetTextureObject().get());
-
-                                VulkanCommandList::TextureState::AspectState aspectState {};
-                                aspectState.access = VK_ACCESS_SHADER_READ_BIT;
-                                if(elem.options.writable)
-                                    aspectState.access |= VK_ACCESS_SHADER_WRITE_BIT;
-                                aspectState.layout = elem.options.writable ?
-                                    VK_IMAGE_LAYOUT_GENERAL :
-                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                                aspectState.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT; // Adjust as needed
-
-                                RegisterTexUsageAllAspecs(texture, aspectState);
-                                break;
-                            }
-                            case _ResKind::UniformBuffer: {
-                                auto* range =
-                                    PtrCast<BufferRange>(boundResources[resourceIdx].get());
-                                auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                                VulkanCommandList::BufferState state{};
-                                state.access = VK_ACCESS_UNIFORM_READ_BIT;
-                                state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-                                RegisterBufferUsage(buffer, state);
-                                break;
-                            }
-                            case _ResKind::StorageBuffer: {
-                                auto* range =
-                                    PtrCast<BufferRange>(boundResources[resourceIdx].get());
-                                auto buffer = PtrCast<VulkanBuffer>(range->GetBufferObject());
-                                VulkanCommandList::BufferState state{};
-                                state.access = VK_ACCESS_SHADER_READ_BIT;
-                                if(elem.options.writable)
-                                    state.access |= VK_ACCESS_SHADER_WRITE_BIT;
-                                state.stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-                                RegisterBufferUsage(buffer, state);
-                                break;
-                            }
-                            default:
-                                // Samplers don't need to be registered for usage
-                                break;
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     void VkCmdEncBase::PushDebugGroup(const std::string& name, const Color4f& color) {
         if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
 
-        recordedCmds.emplace_back([this, name, color](VkCommandBuffer cmdList){
-            VkDebugUtilsLabelEXT markerInfo = {};
-            markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-            markerInfo.pLabelName = name.c_str();
-            markerInfo.color[0] = color.r;
-            markerInfo.color[1] = color.g;
-            markerInfo.color[2] = color.b;
-            markerInfo.color[3] = color.a;
+        VkDebugUtilsLabelEXT markerInfo = {};
+        markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        markerInfo.pLabelName = name.c_str();
+        markerInfo.color[0] = color.r;
+        markerInfo.color[1] = color.g;
+        markerInfo.color[2] = color.b;
+        markerInfo.color[3] = color.a;
 
-            VK_INST_CALL(dev, vkCmdBeginDebugUtilsLabelEXT(
-                cmdList,
-                &markerInfo));
-
-        });
+        VK_INST_CALL(dev, vkCmdBeginDebugUtilsLabelEXT(
+            cmdList,
+            &markerInfo));
     }
 
     void VkCmdEncBase::PopDebugGroup() {
         if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
 
-        recordedCmds.emplace_back([this](VkCommandBuffer cmdList){
-            VK_INST_CALL(dev, vkCmdEndDebugUtilsLabelEXT(cmdList));
-
-        });
+        VK_INST_CALL(dev, vkCmdEndDebugUtilsLabelEXT(cmdList));
 
     }
 
     void VkCmdEncBase::InsertDebugMarker(const std::string& name, const Color4f& color) {
         if(!dev->GetContext().GetCaps().hasDebugUtilExt) return;
 
-        recordedCmds.emplace_back([this, name, color](VkCommandBuffer cmdList){
-            VkDebugUtilsLabelEXT markerInfo = {};
-            markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-            markerInfo.pLabelName = name.c_str();
-            markerInfo.color[0] = color.r;
-            markerInfo.color[1] = color.g;
-            markerInfo.color[2] = color.b;
-            markerInfo.color[3] = color.a;
+        VkDebugUtilsLabelEXT markerInfo = {};
+        markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        markerInfo.pLabelName = name.c_str();
+        markerInfo.color[0] = color.r;
+        markerInfo.color[1] = color.g;
+        markerInfo.color[2] = color.b;
+        markerInfo.color[3] = color.a;
 
-            VK_INST_CALL(dev, vkCmdInsertDebugUtilsLabelEXT(
-                cmdList,
-                &markerInfo));
-
-        });
+        VK_INST_CALL(dev, vkCmdInsertDebugUtilsLabelEXT(
+            cmdList,
+            &markerInfo));
     }
 
 #if 0
@@ -494,12 +255,10 @@ namespace alloy::vk{
         //);
 
         resources.insert(pipeline);
-        recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdBindPipeline(cmdList,
-                                  VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  vkPipeline->GetHandle()));
-        });
+        VK_DEV_CALL(dev,
+            vkCmdBindPipeline(cmdList,
+                              VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              vkPipeline->GetHandle()));
 
         //Mark current pipeline
         currentPipeline = vkPipeline;
@@ -519,13 +278,10 @@ namespace alloy::vk{
         //);
 
         resources.insert(pipeline);
-        recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
-
-            VK_DEV_CALL(dev, vkCmdBindPipeline(
-                cmdList,
-                VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS,
-                vkPipeline->GetHandle()));
-        });
+        VK_DEV_CALL(dev, vkCmdBindPipeline(
+            cmdList,
+            VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkPipeline->GetHandle()));
 
 
         //Mark current pipeline
@@ -539,11 +295,9 @@ namespace alloy::vk{
         assert(dev->GetDevCaps().SupportMeshShader());
 
         //CHK_MESH_PIPELINE_SET();
-        recordedCmds.emplace_back([ =, this ](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdDrawMeshTasksEXT(cmdList, groupCountX, groupCountY, groupCountZ)
-            );
-        });
+        VK_DEV_CALL(dev,
+            vkCmdDrawMeshTasksEXT(cmdList, groupCountX, groupCountY, groupCountZ)
+        );
     }
 
     void VkComputeCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
@@ -560,13 +314,10 @@ namespace alloy::vk{
         //);
 
         resources.insert(pipeline);
-        recordedCmds.emplace_back([this, vkPipeline](VkCommandBuffer cmdList){
-
-            VK_DEV_CALL(dev, vkCmdBindPipeline(
-                cmdList,
-                VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE,
-                vkPipeline->GetHandle()));
-        });
+        VK_DEV_CALL(dev, vkCmdBindPipeline(
+            cmdList,
+            VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_COMPUTE,
+            vkPipeline->GetHandle()));
 
 
         //Mark current pipeline
@@ -576,9 +327,7 @@ namespace alloy::vk{
 
 
     void VkRenderCmdEnc::EndPass() {
-        recordedCmds.emplace_back([this](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev, vkCmdEndRenderingKHR(cmdList));
-        });
+        VK_DEV_CALL(dev, vkCmdEndRenderingKHR(cmdList));
 
         super::EndPass();
     }
@@ -588,43 +337,26 @@ namespace alloy::vk{
         std::uint32_t index, const common::sp<BufferRange>& buffer
     ){
         resources.insert(buffer);
-        VulkanCommandList::BufferState state {};
-        state.access = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-        state.stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        RegisterBufferUsage(
-            PtrCast<VulkanBuffer>(buffer->GetBufferObject()),
-            state
-        );
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-        VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject());
+        VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject().get());
         std::uint64_t offset64 = buffer->GetShape().GetOffsetInBytes();
 
-        recordedCmds.emplace_back([this, index, vkBuffer, offset64](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdBindVertexBuffers(cmdList, index, 1, &(vkBuffer->GetHandle()), &offset64));
-        });
+        VK_DEV_CALL(dev,
+            vkCmdBindVertexBuffers(cmdList, index, 1, &(vkBuffer->GetHandle()), &offset64));
     }
 
     void VkRenderCmdEnc::SetIndexBuffer(
         const common::sp<BufferRange>& buffer, IndexFormat format
     ){
-        VulkanCommandList::BufferState state {};
-        state.access = VK_ACCESS_INDEX_READ_BIT;
-        state.stage = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        RegisterBufferUsage(
-            PtrCast<VulkanBuffer>(buffer->GetBufferObject()),
-            state
-        );
+        resources.insert(buffer);
         //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-        VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject());
+        VulkanBuffer* vkBuffer = PtrCast<VulkanBuffer>(buffer->GetBufferObject().get());
         auto offset = buffer->GetShape().GetOffsetInBytes();
-        recordedCmds.emplace_back([this, vkBuffer, offset, format](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdBindIndexBuffer(cmdList,
-                                     vkBuffer->GetHandle(),
-                                     offset,
-                                     alloy::vk::VdToVkIndexFormat(format)));
-        });
+        VK_DEV_CALL(dev,
+            vkCmdBindIndexBuffer(cmdList,
+                                 vkBuffer->GetHandle(),
+                                 offset,
+                                 alloy::vk::VdToVkIndexFormat(format)));
     }
 
 
@@ -649,36 +381,28 @@ namespace alloy::vk{
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        RegisterResourceSet(vkrs);
+        auto& dss = vkrs->GetHandle();
 
-        recordedCmds.emplace_back([this, vkrs, pipelineLayout, resourceSetCount](
-            VkCommandBuffer cmdList
-        ){
-            auto& dss = vkrs->GetHandle();
+        assert(resourceSetCount == dss.size());
 
-            assert(resourceSetCount == dss.size());
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
 
-            std::vector<VkDescriptorSet> descriptorSets;
-            descriptorSets.reserve(resourceSetCount);
-            for(auto& ds : dss)
-                descriptorSets.push_back(ds.GetHandle());
-
-            if (!descriptorSets.empty())
-            {
-                // Flush current batch.
-                VK_DEV_CALL(dev,
-                vkCmdBindDescriptorSets(
-                    cmdList,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    pipelineLayout,
-                    0,
-                    descriptorSets.size(),
-                    descriptorSets.data(),
-                    0,
-                    nullptr));
-            }
-
-        });
+        if (!descriptorSets.empty())
+        {
+            VK_DEV_CALL(dev,
+            vkCmdBindDescriptorSets(
+                cmdList,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr));
+        }
         //auto& entry = _resourceSets[slot];
         //entry.isNewlyChanged = true;
         //entry.resSet = RefRawPtr(vkrs);
@@ -696,40 +420,33 @@ namespace alloy::vk{
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanMutableResourceSet>(rs.get());
 
-        RegisterResourceSet(vkrs);
+        auto& dss = vkrs->GetHandle();
 
-        recordedCmds.emplace_back([this, vkrs, pipelineLayout, resourceSetCount](
-            VkCommandBuffer cmdList
-        ){
-            auto& dss = vkrs->GetHandle();
+        assert(resourceSetCount == dss.size());
 
-            assert(resourceSetCount == dss.size());
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
 
-            std::vector<VkDescriptorSet> descriptorSets;
-            descriptorSets.reserve(resourceSetCount);
-            for(auto& ds : dss)
-                descriptorSets.push_back(ds.GetHandle());
-
-            if (!descriptorSets.empty())
-            {
-                VK_DEV_CALL(dev,
-                vkCmdBindDescriptorSets(
-                    cmdList,
-                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    pipelineLayout,
-                    0,
-                    descriptorSets.size(),
-                    descriptorSets.data(),
-                    0,
-                    nullptr));
-            }
-
-        });
+        if (!descriptorSets.empty())
+        {
+            VK_DEV_CALL(dev,
+            vkCmdBindDescriptorSets(
+                cmdList,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                0,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr));
+        }
     }
 
 
     void VkRenderCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
-                                           const std::span<uint32_t>& data,
+                                           std::span<const uint32_t> data,
                                            std::uint32_t destOffsetIn32BitValues
     ) {
         //VulkanPipelineBase* pipeline = nullptr;
@@ -744,26 +461,22 @@ namespace alloy::vk{
         assert(currentPipeline != nullptr);
 
         std::vector<uint32_t> savedData {data.begin(), data.end()};
-        recordedCmds.emplace_back(
-        [ =, this, savedData = std::move(savedData) ](VkCommandBuffer cmdList){
+        auto& pcs = currentPipeline->GetPushConstants();
 
-            auto& pcs = currentPipeline->GetPushConstants();
+        assert(pcs.size() > pushConstantIndex);
+        auto& pc = pcs[pushConstantIndex];
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
 
-            assert(pcs.size() > pushConstantIndex);
-            auto& pc = pcs[pushConstantIndex];
-            assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
+        auto offset = pc.offsetInDwords;
 
-            auto offset = pc.offsetInDwords;
-
-            VK_DEV_CALL(dev,
-            vkCmdPushConstants(
-                cmdList,
-                currentPipeline->GetLayout(),
-                VK_SHADER_STAGE_ALL_GRAPHICS,
-                (offset + destOffsetIn32BitValues) * 4,
-                savedData.size() * 4,
-                savedData.data()));
-        });
+        VK_DEV_CALL(dev,
+        vkCmdPushConstants(
+            cmdList,
+            currentPipeline->GetLayout(),
+            VK_SHADER_STAGE_ALL_GRAPHICS,
+            (offset + destOffsetIn32BitValues) * 4,
+            savedData.size() * 4,
+            savedData.data()));
     }
 
     void VkComputeCmdEnc::SetComputeResourceSet(
@@ -777,35 +490,29 @@ namespace alloy::vk{
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanResourceSet>(rs.get());
 
-        RegisterResourceSet(vkrs);
+        auto& dss = vkrs->GetHandle();
 
-        recordedCmds.emplace_back([=, this](VkCommandBuffer cmdList){
+        auto resourceSetCount = currentPipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
 
-            auto& dss = vkrs->GetHandle();
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
 
-            auto resourceSetCount = currentPipeline->GetResourceSetCount();
-            assert(resourceSetCount == dss.size());
-
-            std::vector<VkDescriptorSet> descriptorSets;
-            descriptorSets.reserve(resourceSetCount);
-            for(auto& ds : dss)
-                descriptorSets.push_back(ds.GetHandle());
-
-            if (!descriptorSets.empty())
-            {
-                // Flush current batch.
-                VK_DEV_CALL(dev,
-                    vkCmdBindDescriptorSets(
-                        cmdList,
-                        VK_PIPELINE_BIND_POINT_COMPUTE,
-                        currentPipeline->GetLayout(),
-                        0,
-                        descriptorSets.size(),
-                        descriptorSets.data(),
-                        0,
-                        nullptr));
-            }
-        });
+        if (!descriptorSets.empty())
+        {
+            VK_DEV_CALL(dev,
+                vkCmdBindDescriptorSets(
+                    cmdList,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    currentPipeline->GetLayout(),
+                    0,
+                    descriptorSets.size(),
+                    descriptorSets.data(),
+                    0,
+                    nullptr));
+        }
 
 
         //auto& entry = _resourceSets[slot];
@@ -822,40 +529,35 @@ namespace alloy::vk{
         resources.insert(rs);
         auto vkrs = PtrCast<VulkanMutableResourceSet>(rs.get());
 
-        RegisterResourceSet(vkrs);
+        auto& dss = vkrs->GetHandle();
 
-        recordedCmds.emplace_back([=, this](VkCommandBuffer cmdList){
+        auto resourceSetCount = currentPipeline->GetResourceSetCount();
+        assert(resourceSetCount == dss.size());
 
-            auto& dss = vkrs->GetHandle();
+        std::vector<VkDescriptorSet> descriptorSets;
+        descriptorSets.reserve(resourceSetCount);
+        for(auto& ds : dss)
+            descriptorSets.push_back(ds.GetHandle());
 
-            auto resourceSetCount = currentPipeline->GetResourceSetCount();
-            assert(resourceSetCount == dss.size());
-
-            std::vector<VkDescriptorSet> descriptorSets;
-            descriptorSets.reserve(resourceSetCount);
-            for(auto& ds : dss)
-                descriptorSets.push_back(ds.GetHandle());
-
-            if (!descriptorSets.empty())
-            {
-                VK_DEV_CALL(dev,
-                    vkCmdBindDescriptorSets(
-                        cmdList,
-                        VK_PIPELINE_BIND_POINT_COMPUTE,
-                        currentPipeline->GetLayout(),
-                        0,
-                        descriptorSets.size(),
-                        descriptorSets.data(),
-                        0,
-                        nullptr));
-            }
-        });
+        if (!descriptorSets.empty())
+        {
+            VK_DEV_CALL(dev,
+                vkCmdBindDescriptorSets(
+                    cmdList,
+                    VK_PIPELINE_BIND_POINT_COMPUTE,
+                    currentPipeline->GetLayout(),
+                    0,
+                    descriptorSets.size(),
+                    descriptorSets.data(),
+                    0,
+                    nullptr));
+        }
     }
 
 
 
     void VkComputeCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
-                                           const std::span<uint32_t>& data,
+                                            std::span<const uint32_t> data,
                                            std::uint32_t destOffsetIn32BitValues
     ) {
         assert(currentPipeline != nullptr);
@@ -864,25 +566,22 @@ namespace alloy::vk{
         //VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
 
         std::vector<uint32_t> savedData {data.begin(), data.end()};
-        recordedCmds.emplace_back([=, this, savedData = std::move(savedData)](VkCommandBuffer cmdList){
+        auto& pcs = currentPipeline->GetPushConstants();
+        assert(pcs.size() > pushConstantIndex);
 
-            auto& pcs = currentPipeline->GetPushConstants();
-            assert(pcs.size() > pushConstantIndex);
+        auto& pc = pcs[pushConstantIndex];
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
 
-            auto& pc = pcs[pushConstantIndex];
-            assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
+        auto offset = pc.offsetInDwords;
 
-            auto offset = pc.offsetInDwords;
-
-            VK_DEV_CALL(dev,
-            vkCmdPushConstants(
-                cmdList,
-                currentPipeline->GetLayout(),
-                VK_SHADER_STAGE_COMPUTE_BIT,
-                (offset + destOffsetIn32BitValues) * 4,
-                savedData.size() * 4,
-                savedData.data()));
-        });
+        VK_DEV_CALL(dev,
+        vkCmdPushConstants(
+            cmdList,
+            currentPipeline->GetLayout(),
+            VK_SHADER_STAGE_COMPUTE_BIT,
+            (offset + destOffsetIn32BitValues) * 4,
+            savedData.size() * 4,
+            savedData.data()));
     }
 
 #if 0
@@ -973,13 +672,12 @@ namespace alloy::vk{
     }
 #endif
 
-    void VkRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport){
+    void VkRenderCmdEnc::SetViewports(std::span<const Viewport> viewport){
 
         std::vector<Viewport> savedData {viewport.begin(), viewport.end()};
 
-        recordedCmds.emplace_back(
-            [=, viewport = std::move(savedData)](VkCommandBuffer cmdList){
-
+        {
+            const auto& viewport = savedData;
             if (viewport.size() == 1 || dev->GetFeatures().multipleViewports)
             {
                 bool flip = dev->SupportsFlippedYDirection();
@@ -1003,8 +701,7 @@ namespace alloy::vk{
                 VK_DEV_CALL(dev,
                     vkCmdSetViewport(cmdList, 0, vkViewports.size(), vkViewports.data()));
             }
-
-        });
+        }
     }
     void VkRenderCmdEnc::SetFullViewport() {
 
@@ -1025,7 +722,7 @@ namespace alloy::vk{
         };
 
         for(auto& rt : _fb.colorTargetActions) {
-            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = rt.target->GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             break;
         }
@@ -1033,7 +730,7 @@ namespace alloy::vk{
         if(!vpIsSet) {
             if(_fb.depthTargetAction) {
                 auto& dt = _fb.depthTargetAction.value();
-                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = dt.target->GetTextureObject()->GetDesc();
                 _SetVP(texDesc);
                 vpIsSet = true;
             }
@@ -1042,7 +739,7 @@ namespace alloy::vk{
         if(!vpIsSet) {
             if(_fb.stencilTargetAction) {
                 auto& st = _fb.stencilTargetAction.value();
-                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = st.target->GetTextureObject()->GetDesc();
                 _SetVP(texDesc);
                 vpIsSet = true;
             }
@@ -1053,13 +750,13 @@ namespace alloy::vk{
         SetViewports(vp);
     }
 
-    void VkRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects)
+    void VkRenderCmdEnc::SetScissorRects(std::span<const Rect> rects)
     {
 
         std::vector<Rect> savedData {rects.begin(), rects.end()};
 
-        recordedCmds.emplace_back(
-            [=, rects = std::move(savedData)](VkCommandBuffer cmdList){
+        {
+            const auto& rects = savedData;
             if (rects.size() == 1 || dev->GetFeatures().multipleViewports) {
 
                 std::vector<VkRect2D> scissors;
@@ -1076,7 +773,7 @@ namespace alloy::vk{
                 VK_DEV_CALL(dev, vkCmdSetScissor(cmdList, 0, scissors.size(), scissors.data()));
                 //}
             }
-        });
+        }
     }
 
     void VkRenderCmdEnc::SetFullScissorRect() {
@@ -1095,7 +792,7 @@ namespace alloy::vk{
         };
 
         for(auto& rt : _fb.colorTargetActions) {
-            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = rt.target->GetTextureObject()->GetDesc();
             _SetSR(texDesc);
             break;
         }
@@ -1103,7 +800,7 @@ namespace alloy::vk{
         if(!srIsSet) {
             if(_fb.depthTargetAction) {
                 auto& dt = _fb.depthTargetAction.value();
-                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = dt.target->GetTextureObject()->GetDesc();
                 _SetSR(texDesc);
             }
         }
@@ -1111,7 +808,7 @@ namespace alloy::vk{
         if(!srIsSet) {
             if(_fb.stencilTargetAction) {
                 auto& st = _fb.stencilTargetAction.value();
-                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = st.target->GetTextureObject()->GetDesc();
                 _SetSR(texDesc);
             }
         }
@@ -1126,10 +823,8 @@ namespace alloy::vk{
         std::uint32_t vertexStart, std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdDraw(cmdList, vertexCount, instanceCount, vertexStart, instanceStart));
-        });
+        VK_DEV_CALL(dev,
+            vkCmdDraw(cmdList, vertexCount, instanceCount, vertexStart, instanceStart));
     }
 
     void VkRenderCmdEnc::DrawIndexed(
@@ -1138,16 +833,14 @@ namespace alloy::vk{
         std::uint32_t instanceStart
     ){
         //PreDrawCommand();
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev,
-                vkCmdDrawIndexed(
-                    cmdList,
-                    indexCount,
-                    instanceCount,
-                    indexStart,
-                    vertexOffset,
-                    instanceStart));
-        });
+        VK_DEV_CALL(dev,
+            vkCmdDrawIndexed(
+                cmdList,
+                indexCount,
+                instanceCount,
+                indexStart,
+                vertexOffset,
+                instanceStart));
     }
 #if 0
     void VulkanCommandList::DrawIndirect(
@@ -1184,9 +877,7 @@ namespace alloy::vk{
         std::uint32_t groupCountX, std::uint32_t groupCountY, std::uint32_t groupCountZ
     ){
 
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
-            VK_DEV_CALL(dev, vkCmdDispatch(cmdList, groupCountX, groupCountY, groupCountZ));
-        });
+        VK_DEV_CALL(dev, vkCmdDispatch(cmdList, groupCountX, groupCountY, groupCountZ));
     };
 
 #if 0
@@ -1242,7 +933,7 @@ namespace alloy::vk{
 
 
 
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
+        {
             VkImageAspectFlags aspectFlags = (source->GetDesc().usage.depthStencil)
                 ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
                 : VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1276,7 +967,7 @@ namespace alloy::vk{
             {
                 //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.ShaderReadOnlyOptimal);
             }
-        });
+        }
     }
 #endif
 
@@ -1284,38 +975,32 @@ namespace alloy::vk{
         const common::sp<BufferRange>& src,
         std::uint32_t srcBytesPerRow,
         std::uint32_t srcBytesPerImage,
-        const common::sp<ITexture>& dst,
+        const common::sp<ITextureView>& dst,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
         const Size3D& copySize
     ){
 
-        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        auto* srcVkBuffer = PtrCast<VulkanBuffer>(src->GetBufferObject().get());
+        
+        auto dstVkView = PtrCast<VulkanTextureView>(dst.get());
+        auto dstVkTexture = PtrCast<VulkanTexture>(dst->GetTextureObject().get());
+        const auto& dstViewDesc = dstVkView->GetDesc();
+
         resources.insert(src);
         resources.insert(dst);
 
-        auto* srcBuffer = PtrCast<VulkanBuffer>(src->GetBufferObject());
-        auto* dstImg = PtrCast<VulkanTexture>(dst.get());
+        auto& dstDesc = dstVkTexture->GetDesc();
 
-        VulkanCommandList::BufferState srcState{};
-        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
-        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        RegisterBufferUsage(srcBuffer, srcState);
-
-        VulkanCommandList::TextureState::AspectState dstState{};
-        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        RegisterTexUsageAllAspecs(dstImg, dstState);
         //Vulkan region bufferRowLength is in texel count
-        auto sizePerPixel = FormatHelpers::GetSizeInBytes(dstImg->GetDesc().format);
+        auto sizePerPixel = FormatHelpers::GetSizeInBytes(dstDesc.format);
         auto srcTexelsPerRow = srcBytesPerRow / sizePerPixel;
 
         assert(srcBytesPerRow%sizePerPixel == 0);
         assert(srcBytesPerImage%srcBytesPerRow == 0);
 
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
+        {
 
             VkBufferImageCopy regions{};
             regions.bufferOffset = src->GetShape().GetOffsetInBytes();
@@ -1328,31 +1013,19 @@ namespace alloy::vk{
 
             dstSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
             dstSubresource.layerCount = 1;
-            dstSubresource.mipLevel = dstMipLevel;
-            dstSubresource.baseArrayLayer = dstBaseArrayLayer;
+            dstSubresource.mipLevel = dstMipLevel + dstViewDesc.baseMipLevel;
+            dstSubresource.baseArrayLayer = dstBaseArrayLayer + dstViewDesc.baseArrayLayer;
 
             VK_DEV_CALL(dev,vkCmdCopyBufferToImage(
-                cmdList, srcBuffer->GetHandle(),
-                dstImg->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions));
+                cmdList, srcVkBuffer->GetHandle(),
+                dstVkTexture->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &regions));
 
-        });
-
-        //if ((dstVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    dstVkTexture.TransitionImageLayout(
-        //        cb,
-        //        dstMipLevel,
-        //        1,
-        //        dstBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
-
+        }
     }
 
 
     void VkTransferCmdEnc::CopyTextureToBuffer(
-        const common::sp<ITexture>& src,
+        const common::sp<ITextureView>& src,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
@@ -1361,25 +1034,16 @@ namespace alloy::vk{
         std::uint32_t dstBytesPerImage,
         const Size3D& copySize
     ) {
+        auto srcVkView = PtrCast<VulkanTextureView>(src.get());
+        auto srcVkTexture = PtrCast<VulkanTexture>(src->GetTextureObject().get());
+        const auto& srcViewDesc = srcVkView->GetDesc();
 
-        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
+        auto dstBuffer = PtrCast<VulkanBuffer>(dst->GetBufferObject().get());
+
         resources.insert(src);
         resources.insert(dst);
 
-
-        auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
-        auto* dstBuffer = PtrCast<VulkanBuffer>(dst->GetBufferObject());
-
-        VulkanCommandList::TextureState::AspectState srcState{};
-        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
-        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        RegisterTexUsageAllAspecs(srcVkTexture, srcState);
-
-        VulkanCommandList::BufferState dstState{};
-        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        RegisterBufferUsage(dstBuffer, dstState);
+        const auto& srcDesc = srcVkTexture->GetDesc();
 
         //Vulkan region bufferRowLength is in texel count
         auto sizePerPixel = FormatHelpers::GetSizeInBytes(srcVkTexture->GetDesc().format);
@@ -1388,20 +1052,8 @@ namespace alloy::vk{
         assert(dstTexelsPerRow%sizePerPixel == 0);
         assert(dstBytesPerImage%dstTexelsPerRow == 0);
 
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
+        {
 
-            VkImage srcImage = srcVkTexture->GetHandle();
-
-            //TODO: Transition layout if necessary
-            //srcVkTexture.TransitionImageLayout(
-            //    cb,
-            //    srcMipLevel,
-            //    1,
-            //    srcBaseArrayLayer,
-            //    layerCount,
-            //    VkImageLayout.TransferSrcOptimal);
-
-            VulkanBuffer* dstBuffer = PtrCast<VulkanBuffer>(dst->GetBufferObject());
 
             VkImageAspectFlags aspect = (srcVkTexture->GetDesc().usage.depthStencil)
                 ? VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
@@ -1418,27 +1070,17 @@ namespace alloy::vk{
             VkImageSubresourceLayers& srcSubresource = region.imageSubresource;
             srcSubresource.aspectMask = aspect;
             srcSubresource.layerCount = 1;
-            srcSubresource.mipLevel = srcMipLevel;
-            srcSubresource.baseArrayLayer = srcBaseArrayLayer;
+            srcSubresource.mipLevel = srcMipLevel + srcViewDesc.baseMipLevel;
+            srcSubresource.baseArrayLayer = srcBaseArrayLayer + srcViewDesc.baseArrayLayer;
 
 
             VK_DEV_CALL(dev,vkCmdCopyImageToBuffer(
                 cmdList,
-                srcImage, VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                srcVkTexture->GetHandle(), VkImageLayout::VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 dstBuffer->GetHandle(), 1, &region));
 
-        });
+        }
 
-        //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
-        //{
-        //    srcVkTexture.TransitionImageLayout(
-        //        cb,
-        //        srcMipLevel,
-        //        1,
-        //        srcBaseArrayLayer,
-        //        layerCount,
-        //        VkImageLayout.ShaderReadOnlyOptimal);
-        //}
     }
 
     void VkTransferCmdEnc::CopyBuffer(
@@ -1449,21 +1091,10 @@ namespace alloy::vk{
         resources.insert(source);
         resources.insert(destination);
 
-        auto* srcVkBuffer = PtrCast<VulkanBuffer>(source->GetBufferObject());
-        auto* dstVkBuffer = PtrCast<VulkanBuffer>(destination->GetBufferObject());
+        auto* srcVkBuffer = PtrCast<VulkanBuffer>(source->GetBufferObject().get());
+        auto* dstVkBuffer = PtrCast<VulkanBuffer>(destination->GetBufferObject().get());
 
-
-        VulkanCommandList::BufferState srcState{};
-        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
-        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        RegisterBufferUsage(srcVkBuffer, srcState);
-
-        VulkanCommandList::BufferState dstState{};
-        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        RegisterBufferUsage(dstVkBuffer, dstState);
-
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
+        {
 
             VkBufferCopy region{};
             region.srcOffset = source->GetShape().GetOffsetInBytes(),
@@ -1478,7 +1109,7 @@ namespace alloy::vk{
                     1,
                     &region));
 
-        });
+        }
 
         //VkMemoryBarrier barrier;
         //barrier.sType = VkStructureType.MemoryBarrier;
@@ -1495,53 +1126,42 @@ namespace alloy::vk{
     }
 
     void VkTransferCmdEnc::CopyTexture(
-        const common::sp<ITexture>& src,
+        const common::sp<ITextureView>& src,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
-        const common::sp<ITexture>& dst,
+        const common::sp<ITextureView>& dst,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
         const Size3D& copySize
     ){
 
+        auto srcVkView = PtrCast<VulkanTextureView>(src.get());
+        auto srcVkTexture = PtrCast<VulkanTexture>(src->GetTextureObject().get());
+        const auto& srcViewDesc = srcVkView->GetDesc();
+        
+        auto dstVkView = PtrCast<VulkanTextureView>(dst.get());
+        auto dstVkTexture = PtrCast<VulkanTexture>(dst->GetTextureObject().get());
+        const auto& dstViewDesc = dstVkView->GetDesc();
+
         resources.insert(src);
         resources.insert(dst);
 
-        auto srcVkTexture = PtrCast<VulkanTexture>(src.get());
-        auto dstVkTexture = PtrCast<VulkanTexture>(dst.get());
-
-        VulkanCommandList::TextureState::AspectState srcState{};
-        srcState.access = VK_ACCESS_TRANSFER_READ_BIT;
-        srcState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        srcState.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        RegisterTexUsageAllAspecs(srcVkTexture, srcState);
-
-
-        VulkanCommandList::TextureState::AspectState dstState{};
-        dstState.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstState.stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstState.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        RegisterTexUsageAllAspecs(dstVkTexture, dstState);
-
-        //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
-
-
-        recordedCmds.emplace_back([=](VkCommandBuffer cmdList){
+        {
 
 
             VkImageSubresourceLayers srcSubresource{};
             srcSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
             srcSubresource.layerCount = 1;
-            srcSubresource.mipLevel = srcMipLevel;
-            srcSubresource.baseArrayLayer = srcBaseArrayLayer;
+            srcSubresource.mipLevel = srcMipLevel + srcViewDesc.baseMipLevel;
+            srcSubresource.baseArrayLayer = srcBaseArrayLayer + srcViewDesc.baseArrayLayer;
 
             VkImageSubresourceLayers dstSubresource{};
             dstSubresource.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
             dstSubresource.layerCount = 1;
-            dstSubresource.mipLevel = dstMipLevel;
-            dstSubresource.baseArrayLayer = dstBaseArrayLayer;
+            dstSubresource.mipLevel = dstMipLevel + dstViewDesc.baseMipLevel;
+            dstSubresource.baseArrayLayer = dstBaseArrayLayer + dstViewDesc.baseArrayLayer;
 
             VkImageCopy region {};
             region.srcOffset = { (int)srcOrigin.x, (int)srcOrigin.y, (int)srcOrigin.z };
@@ -1577,7 +1197,7 @@ namespace alloy::vk{
                     1,
                     &region));
 
-        });
+        }
 
         //if ((srcVkTexture.Usage & TextureUsage.Sampled) != 0)
         //{
@@ -1717,53 +1337,8 @@ namespace alloy::vk{
     };
 
 
-    void VulkanCommandList::Barrier(const std::vector<alloy::BarrierDescription>& barriers) {
-#if 0
-        for(auto& desc : barriers) {
-            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
-            }
-            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
-                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
-                _devRes.insert(barrierDesc.resource);
-            }
-            else if(std::holds_alternative<alloy::TextureBarrierResource>(desc.resourceInfo)) {
-                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
-                _devRes.insert(texDesc.resource);
-            }
-        }
-
+    void VulkanCommandList::Barrier(std::span<const alloy::BarrierOp> barriers) {
         BindBarrier(this, barriers);
-#endif
-    }
-
-    void VulkanCommandList::TransitionTextureToDefaultLayout(
-        const std::vector<common::sp<ITexture>>& textures
-    ) {
-        //#TODO: revisit this function once we have unified auto state tracking
-        // between dx12 & vulkan
-        assert(false);
-        CHK_RENDERPASS_ENDED();
-
-        auto* dummyPass = new VkCmdEncBase(_dev.get(), _cmdBuf);
-        //Record render pass
-        _passes.push_back(dummyPass);
-        _currentPass = dummyPass;
-
-        for(auto& t : textures) {
-            auto vkTex = PtrCast<VulkanTexture>(t.get());
-            dummyPass->resources.insert(t);
-
-            TextureState::AspectState state {};
-            state.stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR;
-            state.access = VK_ACCESS_2_MEMORY_READ_BIT_KHR
-                         | VK_ACCESS_2_MEMORY_WRITE_BIT_KHR;
-            state.layout = VK_IMAGE_LAYOUT_GENERAL;
-
-            dummyPass->RegisterTexUsageAllAspecs(vkTex, state);
-        }
-
-
-        EndPass();
     }
 
     VkRenderCmdEnc::VkRenderCmdEnc(VulkanDevice* dev,
@@ -1772,213 +1347,71 @@ namespace alloy::vk{
         : VkCmdEncBase{ dev, cmdList }
         , _fb(fb)
     {
-        for (auto& ctAct : fb.colorTargetActions)
+
         {
-            auto& vkTexView = ctAct.target->GetTexture();
-            auto vkColorTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
-
-            VulkanCommandList::TextureState state{};
-            auto& aspectState = state.color;
-
-            //Always allow read on non-discard load
-            if(ctAct.loadAction != alloy::LoadAction::DontCare) {
-                aspectState.access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-            }
-
-            if(ctAct.loadAction != alloy::LoadAction::ReadOnly ||
-               !(dev->GetVkFeatures().supportReadOnlyAttachment)
-            ) {
-                aspectState.access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            }
-
-            aspectState.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            aspectState.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            state.aspects = VK_IMAGE_ASPECT_COLOR_BIT;
-            RegisterTexUsage(vkColorTex, state);
-
-            if(ctAct.msaaResolveTarget) {
-                auto& vkResolveTexView = ctAct.msaaResolveTarget->GetTexture();
-                auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
-
-                VulkanCommandList::TextureState destinationState{};
-                destinationState.aspects = VK_IMAGE_ASPECT_COLOR_BIT;
-                destinationState.color.access =  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-                destinationState.color.stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                destinationState.color.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                RegisterTexUsage(vkResolveTex, destinationState);
-            }
-        };
-
-
-        // Combined depth stencil
-
-
-        // Depth only
-        //   if LoadAction::ReadOnly
-        //     layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
-        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-        //   else
-        //     layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
-        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | WRITE_BIT
-        // Stencil only
-        //   if LoadAction::ReadOnly
-        //     layout = VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
-        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-        //   else
-        //     layout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL
-        //     access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | WRITE_BIT
-
-        
-        VulkanCommandList::TextureState depthState{};
-        VulkanCommandList::TextureState stencilState{};
-        if (fb.depthTargetAction.has_value())
-        {
-            const auto& dtAct = fb.depthTargetAction.value();
-
-            auto& vkTexView = dtAct.target->GetTexture();
-            auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
-
-            VulkanCommandList::TextureState state{ .aspects = VK_IMAGE_ASPECT_DEPTH_BIT };
-            auto& aspectState = state.depth;
-            aspectState.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
-                        | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-            aspectState.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-            //Always allow read on non-discard load
-            if(dtAct.loadAction != alloy::LoadAction::DontCare) {
-                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-            }
-
-            if(dtAct.loadAction != alloy::LoadAction::ReadOnly ||
-               !(dev->GetVkFeatures().supportReadOnlyAttachment)
-            ) {
-                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            } else {
-                //Read only access, let's use READ_OPTIMAL
-                aspectState.layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-            }
-
-            RegisterTexUsage(vkDepthTex, state);
-
-            if(dtAct.msaaResolveTarget) {
-                auto& vkResolveTexView = dtAct.msaaResolveTarget->GetTexture();
-                auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
-
-                VulkanCommandList::TextureState destinationState{.aspects = VK_IMAGE_ASPECT_DEPTH_BIT};
-                destinationState.depth.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-                destinationState.depth.stage = state.depth.stage;
-                destinationState.depth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-                RegisterTexUsage(vkResolveTex, destinationState);
-            }
-        }
-
-        if(fb.stencilTargetAction.has_value())
-        {
-            const auto& stAct = fb.stencilTargetAction.value();
-
-            auto& vkTexView = stAct.target->GetTexture();
-            auto vkDepthTex = PtrCast<VulkanTexture>(vkTexView.GetTextureObject().get());
-
-            VulkanCommandList::TextureState state{ .aspects = VK_IMAGE_ASPECT_STENCIL_BIT };
-            auto& aspectState = state.stencil;
-            aspectState.stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
-                        | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-            aspectState.layout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
-
-            //Always allow read on non-discard load
-            if(stAct.loadAction != alloy::LoadAction::DontCare) {
-                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-            }
-
-            if(stAct.loadAction != alloy::LoadAction::ReadOnly ||
-               !(dev->GetVkFeatures().supportReadOnlyAttachment)
-            ) {
-                aspectState.access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            } else {
-                //Read only access, let's use READ_OPTIMAL
-                aspectState.layout = VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL;
-            }
-
-            RegisterTexUsage(vkDepthTex, state);
-
-
-            //if(stAct.msaaResolveTarget) {
-            //    auto& vkResolveTexView = stAct.msaaResolveTarget->GetTexture();
-            //    auto vkResolveTex = PtrCast<VulkanTexture>(vkResolveTexView.GetTextureObject().get());
-            //
-            //    VulkanCommandList::TextureState destinationState{};
-            //    destinationState.access =  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            //    destinationState.stage = state.stage;
-            //    destinationState.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            //    RegisterTexUsage(vkResolveTex, destinationState);
-            //}
-        }
-
-        recordedCmds.emplace_back(
-            [dev, actions = fb](VkCommandBuffer cmdList) {
-                auto _Vd2VkLoadOp = [](alloy::LoadAction load) {
-                    switch(load) {
-                        case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
-                        case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
-                    }
-                    return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-                };
-
-                auto _Vd2VkStoreOp = [](alloy::StoreAction store) {
-                    switch(store) {
-                        case alloy::StoreAction::Store : return  VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
-                    }
-                    return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                };
-
-
-                uint32_t width = 0, height = 0;
-
-
-                unsigned colorAttachmentCount = actions.colorTargetActions.size();
-
-                std::vector<VkRenderingAttachmentInfoKHR> colorAttachmentRefs{};
-                for (auto& ctAct : actions.colorTargetActions)
-                {
-                    //auto vkRT = common::PtrCast<VulkanRenderTarget>(ctAct.target.get());
-                    auto vkTexView = common::PtrCast<VulkanTextureView>(&ctAct.target->GetTexture());
-                    auto vkColorTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-
-                    auto& texDesc = vkColorTex->GetDesc();
-
-                    width = std::max(width, texDesc.width);
-                    height = std::max(height, texDesc.height);
-
-                    auto& colorAttachmentDesc
-                        = colorAttachmentRefs.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-
-                    colorAttachmentDesc.imageView = vkTexView->GetHandle();
-                    colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    colorAttachmentDesc.loadOp = _Vd2VkLoadOp(ctAct.loadAction),
-                    colorAttachmentDesc.storeOp = _Vd2VkStoreOp(ctAct.storeAction),
-                    colorAttachmentDesc.clearValue = {.color = {
-                            .float32 = {
-                                ctAct.clearColor.r,
-                                ctAct.clearColor.g,
-                                ctAct.clearColor.b,
-                                ctAct.clearColor.a
-                            }
-                        }};
-
-                    if(ctAct.msaaResolveTarget) {
-                        auto vkResolveTexView = common::PtrCast<VulkanTextureView>(&ctAct.msaaResolveTarget->GetTexture());
-
-                        colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-                        colorAttachmentDesc.resolveImageView = vkResolveTexView->GetHandle();
-                        colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    }
-                    else {
-                        colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
-                        colorAttachmentDesc.resolveImageView = nullptr;
-                        colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    }
+            const auto& actions = fb;
+            auto _Vd2VkLoadOp = [](alloy::LoadAction load) {
+                switch(load) {
+                    case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+                    case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    default: return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 }
+            };
+
+            auto _Vd2VkStoreOp = [](alloy::StoreAction store) {
+                switch(store) {
+                    case alloy::StoreAction::Store : return  VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
+                    default: return VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                }
+            };
+
+
+            uint32_t width = 0, height = 0;
+
+
+            unsigned colorAttachmentCount = actions.colorTargetActions.size();
+
+            std::vector<VkRenderingAttachmentInfoKHR> colorAttachmentRefs{};
+            for (auto& ctAct : actions.colorTargetActions)
+            {
+                //auto vkRT = common::PtrCast<VulkanRenderTarget>(ctAct.target.get());
+                auto vkTexView = common::PtrCast<VulkanTextureView>(ctAct.target.get());
+                auto vkColorTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
+
+                auto& texDesc = vkColorTex->GetDesc();
+
+                width = std::max(width, texDesc.width);
+                height = std::max(height, texDesc.height);
+
+                auto& colorAttachmentDesc
+                    = colorAttachmentRefs.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+
+                colorAttachmentDesc.imageView = vkTexView->GetHandle();
+                colorAttachmentDesc.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                colorAttachmentDesc.loadOp = _Vd2VkLoadOp(ctAct.loadAction),
+                colorAttachmentDesc.storeOp = _Vd2VkStoreOp(ctAct.storeAction),
+                colorAttachmentDesc.clearValue = {.color = {
+                        .float32 = {
+                            ctAct.clearColor.r,
+                            ctAct.clearColor.g,
+                            ctAct.clearColor.b,
+                            ctAct.clearColor.a
+                        }
+                    }};
+
+                if(ctAct.msaaResolveTarget) {
+                    auto vkResolveTexView = common::PtrCast<VulkanTextureViewBase>(ctAct.msaaResolveTarget.get());
+
+                    colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+                    colorAttachmentDesc.resolveImageView = vkResolveTexView->GetHandle();
+                    colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                }
+                else {
+                    colorAttachmentDesc.resolveMode = VK_RESOLVE_MODE_NONE;
+                    colorAttachmentDesc.resolveImageView = nullptr;
+                    colorAttachmentDesc.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                }
+            }
 
                 VkRenderingAttachmentInfoKHR depthAttachment{
                     VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR
@@ -1992,33 +1425,35 @@ namespace alloy::vk{
 
                 if (actions.depthTargetAction.has_value())
                 {
+                    const auto& dtAct = actions.depthTargetAction.value();
                     hasDepth = true;
 
                     //auto vkRT = common::PtrCast<VulkanRenderTarget>(actions.depthTargetAction->target.get());
-                    auto vkTexView = common::PtrCast<VulkanTextureView>(&actions.depthTargetAction->target->GetTexture());
+                    auto vkTexView = common::PtrCast<VulkanTextureViewBase>(dtAct.target.get());
                     auto vkDepthTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
-                    auto& texDesc = vkDepthTex->GetDesc();
+                    const auto& texDesc = vkDepthTex->GetDesc();
                     width = std::max(width, texDesc.width);
                     height = std::max(height, texDesc.height);
 
                     depthAttachment.imageView = vkTexView->GetHandle();
                     depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    depthAttachment.loadOp = _Vd2VkLoadOp(actions.depthTargetAction->loadAction);
-                    depthAttachment.storeOp = _Vd2VkStoreOp(actions.depthTargetAction->storeAction);
+                    depthAttachment.loadOp = _Vd2VkLoadOp(dtAct.loadAction);
+                    depthAttachment.storeOp = _Vd2VkStoreOp(dtAct.storeAction);
                     depthAttachment.clearValue = {
                         .depthStencil = {
-                            .depth = actions.depthTargetAction->clearDepth
+                            .depth = dtAct.clearDepth
                         }
                     };
 
-                    if(actions.depthTargetAction->msaaResolveTarget) {
-                        auto vkResolveTexView = common::PtrCast<VulkanTextureView>(
-                            &actions.depthTargetAction->msaaResolveTarget->GetTexture());
+                    if(dtAct.msaaResolveTarget) {
+                        auto vkResolveTexView = common::PtrCast<VulkanTextureViewBase>(
+                            dtAct.msaaResolveTarget.get());
 
-                        VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
-                        switch(actions.depthTargetAction->msaaResolveMode) {
+                        VkResolveModeFlagBits resolveMode;
+                        switch(dtAct.msaaResolveMode) {
                             case MSAADepthResolveMode::Min : resolveMode = VK_RESOLVE_MODE_MIN_BIT; break;
                             case MSAADepthResolveMode::Max : resolveMode = VK_RESOLVE_MODE_MAX_BIT; break;
+                            default: resolveMode = VK_RESOLVE_MODE_NONE;
                         }
 
                         depthAttachment.resolveMode = resolveMode;
@@ -2034,10 +1469,11 @@ namespace alloy::vk{
 
                 if(actions.stencilTargetAction.has_value())
                 {
+                    const auto& stAct = actions.stencilTargetAction.value();
                     hasStencil = true;
 
-                    //auto vkRT = common::PtrCast<VulkanRenderTarget>(actions.stencilTargetAction->target.get());
-                    auto vkTexView = common::PtrCast<VulkanTextureView>(&actions.stencilTargetAction->target->GetTexture());
+                    //auto vkRT = common::PtrCast<VulkanRenderTarget>(stAct.target.get());
+                    auto vkTexView = common::PtrCast<VulkanTextureViewBase>(stAct.target.get());
                     auto vkStencilTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
                     auto& texDesc = vkStencilTex->GetDesc();
                     width = std::max(width, texDesc.width);
@@ -2045,17 +1481,17 @@ namespace alloy::vk{
 
                     stencilAttachment.imageView = vkTexView->GetHandle();
                     stencilAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    stencilAttachment.loadOp = _Vd2VkLoadOp(actions.stencilTargetAction->loadAction);
-                    stencilAttachment.storeOp = _Vd2VkStoreOp(actions.stencilTargetAction->storeAction);
+                    stencilAttachment.loadOp = _Vd2VkLoadOp(stAct.loadAction);
+                    stencilAttachment.storeOp = _Vd2VkStoreOp(stAct.storeAction);
                     stencilAttachment.clearValue = {
                         .depthStencil = {
-                            .stencil = actions.stencilTargetAction->clearStencil
+                            .stencil = stAct.clearStencil
                         }
                     };
 
-                    //if(actions.stencilTargetAction->msaaResolveTarget) {
+                    //if(stAct.msaaResolveTarget) {
                     //    auto vkResolveTexView = common::PtrCast<VulkanTextureView>(
-                    //        &actions.stencilTargetAction->msaaResolveTarget->GetTexture());
+                    //        &stAct.msaaResolveTarget->GetTexture());
                     //
                     //    stencilAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
                     //    stencilAttachment.resolveImageView = vkResolveTexView->GetHandle();
@@ -2081,8 +1517,7 @@ namespace alloy::vk{
 
                 VK_DEV_CALL(dev, vkCmdBeginRenderingKHR(cmdList, &render_info));
 
-            }
-        );
+        }
     }
 
     IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(const RenderPassAction& actions) {
@@ -2133,167 +1568,25 @@ namespace alloy::vk{
     void VulkanCommandList::EndPass() {
         CHK_RENDERPASS_BEGUN();
 
-        auto& currPassReqStates = _currentPass->firstState;
-        //_requestedStates.buffers.insert(
-        //    currPassReqStates.buffers.begin(),
-        //    currPassReqStates.buffers.end());
-
-        //_requestedStates.textures.insert(
-        //    currPassReqStates.textures.begin(),
-        //    currPassReqStates.textures.end());
-
-        std::vector<VkBufferMemoryBarrier2KHR> bufferBarriers {};
-
-        for(auto& [buffer, stateReq] : currPassReqStates.buffers) {
-            //BufferState state {};
-            //Search for current recorded state
-            auto it = _finalStates.buffers.find(buffer);
-            if(it == _finalStates.buffers.end()) {
-                //All mem accesses are guaranteed finished after
-                //semaphore signaled in submission
-                //No need to insert barriers if this is the first access
-                _finalStates.buffers.insert({buffer, stateReq});
-                continue;
-            }
-
-            auto& state = it->second;
-
-            if(_HasAccessHazard(state.access, stateReq.access)) {
-                auto& action = bufferBarriers.emplace_back(
-                    VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2_KHR
-                );
-                action.srcStageMask = state.stage;
-                action.srcAccessMask = state.access;
-                action.dstStageMask = stateReq.stage;
-                action.dstAccessMask = stateReq.access;
-                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.buffer = buffer->GetHandle();
-                action.offset = 0;
-                action.size = buffer->GetDesc().sizeInBytes;
-            }
-
-            _finalStates.buffers[buffer] = stateReq;
-        }
-
-        std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
-
-        auto _InsertBarrierIfHasAccessHazrard = [&](
-            const VulkanTexture* texture,
-            VkImageAspectFlags aspects,
-            const TextureState::AspectState& state,
-            const TextureState::AspectState& stateReq
-        ) {
-            if(state.layout == stateReq.layout &&
-               !_HasAccessHazard(state.access, stateReq.access)
-            ) {
-                return;
-            }
-
-            auto& desc = texture->GetDesc();
-            auto& action = texBarriers.emplace_back(
-                VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
-            );
-            action.srcStageMask = state.stage;
-            action.srcAccessMask = state.access;
-            action.dstStageMask = stateReq.stage;
-            action.dstAccessMask = stateReq.access;
-            action.oldLayout = state.layout;
-            action.newLayout = stateReq.layout;
-            action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            action.image = texture->GetHandle();
-            action.subresourceRange.baseMipLevel = 0;
-            action.subresourceRange.levelCount = desc.mipLevels;
-            action.subresourceRange.baseArrayLayer = 0;
-            action.subresourceRange.layerCount = desc.arrayLayers;
-            action.subresourceRange.aspectMask = aspects;
-        };
-
-        for(auto& [texture, stateReq] : currPassReqStates.textures) {
-            //TextureState state {};
-            //Search for current recorded state
-            auto it = _finalStates.textures.find(texture);
-            if(it == _finalStates.textures.end()) {
-                //All mem accesses are guaranteed finished after
-                //semaphore signaled in submission
-                //No need to insert barriers if this is the first access
-                _finalStates.textures.insert({texture, stateReq});
-                //Request for expected texture layout
-                _requestedStates.textures.insert({texture, stateReq});
-                continue;
-            }
-
-            auto& state = it->second;
-            auto& requestedState = _requestedStates.textures[texture];
-            if(stateReq.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
-                if(! (state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) ) {
-                    //Same insert like first access, but per-aspect
-                    state.color = stateReq.color;
-                    requestedState.color = stateReq.color;
-                } else {
-                    _InsertBarrierIfHasAccessHazrard(
-                        texture,
-                        VK_IMAGE_ASPECT_COLOR_BIT,
-                        state.color,
-                        stateReq.color
-                    );
-                }
-            }
-
-            if(stateReq.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-                if(! (state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) ) {
-                    //Same insert like first access, but per-aspect
-                    state.depth = stateReq.depth;
-                    requestedState.depth = stateReq.depth;
-                } else {
-                    _InsertBarrierIfHasAccessHazrard(
-                        texture,
-                        VK_IMAGE_ASPECT_DEPTH_BIT,
-                        state.depth,
-                        stateReq.depth
-                    );
-                }
-            }
-
-            if(stateReq.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-                if(! (state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ) {
-                    //Same insert like first access, but per-aspect
-                    state.stencil = stateReq.stencil;
-                    requestedState.stencil = stateReq.stencil;
-                } else {
-                    _InsertBarrierIfHasAccessHazrard(
-                        texture,
-                        VK_IMAGE_ASPECT_COLOR_BIT,
-                        state.stencil,
-                        stateReq.stencil
-                    );
-                }
-            }
-        }
-
-        VkDependencyInfoKHR depInfo {};
-        depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR;
-        //TODO: figure out which scope to use
-        depInfo.dependencyFlags = 0;
-
-        //uint32_t                         memoryBarrierCount;
-        //const VkMemoryBarrier2*          pMemoryBarriers;
-        depInfo.bufferMemoryBarrierCount = bufferBarriers.size();
-        depInfo.pBufferMemoryBarriers = bufferBarriers.data();
-        depInfo.imageMemoryBarrierCount = texBarriers.size();
-        depInfo.pImageMemoryBarriers = texBarriers.data();
-
-
-        _dev->GetFnTable().vkCmdPipelineBarrier2KHR(_cmdBuf, &depInfo);
-        //InsertBarrier(_dev.get(), _cmdBuf, barrierActions);
-
-        auto& currPassStates = _currentPass->lastState;
-        _finalStates.SyncTo(currPassStates);
-
         _currentPass->EndPass();
-
         _currentPass = nullptr;
+    }
+
+    
+    void VulkanCommandList::SetDebugName(const std::string& name) {
+        // Check for a valid function pointer
+
+        if (_dev->GetContext().GetCaps().hasDebugUtilExt)
+        {
+            VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+            nameInfo.objectType = VK_OBJECT_TYPE_COMMAND_BUFFER;
+            nameInfo.objectHandle = (uint64_t)_cmdBuf;
+            nameInfo.pObjectName = name.c_str();
+            VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
+        }
+
+        _debugName = name;
     }
 
 

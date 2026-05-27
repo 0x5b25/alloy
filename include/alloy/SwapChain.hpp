@@ -1,6 +1,5 @@
 #pragma once
 
-#include "alloy/FrameBuffer.hpp"
 #include "alloy/SwapChainSources.hpp"
 #include "alloy/SyncObjects.hpp"
 
@@ -10,7 +9,7 @@
 namespace alloy
 {
 
-
+    class ITextureView;
 
     class ISwapChain : public common::RefCntBase{
 
@@ -44,7 +43,7 @@ namespace alloy
             // The optional format of the depth target of the Swapchain's Framebuffer.
             // If non-null, this must be a valid depth Texture format.
             // If null, then no depth target will be created.
-            std::optional<PixelFormat> depthFormat;
+            //std::optional<PixelFormat> depthFormat;
 
             // Indicates whether presentation of the Swapchain will be synchronized to the window system's vertical refresh rate.
             bool syncToVerticalBlank;
@@ -67,18 +66,15 @@ namespace alloy
             bool colorSrgb;
         };
 
-    protected:
-        Description description;
-
-        ISwapChain(const Description& desc) : description(desc) {}
-
     public:
         //ISwapChain() {}
 
         // GetBackBuffer will only "give the next back buffer"
         // if current backbuffer is in use i.e. being Present() -ed
         // otherwise the same back buffer will be returned
-        virtual common::sp<IFrameBuffer> GetBackBuffer() = 0;
+        virtual common::sp<ITextureView> GetBackBuffer() = 0;
+
+        virtual const Description& GetDesc() const = 0;
 
         // Get the current backbuffer index
         virtual uint32_t GetBackBufferIndex() = 0;

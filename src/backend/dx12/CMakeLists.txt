@@ -36,8 +36,6 @@ set(VLD_BACKEND_DXC_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/DXCResourceFactory.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCTexture.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCTexture.hpp"
-    "${CMAKE_CURRENT_LIST_DIR}/DXCFrameBuffer.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/DXCFrameBuffer.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCSwapChain.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCSwapChain.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/DXCShader.cpp"

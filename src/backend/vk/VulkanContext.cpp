@@ -36,6 +36,10 @@ namespace alloy::vk
             return availableExtNames.contains(extName);
         };
 
+        hasDescriptorBufferExt = IsExtSupported(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+        hasMutableDescriptorTypeExt =
+            IsExtSupported(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
+
         VkPhysicalDeviceProperties devProps { };
         fnTable.vkGetPhysicalDeviceProperties(adp, &devProps);
 
@@ -105,6 +109,25 @@ namespace alloy::vk
                 features2.pNext = &meshShaderFeatures;
             }
 
+            if(hasDescriptorBufferExt) {
+                descriptorBufferFeatures.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
+                descriptorBufferFeatures.pNext = features2.pNext;
+                features2.pNext = &descriptorBufferFeatures;
+
+                descriptorBufferProperties.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT;
+                descriptorBufferProperties.pNext = devProps2.pNext;
+                devProps2.pNext = &descriptorBufferProperties;
+            }
+
+            if(hasMutableDescriptorTypeExt) {
+                mutableDescriptorTypeFeatures.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT;
+                mutableDescriptorTypeFeatures.pNext = features2.pNext;
+                features2.pNext = &mutableDescriptorTypeFeatures;
+            }
+
             fnTable.vkGetPhysicalDeviceProperties2(adp, &devProps2);
             fnTable.vkGetPhysicalDeviceFeatures2(adp, &features2);
         }
@@ -150,7 +173,9 @@ namespace alloy::vk
              IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) &&
             SupportDescriptorIndexing();
 
-        if(supportsDescriptorIndexing) {
+        if(supportsDescriptorIndexing && SupportsDescriptorBufferStorage()) {
+            resourceBindingModel = ResourceBindingModel::DescriptorBuffer;
+        } else if(supportsDescriptorIndexing) {
             resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
         } else {
             resourceBindingModel = ResourceBindingModel::Legacy;
@@ -275,16 +300,7 @@ namespace alloy::vk
         adp->info.capabilities.supportRayTracing = adp->_caps.supportRayTracing;
         adp->info.capabilities.supportNonUniformResourceIndexing =
             adp->_caps.SupportNonUniformResourceIndexing();
-        switch(adp->_caps.resourceBindingModel) {
-            case VulkanDevCaps::ResourceBindingModel::DescriptorIndexing:
-            case VulkanDevCaps::ResourceBindingModel::DescriptorBuffer:
-                adp->info.resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
-                break;
-            case VulkanDevCaps::ResourceBindingModel::Legacy:
-            default:
-                adp->info.resourceBindingModel = ResourceBindingModel::FixedBindings;
-                break;
-        }
+        adp->info.resourceBindingModel = adp->_caps.GetPublicResourceBindingModel();
 
         {
             //Try find dedicated compute queue

@@ -27,145 +27,7 @@ namespace alloy::vk
         
         return supported;
     }
-
-    //bool GetPresentQueueIndex(VulkanDevice* dev, std::uint32_t& queueFamilyIndex)
-    //{
-    //    auto& phyDevInfo = dev->GetPhyDevInfo();
-    //    std::uint32_t graphicsQueueIndex = phyDevInfo.graphicsQueueFamily;
-    //    std::uint32_t presentQueueIndex = phyDevInfo.graphicsQueueFamily;
-    //    auto& surface = dev->Surface();
-    //
-    //    if (QueueSupportsPresent(dev, graphicsQueueIndex, surface))
-    //    {
-    //        queueFamilyIndex = graphicsQueueIndex;
-    //        return true;
-    //    }
-    //    else if (graphicsQueueIndex != presentQueueIndex && QueueSupportsPresent(dev, presentQueueIndex, surface))
-    //    {
-    //        queueFamilyIndex = presentQueueIndex;
-    //        return true;
-    //    }
-    //
-    //    queueFamilyIndex = 0;
-    //    return false;
-    //}
-     
-    //VkRenderPass _SCFB::GetRenderPassNoClear_Init() const {return _sc->GetRenderPassNoClear_Init();}
-    //VkRenderPass _SCFB::GetRenderPassNoClear_Load() const {return _sc->GetRenderPassNoClear_Load();}
-    //VkRenderPass _SCFB::GetRenderPassClear() const {return _sc->GetRenderPassClear();}
-
-    OutputDescription _SCFB::GetDesc() { 
-        
-        OutputDescription desc { };
-
-        desc.colorAttachments.push_back(common::sp(new VulkanSCRT(
-            _sc,
-            *_bb.colorTgt.get()
-        )));
-
-        if(HasDepthTarget()) {
-            desc.depthAttachment.reset(new VulkanSCRT(
-                _sc,
-                *_bb.dsTgt.get()
-            ));
-        }
-
-        desc.sampleCount = _bb.colorTgt.get()->GetTextureObject()->GetDesc().sampleCount;
-
-        return desc;
     
-    }
-
-    _SCFB::~_SCFB(){
-        //auto _gd = PtrCast<VulkanDevice>(dev.get());
-        //vkDestroyImageView(_gd->LogicalDev(), _colorTargetView, nullptr);
-        //if(HasDepthTarget()){
-        //    vkDestroyImageView(_gd->LogicalDev(), _depthTargetView, nullptr);
-        //}
-        //vkDestroyFramebuffer(_gd->LogicalDev(), _fb, nullptr);
-    }
-
-
-#if 0
-    common::sp<_SCFB> _SCFB::_Make(
-        const common::sp<VulkanDevice>& dev,
-        const common::sp<VulkanSwapChain>& sc,
-        const common::sp<VulkanTexture>& colorTarget,
-        const common::sp<VulkanTexture>& depthTarget
-    ){
-
-        VkImageView attachments[] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
-        //create image views
-        {//color target first
-            VkImageViewCreateInfo imageViewCI{};
-            imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            imageViewCI.image = colorTarget->GetHandle();
-
-            auto format =  colorTarget->GetDesc().format;
-            imageViewCI.format = alloy::vk::VdToVkPixelFormat(format, false); //not a depth format
-            imageViewCI.viewType = colorTarget->GetDesc().arrayLayers > 1
-                ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
-                : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-            imageViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
-            imageViewCI.subresourceRange.baseMipLevel = 0;
-            imageViewCI.subresourceRange.levelCount = colorTarget->GetDesc().mipLevels;
-            imageViewCI.subresourceRange.baseArrayLayer = 0;
-            imageViewCI.subresourceRange.layerCount = colorTarget->GetDesc().arrayLayers;
-            VK_CHECK(vkCreateImageView(dev->LogicalDev(), &imageViewCI, nullptr, &attachments[0]));
-        }
-
-        if(depthTarget != nullptr)
-        {//depth target
-            bool hasStencil = FormatHelpers::IsStencilFormat(depthTarget->GetDesc().format);
-            VkImageViewCreateInfo depthViewCI{};
-            depthViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            depthViewCI.image = depthTarget->GetHandle();
-            depthViewCI.format = alloy::vk::VdToVkPixelFormat(depthTarget->GetDesc().format);
-            depthViewCI.viewType = depthTarget->GetDesc().arrayLayers > 1
-                ? VkImageViewType::VK_IMAGE_VIEW_TYPE_2D_ARRAY
-                : VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-            depthViewCI.subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-            if(hasStencil){
-                depthViewCI.subresourceRange.aspectMask |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
-            depthViewCI.subresourceRange.baseMipLevel = 0;
-            depthViewCI.subresourceRange.levelCount = depthTarget->GetDesc().mipLevels;
-            depthViewCI.subresourceRange.baseArrayLayer = 0;
-            depthViewCI.subresourceRange.layerCount = depthTarget->GetDesc().arrayLayers;
-            VK_CHECK(vkCreateImageView(dev->LogicalDev(), &depthViewCI, nullptr, &attachments[1]));
-        }
-
-        //VkFramebufferCreateInfo fbCI{};
-        //fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        //fbCI.renderPass = sc->GetRenderPassNoClear_Init();
-        //fbCI.attachmentCount = 1;
-        //fbCI.pAttachments = attachments;
-        //fbCI.width = colorTarget->GetDesc().width;
-        //fbCI.height = colorTarget->GetDesc().height;
-        //fbCI.layers = 1;
-        //if(depthTarget != nullptr){
-        //    fbCI.attachmentCount += 1;
-        //}
-        //VkFramebuffer fb;
-        //VK_CHECK(vkCreateFramebuffer(dev->LogicalDev(), &fbCI, nullptr, &fb));
-
-        auto scfb = new _SCFB(dev);
-        scfb->_sc = sc;
-        //scfb->_fb = fb;
-        scfb->_colorTarget = colorTarget;
-        scfb->_depthTarget = depthTarget;
-        scfb->_colorTargetView = attachments[0];
-        scfb->_depthTargetView = attachments[1];
-        scfb->_fbDesc.colorTargets = { {colorTarget, colorTarget->GetDesc().arrayLayers, colorTarget->GetDesc().mipLevels} };
-        if(depthTarget)
-            scfb->_fbDesc.depthTarget = {depthTarget, depthTarget->GetDesc().arrayLayers, depthTarget->GetDesc().mipLevels};
-            //VulkanFrameBufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
-            
-
-        return common::sp(scfb);
-    }
-
-#endif
     void VulkanSwapChain::ReleaseFramebuffers(){
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClear, nullptr);
         //vkDestroyRenderPass(_gd->LogicalDev(), _renderPassNoClearLoad, nullptr);
@@ -177,6 +39,10 @@ namespace alloy::vk
         //    assert(fb->unique());
         //}
 #endif
+        for(auto& fb : _fbs){
+            _dev->GetFnTable().vkDestroyImageView(
+                _dev->LogicalDev(), fb.colorTgtView, nullptr);
+        }
 
         _fbs.clear();
 
@@ -185,8 +51,6 @@ namespace alloy::vk
         //    assert(_depthTarget->unique());
         //}
 #endif
-
-        _depthTarget = nullptr;
     }
 
     void VulkanSwapChain::CreateFramebuffers(){
@@ -204,97 +68,25 @@ namespace alloy::vk
 
         assert(scImageCount > 0);
         auto _CreateRT = [&](
-            const common::sp<VulkanTexture>& colorTgt, 
-            const common::sp<VulkanTexture>& dsTgt
+            const common::sp<VulkanTexture>& colorTgt
         ) {
-            this->ref();
-            auto spsc = common::sp(this);
             BackBufferContainer fb { };
 
             ITextureView::Description ctvDesc {};
             ctvDesc.mipLevels = 1;
             ctvDesc.arrayLayers = 1;
             auto ctView = VulkanTextureView::Make(colorTgt,ctvDesc);
-            fb.colorTgt = ctView;
-
-            if(dsTgt) {
-                ITextureView::Description dsvDesc {};
-                dsvDesc.mipLevels = 1;
-                dsvDesc.arrayLayers = 1;
-                auto dsView = VulkanTextureView::Make(dsTgt,dsvDesc);
-                fb.dsTgt = dsView;
-            }
+            fb.colorTgt = colorTgt;
+            fb.colorTgtView = VulkanTextureViewBase::MakeVkView(
+                *_dev, colorTgt.get(), ctvDesc);
 
             _fbs.push_back(std::move(fb));
 
             //auto fb = _SCFB::Make(_dev, spsc, colorTgt, dsTgt);
             //assert(fb != nullptr);
         };
-#if 0
-        //_scExtent = swapchainExtent;
-        //Framebuffer description Prepare render passes
-        //CreateDepthTexture();
-        if (description.depthFormat.has_value()) {
-            Texture::Description texDesc{};
-            texDesc.type = alloy::Texture::Description::Type::Texture2D;
-            texDesc.width = _scExtent.width;
-            texDesc.height = _scExtent.height;
-            texDesc.depth = 1;
-            texDesc.mipLevels = 1;
-            texDesc.arrayLayers = 1;
-            texDesc.usage.depthStencil = true;
-            texDesc.sampleCount = SampleCount::x1;
-            texDesc.format = description.depthFormat.value();
 
-            auto dTgt = _gd->GetResourceFactory()
-                ->CreateTexture(texDesc);
-            auto vkDTgt = PtrCast<VulkanTexture>(dTgt.get());
-            vkDTgt->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
-
-            _depthTarget = RefRawPtr(vkDTgt);
-            _fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
-        }
-
-        //Texture::Description texDesc{};
-        {
-            auto firstTex = scImgs.front();
-            texDesc.type = alloy::Texture::Description::Type::Texture2D;
-            texDesc.width = _scExtent.width;
-            texDesc.height = _scExtent.height;
-            texDesc.depth = 1;
-            texDesc.mipLevels = 1;
-            texDesc.arrayLayers = 1;
-            texDesc.usage.renderTarget = true;
-            texDesc.sampleCount = SampleCount::x1;
-            texDesc.format = alloy::VK::priv::VkToVdPixelFormat(_surfaceFormat.format);
-
-            auto firstColorTgt = alloy::VulkanTexture::WrapNative(RefRawPtr(_gd), texDesc,
-                VK_IMAGE_LAYOUT_UNDEFINED, 0, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, firstTex
-            );
-
-            //auto firstColorTgt = _gd->GetResourceFactory()->WrapNativeTexture(firstTex, texDesc);
-            auto vkFirstColorTgt = PtrCast<VulkanTexture>(firstColorTgt.get());
-            _fbDesc.colorTargets = { {firstColorTgt, firstColorTgt->GetDesc().arrayLayers, firstColorTgt->GetDesc().mipLevels} };
-            //VulkanFrameBufferBase::CreateCompatibleRenderPasses(_gd, _fbDesc, true,
-            //    _renderPassNoClear, _renderPassNoClearLoad, _renderPassClear);
-
-            _CreateSCFB(vkFirstColorTgt);
-        }
-#endif
-
-        ITexture::Description colorDesc{}, dsDesc{};
-
-        if (description.depthFormat.has_value()) {
-            dsDesc.type = ITexture::Description::Type::Texture2D;
-            dsDesc.width = _scExtent.width;
-            dsDesc.height = _scExtent.height;
-            dsDesc.depth = 1;
-            dsDesc.mipLevels = 1;
-            dsDesc.arrayLayers = 1;
-            dsDesc.usage.depthStencil = true;
-            dsDesc.sampleCount = SampleCount::x1;
-            dsDesc.format = description.depthFormat.value();
-        }
+        ITexture::Description colorDesc{};
 
         {
             colorDesc.type = ITexture::Description::Type::Texture2D;
@@ -317,20 +109,20 @@ namespace alloy::vk
             );
 
             auto colorTex = SPCast<VulkanTexture>(colorTgt);
-            common::sp<VulkanTexture> dsTex {};
+            //common::sp<VulkanTexture> dsTex {};
 
-            //Create depth stencil target if requested
-            if (description.depthFormat.has_value()) {
-                
-                auto dTgt = _dev->GetResourceFactory()
-                    .CreateTexture(dsDesc);
-                dsTex = SPCast<VulkanTexture>(dTgt);
-                //dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
-                //_fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
-            }
+            ////Create depth stencil target if requested
+            //if (_desc.depthFormat.has_value()) {
+            //    
+            //    auto dTgt = _dev->GetResourceFactory()
+            //        .CreateTexture(dsDesc);
+            //    dsTex = SPCast<VulkanTexture>(dTgt);
+            //    //dsTex->SetLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+            //    //_fbDesc.depthTarget = { _depthTarget, _depthTarget->GetDesc().arrayLayers, _depthTarget->GetDesc().mipLevels };
+            //}
 
 
-            _CreateRT(colorTex, dsTex);
+            _CreateRT(colorTex);
         }
 
         
@@ -452,7 +244,7 @@ namespace alloy::vk
         std::vector<VkSurfaceFormatKHR> formats (surfaceFormatCount);
         VK_CHECK(VK_INST_CALL(_dev, vkGetPhysicalDeviceSurfaceFormatsKHR(vulkanAdp.GetHandle(), surface, &surfaceFormatCount, formats.data())));
 
-        VkFormat desiredFormat = description.colorSrgb
+        VkFormat desiredFormat = _desc.colorSrgb
             ? VkFormat::VK_FORMAT_B8G8R8A8_SRGB
             : VkFormat::VK_FORMAT_B8G8R8A8_UNORM;
 
@@ -474,7 +266,7 @@ namespace alloy::vk
             }
             if (_surfaceFormat.format == VkFormat::VK_FORMAT_UNDEFINED)
             {
-                assert(!description.colorSrgb);
+                assert(!_desc.colorSrgb);
                 {
                     //throw new alloyException($"Unable to create an sRGB Swapchain for this surface.");
                 }
@@ -518,7 +310,7 @@ namespace alloy::vk
         std::uint32_t minImageCount = surfaceCapabilities.minImageCount;
         //std::uint32_t imageCount = std::min(maxImageCount, surfaceCapabilities.minImageCount + 1);
 
-        std::uint32_t imageCount = description.backBufferCnt;
+        std::uint32_t imageCount = _desc.backBufferCnt;
         if(imageCount < minImageCount) imageCount = minImageCount;
         else if(imageCount > maxImageCount) imageCount = maxImageCount;
 
@@ -657,7 +449,7 @@ namespace alloy::vk
 
     }
 
-    common::sp<IFrameBuffer> VulkanSwapChain::GetBackBuffer() {
+    common::sp<ITextureView> VulkanSwapChain::GetBackBuffer() {
 
         //Acquire next frame and wait for ready fence
 
@@ -679,9 +471,14 @@ namespace alloy::vk
         if (res == VK_SUCCESS ){
             //Swapchain image may be 0 when app minimized
             if (_currentImageIndex < _fbs.size()) {
-                ref();
-                return common::sp(
-                    new _SCFB(_dev, common::sp(this), _fbs[_currentImageIndex])
+                return common::make_sp<VulkanSCTexView>(
+                    common::ref_sp(this),
+                    _fbs[_currentImageIndex].colorTgt,
+                    _fbs[_currentImageIndex].colorTgtView,
+                    ITextureView::Description {
+                        .mipLevels = 1,
+                        .arrayLayers = 1,
+                    }
                 );
             }
             else 

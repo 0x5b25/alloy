@@ -489,8 +489,7 @@ namespace alloy::dxc {
     {
         auto d3dSC = PtrCast<DXCSwapChain>(sc);
         
-        auto tex = d3dSC->GetCurrentColorTarget()->GetTextureObject().get();
-        _gfxQ->PrepareTextureForPresent(PtrCast<DXCTexture>(tex));
+        //auto tex = d3dSC->GetCurrentColorTarget();
 
         auto rawHandle = d3dSC->GetHandle();
 
@@ -600,7 +599,7 @@ namespace alloy::dxc {
 
         auto buf = new DXCBuffer{ dev, desc };
         buf->_buffer = allocation;
-        buf->description.sizeInBytes = byteCnt;
+        buf->_desc.sizeInBytes = byteCnt;
 
         return common::sp(buf);
     }
@@ -619,33 +618,15 @@ namespace alloy::dxc {
     DXCCommandQueue::DXCCommandQueue(DXCDevice* pDev, D3D12_COMMAND_LIST_TYPE cmdQType)
         : _dev(pDev)
         , _qType(cmdQType)
-        , _lastSubmittedFence(0)
     {
         D3D12_COMMAND_QUEUE_DESC queueDesc {};
         queueDesc.Type = cmdQType;
         queueDesc.NodeMask = 0;
         ThrowIfFailed(pDev->GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&_q)));
-
-        ThrowIfFailed(pDev->GetDevice()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_submissionFence)));
-
-        ID3D12CommandAllocator* pool;
-        ThrowIfFailed(pDev->GetDevice()->CreateCommandAllocator(_qType, IID_PPV_ARGS(&pool)));
-        _freeCmdPools.push(pool);
-
     }
 
     DXCCommandQueue::~DXCCommandQueue() {
-        //All submissions should be completed
-        _RecycleTransitionCmdBufs();
-        assert(_cmdPoolsInUse.empty());
-        
-        while(!_freeCmdPools.empty()){
-            _freeCmdPools.front()->Release();
-            _freeCmdPools.pop();
-        }
-        _submissionFence->Release();
         _q->Release();
-        
     }
 
     common::sp<ICommandList> DXCCommandQueue::CreateCommandList() {
@@ -653,184 +634,21 @@ namespace alloy::dxc {
         return DXCCommandList::Make(common::sp(_dev), _qType);
     }
 
-    void DXCCommandQueue::_RecycleTransitionCmdBufs() {
-        auto completedVal = _submissionFence->GetCompletedValue();
-        while(!_cmdPoolsInUse.empty()) {
-            auto& pool = _cmdPoolsInUse.front();
-            if(pool.lastSubmittedFence <= completedVal) {
-                pool.pool->Reset();
-                _freeCmdPools.push(pool.pool);
-                _cmdPoolsInUse.pop();
-            }
-            else {
-                break;
-            }
-        }
-    }
-
-    ID3D12GraphicsCommandList* DXCCommandQueue::_GetOneTransitionCmdList() {
-        _RecycleTransitionCmdBufs();
-        ID3D12CommandAllocator* alloc;
-        if(_cmdPoolsInUse.empty()) {
-            alloc = _freeCmdPools.front();
-            _freeCmdPools.pop();
-            _cmdPoolsInUse.emplace(alloc, 1, _lastSubmittedFence);
-        } else {
-            auto& pool = _cmdPoolsInUse.front();
-            //Pool is full, fetch a new one
-            if(pool.allocatedCmdCnt >= CmdPoolInUse::MAX_CMD_IN_POOL) {
-                if(_freeCmdPools.empty()) {
-                    //Create a new pool
-                    ThrowIfFailed(_dev->GetDevice()->CreateCommandAllocator(_qType, IID_PPV_ARGS(&alloc)));
-                }
-                else {
-                    //Try fetch one from free pool list
-                    alloc = _freeCmdPools.front();
-                    _freeCmdPools.pop();
-                }
-                _cmdPoolsInUse.emplace(alloc, 1, _lastSubmittedFence);
-            }
-            //Still free slots left, use current one
-            else {
-                pool.allocatedCmdCnt++;
-                pool.lastSubmittedFence = _lastSubmittedFence;
-                alloc = pool.pool;
-            }
-        }
-
-        ID3D12GraphicsCommandList* pCmdList;
-        ThrowIfFailed(_dev->GetDevice()->CreateCommandList(0, _qType, alloc, nullptr, IID_PPV_ARGS(&pCmdList)));
-        return pCmdList;
-    }
-
-    
-    void DXCCommandQueue::_TransitResourceStatesBeforeSubmit(
-        const DXCCommandList& cmdList
-    ) {
-        auto& resStates = cmdList.GetResourceStates();
-
-        auto& cpuTimeline = _dev->GetCurrentState();
-
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
-
-        for(auto& [texture, statePair] : resStates) {
-            auto stateReq = statePair.initial;
-            //Search for current recorded state
-            D3D12_RESOURCE_STATES currState = D3D12_RESOURCE_STATE_COMMON;
-            auto it = _currentState.textures.find(texture);
-            if(it == _currentState.textures.end()) {
-                currState = cpuTimeline.textures[texture];
-                texture->NotifyUsageOn(this);
-            } else {
-                currState = it->second;
-            }
-
-            if(currState != stateReq) {
-                auto& barrier = barriers.emplace_back();
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-                barrier.Transition.pResource = texture->GetHandle();
-                barrier.Transition.StateBefore = currState;
-                barrier.Transition.StateAfter = stateReq;
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            }
-        }
-
-        if(!barriers.empty()) {
-            auto gfxCmdList = _GetOneTransitionCmdList();
-            gfxCmdList->ResourceBarrier(barriers.size(), barriers.data());
-            gfxCmdList->Close();
-
-            std::string debugName = std::format("ResTransCmdList_fence#{}", _lastSubmittedFence);
-            gfxCmdList->SetPrivateData( WKPDID_D3DDebugObjectName, debugName.size(), debugName.data() );
-
-            ID3D12CommandList* cmdList = gfxCmdList;
-            _q->ExecuteCommandLists(1, &cmdList);
-            gfxCmdList->Release();
-        }
-
-    }
-
-    void DXCCommandQueue::_MarkResourceStatesAfterSubmit(
-        const DXCCommandList& cmdList
-    ) {
-        auto& resStates = cmdList.GetResourceStates();
-        for(auto&[tex, statePair] : resStates) {
-            _currentState.textures[tex] = statePair.final;
-        }
-    }
-
-
-    
-    void DXCCommandQueue::PrepareTextureForPresent(DXCTexture* tex) {
-        D3D12_RESOURCE_STATES currState {};
-        auto it = _currentState.textures.find(tex);
-        if(it != _currentState.textures.end()) {
-            currState = it->second;
-        } else {
-            currState = _dev->GetCurrentState().textures[tex];
-            _currentState.textures[tex] = currState;
-        }
-
-        if(currState != D3D12_RESOURCE_STATE_PRESENT) {
-            _lastSubmittedFence++;
-            auto& texDesc = tex->GetDesc();
-            D3D12_RESOURCE_BARRIER barrier {};
-            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-            barrier.Transition.pResource = tex->GetHandle();
-            barrier.Transition.StateBefore = currState;
-            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-            _RecycleTransitionCmdBufs();
-
-            ID3D12GraphicsCommandList* pCmdList = _GetOneTransitionCmdList();
-            pCmdList->ResourceBarrier(1, &barrier);
-            pCmdList->Close();
-
-            std::string debugName = std::format("PresentPrepCmdList_fence#{}", _lastSubmittedFence);
-            pCmdList->SetPrivateData( WKPDID_D3DDebugObjectName, debugName.size(), debugName.data() );
-
-            ID3D12CommandList* cmdList = pCmdList;
-            _q->ExecuteCommandLists(1, &cmdList);
-            pCmdList->Release();
-            _q->Signal(_submissionFence, _lastSubmittedFence);
-        }
-
-        _currentState.textures[tex] = D3D12_RESOURCE_STATE_PRESENT;
-    }
-
-
     void DXCCommandQueue::EncodeSignalEvent(IEvent* evt, uint64_t value) {
         auto dxcFence = PtrCast<DXCFence>(evt);
-        dxcFence->RegisterSyncPoint(this, value);
         _q->Signal(dxcFence->GetHandle(), value);
     }
 
     void DXCCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
         auto dxcFence = PtrCast<DXCFence>(evt);
-        dxcFence->SyncTimelineToThis(this, value);
         _q->Wait(dxcFence->GetHandle(), value);
     }
 
     void DXCCommandQueue::SubmitCommand(ICommandList* cmd) {
-        
-        _lastSubmittedFence++;
-
         auto dxcCmdList = PtrCast<DXCCommandList>(cmd);
-
-        
-        _TransitResourceStatesBeforeSubmit(*dxcCmdList);
-        _MarkResourceStatesAfterSubmit(*dxcCmdList);
-
 
         ID3D12CommandList* rawCmdList = dxcCmdList->GetHandle();
         _q->ExecuteCommandLists(1, &rawCmdList);
-
-        //Signal the fence
-        _q->Signal(_submissionFence, _lastSubmittedFence);
-
     }
 
 
@@ -861,7 +679,6 @@ namespace alloy::dxc {
         switch(waitResult){
             //The state of the specified object is signaled.
             case WAIT_OBJECT_0: 
-                SyncTimelineToThis(_dev.get(), expectedValue);
                 return true;
             //The time-out interval elapsed, and the object's state is nonsignaled.
             case WAIT_TIMEOUT: return false;
@@ -876,8 +693,6 @@ namespace alloy::dxc {
     }
 
     void DXCFence::SignalFromCPU(uint64_t signalValue) {
-        
-        RegisterSyncPoint(_dev.get(), signalValue);
         _f->Signal(signalValue);
     }
 
@@ -885,47 +700,4 @@ namespace alloy::dxc {
         CloseHandle(_fenceEventHandle);
         _f->Release();
     }
-
-    
-    void DXCFence::RegisterSyncPoint(IDXCTimeline* timeline, uint64_t syncValue) {
-        _signalingTimelines[timeline] = syncValue;
-    }
-
-    void DXCFence::SyncTimelineToThis(IDXCTimeline* timeline, uint64_t syncValue) {
-
-        struct _Kvpair {
-            IDXCTimeline* timeline;
-            uint64_t fenceValue;
-        };
-
-        std::vector<_Kvpair> timelinesSorted{};
-
-        for(auto& [k, v] : _signalingTimelines) {
-            if(k == timeline) {
-                //Same queue signal and wait may cause deadlocks.
-                //Put an assertion here for ease of debugging
-                assert(v >= syncValue);
-                continue;
-            }
-            timelinesSorted.push_back({k, v});
-        }
-
-        std::sort(timelinesSorted.begin(), timelinesSorted.end(),
-            [](const _Kvpair& a, const _Kvpair& b) {
-                return a.fenceValue < b.fenceValue;
-            }
-        );
-
-        IDXCTimeline::ResourceStates states {};
-        for(auto&[k, _] : timelinesSorted) {
-            states.SyncTo(k->GetCurrentState());
-        }
-
-        timeline->GetCurrentState().SyncTo(states);
-        for(auto tex : states.textures) {
-            tex.first->RegisterTimeline(timeline);
-        }
-    }
-
-    
 } // namespace alloy::dxc

@@ -7,7 +7,6 @@
 //
 #include "common/RefCnt.hpp"
 #include "Types.hpp"
-#include "FrameBuffer.hpp"
 
 #include <vector>
 #include <optional>
@@ -62,7 +61,7 @@ namespace alloy {
             //    Vulkan: support separate usage with VK_KHR_dynamic_rendering, which is 
             //            required by alloy
             //    Metal: support separate usage by default
-            common::sp<IRenderTarget> target;
+            common::sp<ITextureView> target;
 
                             
             /// The array layer to render to. This value must be less than <see cref="Texture.ArrayLayers"/> in the target
@@ -86,14 +85,14 @@ namespace alloy {
 
             /// The target texture for MSAA resolve. Can be null
             // Use averaging mode to resolve
-            common::sp<IRenderTarget> msaaResolveTarget;
+            common::sp<ITextureView> msaaResolveTarget;
         };
         
         struct DepthAttachmentAction : public AttachmentAction {
             float clearDepth;
 
             /// The target texture for MSAA resolve. Can be null
-            common::sp<IRenderTarget> msaaResolveTarget;
+            common::sp<ITextureView> msaaResolveTarget;
 
             //DX12 can resolve depth using ResolveSubresourceRegion
             //DX12 & Vulkan support AVERAGE/MIN/MAX

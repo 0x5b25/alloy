@@ -11,7 +11,12 @@ namespace alloy {
     enum class ResourceBindingModel : uint32_t {
         FixedBindings,
         DescriptorIndexing,
-        DescriptorHeap
+        DescriptorHeap,
+
+        
+        T0 = FixedBindings,
+        T1 = DescriptorIndexing,
+        T2 = DescriptorHeap
     };
 
     enum class Backend{

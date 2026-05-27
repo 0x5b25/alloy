@@ -157,7 +157,7 @@ public:
 
     virtual void SetPushConstants(
         std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
+        std::span<const uint32_t> data,
         std::uint32_t destOffsetIn32BitValues) override;
 
     //Subsituted by BeginWithRenderEncoder and EndEncoding
@@ -182,7 +182,7 @@ public:
     // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
     // <param name="index">The color target index.</param>
     // <param name="viewport">The new <see cref="Viewport"/>.</param>
-    virtual void SetViewports(const std::span<Viewport>& viewport) override;
+    virtual void SetViewports(std::span<const Viewport> viewport) override;
     virtual void SetFullViewport() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
@@ -196,7 +196,7 @@ public:
     // <param name="y">The Y value of the scissor rectangle.</param>
     // <param name="width">The width of the scissor rectangle.</param>
     // <param name="height">The height of the scissor rectangle.</param>
-    virtual void SetScissorRects(const std::span<Rect>&  rects) override;
+    virtual void SetScissorRects(std::span<const Rect> rects) override;
     virtual void SetFullScissorRect() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
@@ -302,7 +302,7 @@ public:
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
@@ -375,7 +375,7 @@ public:
             const common::sp<BufferRange>& source,
             std::uint32_t sourceBytesPerRow,
             std::uint32_t sourceBytesPerImage,
-            const common::sp<ITexture>& destination,
+            const common::sp<ITextureView>& destination,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -383,7 +383,7 @@ public:
         ) override;
 
         virtual void CopyTextureToBuffer(
-            const common::sp<ITexture>& source,
+            const common::sp<ITextureView>& source,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
@@ -410,11 +410,11 @@ public:
         /// <param name="depth">The depth in texels of the copy region.</param>
         /// <param name="layerCount">The number of array layers to copy.</param>
         virtual void CopyTexture(
-            const common::sp<ITexture>& source,
+            const common::sp<ITextureView>& source,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const common::sp<ITexture>& destination,
+            const common::sp<ITextureView>& destination,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -551,10 +551,7 @@ public:
     //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
     //virtual void EndRenderPass() = 0;
 
-    virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override {}
-    virtual void TransitionTextureToDefaultLayout(
-        const std::vector<common::sp<ITexture>>& textures
-    ) override {}
+    virtual void Barrier(std::span<const alloy::BarrierOp> barriers) override {}
 
     // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
     // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order

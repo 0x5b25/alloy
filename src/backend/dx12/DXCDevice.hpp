@@ -39,59 +39,11 @@ namespace alloy::dxc{
     class DXCAdapter;
     class DXCTexture;
 
-    class IDXCTimeline {
-
-    public:
-        struct ResourceStates {
-            std::unordered_map<DXCTexture*, D3D12_RESOURCE_STATES> textures;
-
-            void SyncTo(const ResourceStates& other) {
-                for(auto& [k, v] : other.textures)
-                    textures.insert_or_assign(k, v);
-            }
-
-            void Clear() {
-                textures.clear();
-            }
-        };
-
-        virtual void RemoveResource(DXCTexture* texture) = 0;
-        virtual ResourceStates& GetCurrentState() = 0;
-    };
-
-    class DXCCommandQueue : public ICommandQueue, public IDXCTimeline{
+    class DXCCommandQueue : public ICommandQueue{
 
         ID3D12CommandQueue* _q;
         D3D12_COMMAND_LIST_TYPE _qType;
         DXCDevice* _dev;
-
-        ID3D12Fence* _submissionFence;
-        uint64_t _lastSubmittedFence;
-        IDXCTimeline::ResourceStates _currentState;
-
-        //Resource transition cmd pools
-        std::queue<ID3D12CommandAllocator*> _freeCmdPools;
-        struct CmdPoolInUse {
-            enum {MAX_CMD_IN_POOL = 128};
-
-            ID3D12CommandAllocator* pool;
-            uint64_t allocatedCmdCnt;
-            uint64_t lastSubmittedFence;
-
-        };
-    
-        std::queue<CmdPoolInUse> _cmdPoolsInUse;
-
-        void _RecycleTransitionCmdBufs();
-
-        ID3D12GraphicsCommandList* _GetOneTransitionCmdList();
-
-        
-        void _TransitResourceStatesBeforeSubmit(
-            const DXCCommandList& cmdList);
-
-        void _MarkResourceStatesAfterSubmit(
-            const DXCCommandList& cmdList);
 
 
     public:
@@ -110,20 +62,7 @@ namespace alloy::dxc{
         
         virtual common::sp<ICommandList> CreateCommandList() override;
 
-        
         virtual void* GetNativeHandle() const override {return _q;}
-    public:
-        
-        virtual void RemoveResource(DXCTexture* texture) override {
-            _currentState.textures.erase(texture);
-        }
-
-        virtual ResourceStates& GetCurrentState() override {
-            return _currentState;
-        }
-
-        void PrepareTextureForPresent(DXCTexture* texture);
-
     };
 
     
@@ -165,12 +104,8 @@ namespace alloy::dxc{
 
     class DXCDevice : public IGraphicsDevice
                     , public DXCResourceFactory
-                    , public IDXCTimeline
     {
     private:
-        //Microsoft::WRL::ComPtr<IDXGIAdapter1> _adp;
-        
-        ResourceStates _currentState;
         
         common::sp<DXCAdapter> _adp;
         
@@ -232,15 +167,6 @@ namespace alloy::dxc{
         );
 
     public:
-        ResourceStates& GetCurrentState() override { return _currentState; }
-
-        void RegisterTextureState(D3D12_RESOURCE_STATES request, DXCTexture* texture) {
-            _currentState.textures[texture] = request;
-        }
-
-        void RemoveResource(DXCTexture* texture) override { _currentState.textures.erase(texture); }
-
-    public:
 
         //virtual const std::string& DeviceName() const override { return _devName; }
         //virtual const std::string& VendorName() const override { return ""; }
@@ -271,7 +197,6 @@ namespace alloy::dxc{
     class DXCFence : public IEvent {
 
         common::sp<DXCDevice> _dev;
-        std::unordered_map<IDXCTimeline*, uint64_t> _signalingTimelines;
 
         ID3D12Fence* _f;
         //SetEventOnCompletion will block until complete if handle is null
@@ -298,9 +223,6 @@ namespace alloy::dxc{
         }
         virtual void SignalFromCPU(uint64_t signalValue) override;
         virtual bool WaitFromCPU(uint64_t expectedValue, uint32_t timeoutMs) override;
-
-        void RegisterSyncPoint(IDXCTimeline* timeline, uint64_t syncValue);
-        void SyncTimelineToThis(IDXCTimeline* timeline, uint64_t syncValue);
     };
 
     
@@ -313,12 +235,13 @@ namespace alloy::dxc{
 
         //VkBufferUsageFlags _usages;
         //VmaMemoryUsage _allocationType;
+        Description _desc;
 
         DXCBuffer(
             const common::sp<DXCDevice>& dev,
             const IBuffer::Description& desc
         )
-            : IBuffer(desc)
+            : _desc(desc)
             , _dev(dev)
         {}
 
@@ -335,6 +258,8 @@ namespace alloy::dxc{
             const IBuffer::Description& desc
         );
 
+
+        virtual const Description& GetDesc() const override { return _desc;}
         
         virtual uint64_t GetNativeHandle() const {return GetHandle()->GetGPUVirtualAddress();}
 

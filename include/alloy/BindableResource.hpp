@@ -71,7 +71,6 @@ namespace alloy
             alloy::common::BitFlags<IShader::Stage> stages;
             struct Options {
                 std::uint32_t writable : 1;
-                std::uint32_t descriptorArray : 1;
             } options {};
         };
 
@@ -126,7 +125,7 @@ namespace alloy
         : description(desc){}
 
     public:
-        const Description& GetDesc() const {return description;}
+        virtual const Description& GetDesc() const {return description;}
 
         
         virtual void* GetNativeHandle() const {return nullptr; }
@@ -158,6 +157,11 @@ namespace alloy
 
     public:
         virtual const IResourceLayout& GetLayout() const = 0;
+
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) = 0;
 
         virtual void* GetNativeHandle() const {return nullptr; }
     };
@@ -191,6 +195,11 @@ namespace alloy
     public:
         //const Description& GetDesc() const {return description;}
         virtual const IResourceLayout& GetLayout() const = 0;
+
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) = 0;
 
         virtual void Update(const std::span<const WriteBinding>& writes) = 0;
 

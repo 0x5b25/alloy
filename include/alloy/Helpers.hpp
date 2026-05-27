@@ -98,5 +98,7 @@ namespace alloy
             std::uint32_t samples);
 
         PixelFormat GetViewFamilyFormat(const PixelFormat& format);
+
+        ITextureView::Aspect GetAspectFromPixelFormat(const PixelFormat& format);
     }
 } // namespace alloy

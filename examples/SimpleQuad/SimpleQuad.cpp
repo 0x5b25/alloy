@@ -250,15 +250,49 @@ void SimpleQuad::_CreateTextures() {
 
     auto cmdList = dev->GetGfxCommandQueue()->CreateCommandList();
     cmdList->Begin();
+    
+    alloy::BarrierOp barrier[1] = {{alloy::TextureBarrierOp{
+        .texture = tex1,
+        .from = {
+            .stages = {},
+            .access = {},
+            .layout = alloy::TextureLayout::Undefined,
+        },
+        .to = {
+            .stages = alloy::PipelineStage::Copy,
+            .access = alloy::ResourceAccess::CopyDest,
+            .layout = alloy::TextureLayout::CopyDest,
+        }
+    }}};
+
+    cmdList->Barrier(barrier);
+
     auto& pass = cmdList->BeginTransferPass();
 
     pass.CopyBufferToTexture(
         copyBuffer, upload_pitch_dst, upload_buffer_size, 
-        tex1Img, {0, 0, 0}, 0, 0,
+        tex1, {0, 0, 0}, 0, 0,
         {tex1ImgDesc.width, tex1ImgDesc.height, 1}
     );
 
     cmdList->EndPass();
+
+    barrier[0] = {alloy::TextureBarrierOp{
+        .texture = tex1,
+        .from = {
+            .stages = alloy::PipelineStage::Copy,
+            .access = alloy::ResourceAccess::CopyDest,
+            .layout = alloy::TextureLayout::CopyDest,
+        },
+        .to = {
+            .stages = alloy::PipelineStage::AllCommands,
+            .access = alloy::ResourceAccess::ShaderResourceRead,
+            .layout = alloy::TextureLayout::ShaderReadOnly,
+        }
+    }};
+
+    cmdList->Barrier(barrier);
+
     cmdList->End();
 
     //submit and wait

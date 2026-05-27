@@ -115,6 +115,10 @@ namespace alloy::dxc {
         const std::vector<common::sp<IBindableResource>>& GetBoundResources() const {
             return _boundResources;
         }
+        IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        );
         const std::vector<ID3D12DescriptorHeap*>& GetHeaps() const { return _descHeap; }
     };
     
@@ -133,6 +137,16 @@ namespace alloy::dxc {
 
         virtual const IResourceLayout& GetLayout() const override {
             return DXCResourceSetBase::GetLayout();
+        }
+
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) override {
+            return DXCResourceSetBase::GetBoundResource(
+                layoutSlot,
+                firstArrayElement
+            );
         }
 
         static common::sp<IResourceSet> Make(
@@ -157,6 +171,17 @@ namespace alloy::dxc {
         
         virtual const IResourceLayout& GetLayout() const override {
             return DXCResourceSetBase::GetLayout();
+        }
+
+        
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) override {
+            return DXCResourceSetBase::GetBoundResource(
+                layoutSlot,
+                firstArrayElement
+            );
         }
 
         void Update(const std::span<const WriteBinding>& writes) override;
