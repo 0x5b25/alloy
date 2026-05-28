@@ -123,28 +123,33 @@ namespace alloy::vk
     {
 
     public:
-        union Features {
-            struct {
-                std::uint32_t hasComputeCap : 1;
-                std::uint32_t hasUniqueCpyQueue : 1;
-                std::uint32_t hasUniqueComputeQueue : 1;
+        struct Features {
 
-                std::uint32_t supportsDebug : 1;
-                std::uint32_t supportsPresent : 1;
-                std::uint32_t supportsGetMemReq2 : 1;
-                std::uint32_t supportsDedicatedAlloc : 1;
+            union {
+                struct {
+                    std::uint32_t hasComputeCap : 1;
+                    std::uint32_t hasUniqueCpyQueue : 1;
+                    std::uint32_t hasUniqueComputeQueue : 1;
 
-                std::uint32_t supportsMaintenance1 : 1;
-                std::uint32_t supportsDrvPropQuery : 1;
+                    std::uint32_t supportsDebug : 1;
+                    std::uint32_t supportsPresent : 1;
+                    std::uint32_t supportsGetMemReq2 : 1;
+                    std::uint32_t supportsDedicatedAlloc : 1;
 
-                std::uint32_t supportsDepthClip : 1;
+                    std::uint32_t supportsMaintenance1 : 1;
+                    std::uint32_t supportsDrvPropQuery : 1;
 
-                // VK_KHR_load_store_op_none is promoted into vk1.4
-                // validate extension support on actual hardware
-                std::uint32_t supportReadOnlyAttachment : 1;
+                    std::uint32_t supportsDepthClip : 1;
 
-            };
-            std::uint32_t value;
+                    // VK_KHR_load_store_op_none is promoted into vk1.4
+                    // validate extension support on actual hardware
+                    std::uint32_t supportReadOnlyAttachment : 1;
+
+                };
+                std::uint32_t value;
+            } flags;
+
+            uint32_t maxMutableDescriptorsPerSet;
         };
 
     private:
@@ -172,6 +177,15 @@ namespace alloy::vk
         IGraphicsDevice::Features _commonFeat;
 
         VulkanDevice();
+
+        // Query the combined heap size for following VkDescriptorType:
+        //   VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        //   VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+        //   VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+        //   VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        //
+        // For samplers use VkPhysicalDeviceLimits::maxDescriptorSetSamplers
+        uint32_t _QueryMaxSupportedMutDescPerSet();
 
     public:
 
@@ -213,7 +227,7 @@ namespace alloy::vk
         const VmaAllocator& Allocator() const {return _allocator;}
 
         //TODO: temporary querier
-        bool SupportsFlippedYDirection() const {return _features.supportsMaintenance1;}
+        bool SupportsFlippedYDirection() const {return _features.flags.supportsMaintenance1;}
 
         const Features& GetVkFeatures() const {return _features; }
 

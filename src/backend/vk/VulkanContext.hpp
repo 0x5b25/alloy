@@ -35,81 +35,28 @@ namespace alloy::vk
         VkPhysicalDeviceVulkan14Features features14;
 
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
-        bool hasDescriptorBufferExt;
+        //bool hasDescriptorBufferExt;
         bool hasMutableDescriptorTypeExt;
         VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures;
         VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProperties;
         VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutableDescriptorTypeFeatures;
 
-        enum class ResourceBindingModel {
-            //Pre-vk1.2 binding mode
-            Legacy,
+        bool supportMutableDescriptorType;
+        bool supportDescriptorBuffer;
+        bool supportsDescriptorIndexing;
 
-            // Legacy + partially bound descriptor sets. Enables
-            // shader ABI and fallback bindless mode.
-            DescriptorIndexing,
-            
-            // Modern binding mode, no descriptor pool needed,
-            // acts like D3D12 descriptor heaps.
-            DescriptorBuffer,
-        } resourceBindingModel;
+        ResourceBindingModel resourceBindingModel;
 
         bool SupportScalarBlockLayout() const { return features12.scalarBlockLayout; }
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
-        bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::Legacy; }
-        bool SupportDescriptorIndexing() const {
-            return features12.descriptorIndexing &&
-                   features12.descriptorBindingPartiallyBound &&
-                   features12.descriptorBindingUpdateUnusedWhilePending &&
-                   features12.descriptorBindingUniformBufferUpdateAfterBind &&
-                   features12.descriptorBindingSampledImageUpdateAfterBind &&
-                   features12.descriptorBindingStorageImageUpdateAfterBind &&
-                   features12.descriptorBindingStorageBufferUpdateAfterBind &&
-                   features12.runtimeDescriptorArray &&
-                   features.shaderUniformBufferArrayDynamicIndexing &&
-                   features.shaderSampledImageArrayDynamicIndexing &&
-                   features.shaderStorageBufferArrayDynamicIndexing &&
-                   features.shaderStorageImageArrayDynamicIndexing &&
-                   features12.shaderUniformTexelBufferArrayDynamicIndexing &&
-                   features12.shaderStorageTexelBufferArrayDynamicIndexing;
-        }
-        bool HasDescriptorBufferExtension() const { return hasDescriptorBufferExt; }
+        bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::T0; }
+        
+        
         bool HasMutableDescriptorTypeExtension() const { return hasMutableDescriptorTypeExt; }
-        bool SupportsDescriptorBufferStorage() const {
-            return HasDescriptorBufferExtension() &&
-                   descriptorBufferFeatures.descriptorBuffer &&
-                   features12.bufferDeviceAddress;
-        }
-        bool SupportsMutableDescriptorType() const {
-            return HasMutableDescriptorTypeExtension() &&
-                   mutableDescriptorTypeFeatures.mutableDescriptorType;
-        }
-        bool SupportsMutableResourceHeapLayout() const {
-            return SupportsDescriptorBufferStorage() && SupportsMutableDescriptorType();
-        }
-        bool ShouldEnableDescriptorBufferDevicePath() const {
-            return resourceBindingModel == ResourceBindingModel::DescriptorBuffer;
-        }
-        bool CanCreateExperimentalResourceDescriptorHeap() const {
-            return ShouldEnableDescriptorBufferDevicePath() &&
-                   SupportsMutableResourceHeapLayout();
-        }
-        bool CanCreateExperimentalSamplerDescriptorHeap() const {
-            return ShouldEnableDescriptorBufferDevicePath() &&
-                   SupportsDescriptorBufferStorage();
-        }
-        alloy::ResourceBindingModel GetPublicResourceBindingModel() const {
-            switch(resourceBindingModel) {
-                case ResourceBindingModel::DescriptorIndexing:
-                case ResourceBindingModel::DescriptorBuffer:
-                    // DescriptorBuffer is still internal until the full heap ABI is wired.
-                    return alloy::ResourceBindingModel::DescriptorIndexing;
-                case ResourceBindingModel::Legacy:
-                default:
-                    return alloy::ResourceBindingModel::FixedBindings;
-            }
-        }
+        
+        bool supportsDescriptorBuffer;
+        
         bool SupportNonUniformResourceIndexing() const {
             return features12.shaderUniformBufferArrayNonUniformIndexing &&
                    features12.shaderSampledImageArrayNonUniformIndexing &&

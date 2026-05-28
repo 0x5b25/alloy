@@ -84,6 +84,18 @@ namespace alloy::vk{
             , _desc(desc)
         { }
 
+        
+        static common::sp<IResourceLayout> _MakeFixedSize(
+            const common::sp<VulkanDevice>& dev,
+            const Description& desc
+        );
+
+        
+        static common::sp<IResourceLayout> _MakeT2Bindless(
+            const common::sp<VulkanDevice>& dev,
+            const Description& desc
+        );
+
     public:
         ~VulkanResourceLayout();
 

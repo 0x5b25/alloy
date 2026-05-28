@@ -10,6 +10,25 @@
 #include <unordered_set>
 #include <mutex>
 
+// Vulkan multithreading safety:
+// From: https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html
+// ...
+// A descriptor pool maintains a pool of descriptors, from which descriptor sets are allocated.
+// Descriptor pools are externally synchronized, meaning that the application must not allocate
+// and/or free descriptor sets from the same pool in multiple threads simultaneously.
+// ...
+// VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT specifies that if descriptors in this binding 
+// are updated between when the descriptor set is bound in a command buffer and when that 
+// command buffer is submitted to a queue, then the submission will use the most recently set 
+// descriptors for this binding and the updates do not invalidate the command buffer.
+// Descriptor bindings created with this flag are also partially exempt from the external 
+// synchronization requirement in vkUpdateDescriptorSetWithTemplateKHR and vkUpdateDescriptorSets.
+// Multiple descriptors with this flag set can be updated concurrently in different threads,
+// though the same descriptor must not be updated concurrently by two threads. Descriptors with
+// this flag set can be updated concurrently with the set being bound to a command buffer in
+// another thread, but not concurrently with the set being reset or freed.
+// ...
+
 namespace alloy::vk {
 
     class _DescriptorSet;

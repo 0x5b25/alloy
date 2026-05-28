@@ -39,12 +39,162 @@ namespace alloy::vk
             VK_DEV_CALL(_dev, 
                 vkDestroyDescriptorSetLayout(_dev->LogicalDev(), s.layout, nullptr));
     }
+
     
     common::sp<IResourceLayout> VulkanResourceLayout::Make(
         const common::sp<VulkanDevice>& dev,
         const Description& desc
     ){
+        if(desc.useGlobalHeaps) return _MakeT2Bindless(dev, desc);
+        else return _MakeFixedSize(dev, desc);
+    }
+
+    common::sp<IResourceLayout> VulkanResourceLayout::_MakeFixedSize(
+        const common::sp<VulkanDevice>& dev,
+        const Description& desc
+    ){
         
+        const bool useDescriptorIndexing =
+                    dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                        != ResourceBindingModel::FixedBindings;
+
+        std::vector<PushConstantInfo> pushConstants;
+        uint32_t pushConstantSize = 0;
+
+        for(auto& pc : desc.pushConstants){
+            pushConstants.push_back({
+                .bindingSlot = pc.bindingSlot,
+                .bindingSpace = pc.bindingSpace,
+                .sizeInDwords = pc.sizeInDwords,
+                .offsetInDwords = pushConstantSize
+            });
+            pushConstantSize += pc.sizeInDwords;
+        }
+
+        auto& elements = desc.shaderResources;
+        
+        std::vector<ResourceSetInfo> sets;
+        std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
+        // Also builds the 
+        // desc.shaderResources -> ResSet::Desc.boundResources index mapping 
+        {
+            uint32_t linearBase = 0;
+            for(uint32_t i = 0; i < elements.size(); i++) {
+                const auto& e = elements[i];
+                auto vkType = VdToVkDescriptorType(e.kind, e.options);
+
+                ResourceSetInfo* set = nullptr;
+                uint32_t setIdx = 0;
+                for(setIdx = 0; setIdx < sets.size(); ++setIdx) {
+                    if(sets[setIdx].type == vkType) {
+                        set = &sets[setIdx];
+                        break;
+                    }
+                }
+
+                if(!set) {
+                    set = &sets.emplace_back();
+                    set->type = vkType;
+                }
+
+                auto bindingCnt = set->bindings.size();
+                auto& b = set->bindings.emplace_back();
+
+
+                slotLocations[i].setIndexAllocated = setIdx;
+                slotLocations[i].bindingAllocated = bindingCnt;
+                slotLocations[i].linearResourceOffset = linearBase;
+
+                b.regIdxDesignated = e.bindingSlot;
+                b.bindSlotAllocated = bindingCnt;
+                b.regSpaceDesignated = e.bindingSpace;
+                b.bindSetAllocated = setIdx;
+                b.indexInShaderResources = i;
+
+                set->elementCnt += e.bindingCount;
+                linearBase += e.bindingCount;
+            }
+        }
+
+        // Create the layouts
+        for(uint32_t i = 0; i < sets.size(); i++) {
+            auto& s = sets[i];
+
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+                    bindings.reserve(s.bindings.size());
+            
+            std::vector<VkDescriptorBindingFlags> bindingFlags;
+                    bindingFlags.reserve(s.bindings.size());
+
+            for(const auto& b : s.bindings) {
+
+                const auto& bindingDesc = desc.shaderResources[
+                    b.indexInShaderResources
+                ];
+
+                assert(s.type ==
+                    VdToVkDescriptorType(bindingDesc.kind, bindingDesc.options));
+
+                auto& binding = bindings.emplace_back();
+            
+                binding.binding = b.bindSlotAllocated;
+                binding.descriptorCount = bindingDesc.bindingCount;
+                binding.descriptorType = s.type;
+                binding.stageFlags = VdToVkShaderStages(bindingDesc.stages);
+
+
+                VkDescriptorBindingFlags flags = 0;
+                if(useDescriptorIndexing) {
+                    flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                }
+                bindingFlags.push_back(flags);
+            }
+
+            
+            VkDescriptorSetLayoutCreateInfo dslCI{};
+            dslCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            dslCI.bindingCount = bindings.size();
+            dslCI.pBindings = bindings.data();
+            if(useDescriptorIndexing) {
+                dslCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            }
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
+            if(useDescriptorIndexing) {
+                bindingFlagsCI.sType =
+                    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+                bindingFlagsCI.bindingCount = bindingFlags.size();
+                bindingFlagsCI.pBindingFlags = bindingFlags.data();
+                dslCI.pNext = &bindingFlagsCI;
+            }
+
+            VK_CHECK(VK_DEV_CALL(dev, 
+                vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
+        }
+
+        auto dsl = new VulkanResourceLayout(dev, desc);
+        dsl->_sets = std::move(sets);
+        dsl->_slotLocations = std::move(slotLocations);
+        dsl->_pushConstants = std::move(pushConstants);
+        dsl->_pushConstantSize = pushConstantSize;
+
+        return common::sp<IResourceLayout>(dsl);
+    }
+
+    
+    common::sp<IResourceLayout> VulkanResourceLayout::_MakeT2Bindless(
+        const common::sp<VulkanDevice>& dev,
+        const Description& desc
+    ){
+        const auto& phyDevCaps = dev->GetDevCaps();
+        assert(phyDevCaps.supportMutableDescriptorType);
+
+        const auto& devVkFeats = dev->GetVkFeatures();
+        assert(devVkFeats.maxMutableDescriptorsPerSet != 0);
+
+
         const bool useDescriptorIndexing =
                     dev->GetAdapter().GetAdapterInfo().resourceBindingModel
                         != ResourceBindingModel::FixedBindings;

@@ -36,7 +36,7 @@ namespace alloy::vk
             return availableExtNames.contains(extName);
         };
 
-        hasDescriptorBufferExt = IsExtSupported(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+        const bool hasDescriptorBufferExt = IsExtSupported(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
         hasMutableDescriptorTypeExt =
             IsExtSupported(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
 
@@ -168,22 +168,39 @@ namespace alloy::vk
         }
 
         
-        const bool supportsDescriptorIndexing =
-            (devProps.apiVersion >= VK_VERSION_1_2 ||
-             IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) &&
-            SupportDescriptorIndexing();
+        supportsDescriptorBuffer = hasDescriptorBufferExt &&
+                                   descriptorBufferFeatures.descriptorBuffer &&
+                                   features12.bufferDeviceAddress;
 
-        if(supportsDescriptorIndexing && SupportsDescriptorBufferStorage()) {
-            resourceBindingModel = ResourceBindingModel::DescriptorBuffer;
-        } else if(supportsDescriptorIndexing) {
-            resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+        
+        if(devProps.apiVersion >= VK_VERSION_1_2 ||
+            IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        ) {
+            supportsDescriptorIndexing = features12.descriptorIndexing &&
+                   features12.descriptorBindingPartiallyBound &&
+                   features12.descriptorBindingUpdateUnusedWhilePending &&
+                   features12.descriptorBindingUniformBufferUpdateAfterBind &&
+                   features12.descriptorBindingSampledImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageBufferUpdateAfterBind &&
+                   features12.runtimeDescriptorArray &&
+                   features.shaderUniformBufferArrayDynamicIndexing &&
+                   features.shaderSampledImageArrayDynamicIndexing &&
+                   features.shaderStorageBufferArrayDynamicIndexing &&
+                   features.shaderStorageImageArrayDynamicIndexing &&
+                   features12.shaderUniformTexelBufferArrayDynamicIndexing &&
+                   features12.shaderStorageTexelBufferArrayDynamicIndexing;
+        }
+
+        if(supportsDescriptorIndexing) {
+            if(supportMutableDescriptorType)
+                resourceBindingModel = ResourceBindingModel::T2;
+            else
+                resourceBindingModel = ResourceBindingModel::T1;
         } else {
-            resourceBindingModel = ResourceBindingModel::Legacy;
+            resourceBindingModel = ResourceBindingModel::T0;
         }
     }
-
-
-
 
     uint32_t VulkanContext::VolkCtx::_refCnt = 0;
     std::mutex VulkanContext::VolkCtx::_m;
@@ -300,7 +317,7 @@ namespace alloy::vk
         adp->info.capabilities.supportRayTracing = adp->_caps.supportRayTracing;
         adp->info.capabilities.supportNonUniformResourceIndexing =
             adp->_caps.SupportNonUniformResourceIndexing();
-        adp->info.resourceBindingModel = adp->_caps.GetPublicResourceBindingModel();
+        adp->info.resourceBindingModel = adp->_caps.resourceBindingModel;
 
         {
             //Try find dedicated compute queue

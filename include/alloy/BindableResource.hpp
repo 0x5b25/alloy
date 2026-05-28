@@ -114,6 +114,18 @@ namespace alloy
 #endif
             std::vector<PushConstantDescription> pushConstants;
             std::vector<ShaderResourceDescription> shaderResources;
+
+            // Create a T2 bindless layout. Check resourceBindingModel first.
+            //
+            // If this is set, and shaderResources is not empty, this will
+            // enable a hybrid bindful layout. Global descriptor heap indexing
+            // CAN read the bindful slots.
+            //
+            // hybrid bindful will follow API declaration order instead of binding
+            // slot order and tightly packed from the start of bindless heap.
+            // Note: this is NOT the shader register slot but the position in 
+            // descriptor heap.
+            bool useGlobalHeaps;
         };
 
     protected:

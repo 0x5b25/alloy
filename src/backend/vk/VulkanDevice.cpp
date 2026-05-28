@@ -58,6 +58,80 @@ namespace alloy::vk {
         //DEBUGCODE(_surface = VK_NULL_HANDLE);
     }
 
+    
+    uint32_t VulkanDevice::_QueryMaxSupportedMutDescPerSet() {
+
+        auto _IsSizeSupported = [this](uint32_t size) {
+            VkDescriptorSetLayoutSupport supportStat {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT
+            };
+
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+                .descriptorCount = size,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+                               | VK_SHADER_STAGE_VERTEX_BIT
+                               | VK_SHADER_STAGE_FRAGMENT_BIT
+                               | VK_SHADER_STAGE_TASK_BIT_EXT
+                               | VK_SHADER_STAGE_MESH_BIT_EXT
+                               , // Add raytracing in the future
+            };
+
+            
+            static const VkDescriptorType mutableTypes [] = {
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            };
+
+            VkMutableDescriptorTypeListEXT mutableTypeList {
+                .descriptorTypeCount = sizeof(mutableTypes) / sizeof(mutableTypes[0]),
+                .pDescriptorTypes = mutableTypes
+            };
+
+            VkMutableDescriptorTypeCreateInfoEXT mutableCI {
+                .sType = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+                .mutableDescriptorTypeListCount = 1,
+                .pMutableDescriptorTypeLists = &mutableTypeList
+            };
+
+            VkDescriptorSetLayoutCreateInfo CI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &mutableCI,
+                .bindingCount = 1,
+                .pBindings = &binding
+            };
+
+            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &CI, &supportStat);
+
+            return supportStat.supported == VK_TRUE;
+        };
+
+        
+        //Conservative size is VkPhyDev1.1 props
+        // VkPhysicalDeviceVulkan11Properties::maxPerSetDescriptors
+        
+        auto& devCaps = _adp->GetCaps();
+        auto maxSetCnt = devCaps.properties11.maxPerSetDescriptors;
+
+        // Query following sizes, from large to small
+        for(uint32_t size : { devCaps.limits.maxDescriptorSetUniformBuffers,
+                              devCaps.limits.maxDescriptorSetStorageBuffers,
+                              devCaps.limits.maxDescriptorSetSampledImages,
+                              devCaps.limits.maxDescriptorSetStorageImages, }
+        ) {
+            if(size > maxSetCnt) {
+                if(_IsSizeSupported(size)) {
+                    maxSetCnt = size;
+                }
+            }
+        }
+
+        return maxSetCnt;
+    }
+
     common::sp<IGraphicsDevice> VulkanDevice::Make(
 		const common::sp<VulkanAdapter>& adp,
 		const IGraphicsDevice::Options& options
@@ -85,7 +159,7 @@ namespace alloy::vk {
         //dev->_isOwnSurface = _surf.isOwnSurface;
         //dev->_phyDev = devInfo;
         dev->_features = {};
-        dev->_features.hasComputeCap = qInfo.graphicsQueueSupportsCompute;
+        dev->_features.flags.hasComputeCap = qInfo.graphicsQueueSupportsCompute;
 
         //Create logical device
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
@@ -109,7 +183,7 @@ namespace alloy::vk {
 
             queuePriorities.push_back(0.8f);
 
-            dev->_features.hasUniqueCpyQueue = true;
+            dev->_features.flags.hasUniqueCpyQueue = true;
         }
 
         if (qInfo.computeQueueFamily.has_value()) {
@@ -121,7 +195,7 @@ namespace alloy::vk {
 
             queuePriorities.push_back(0.6f);
 
-            dev->_features.hasUniqueComputeQueue = true;
+            dev->_features.flags.hasUniqueComputeQueue = true;
         }
 
         for (auto i = 0; i < queueCreateInfos.size(); i++) {
@@ -186,7 +260,7 @@ namespace alloy::vk {
         //Bindless shader ABI and binding models
         {
             //Enable the resource heap indexing
-            if(devCaps.resourceBindingModel != VulkanDevCaps::ResourceBindingModel::Legacy) {
+            if(devCaps.resourceBindingModel != ResourceBindingModel::FixedBindings) {
                 features12.descriptorIndexing = true;
                 features12.descriptorBindingPartiallyBound = true;
                 features12.descriptorBindingUpdateUnusedWhilePending = true;
@@ -213,7 +287,7 @@ namespace alloy::vk {
             }
 
             //Enable the descriptor buffer
-            if(devCaps.ShouldEnableDescriptorBufferDevicePath()) {
+            if(devCaps.supportDescriptorBuffer) {
                 devExtensions.push_back(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
                 features12.bufferDeviceAddress = true;
 
@@ -221,15 +295,16 @@ namespace alloy::vk {
                     = featureStructs.Append<VkPhysicalDeviceDescriptorBufferFeaturesEXT,
                                             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT>();
                 descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
+            }
 
-                if(devCaps.SupportsMutableDescriptorType()) {
-                    devExtensions.push_back(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
+            //Mutable desc types
+            if(devCaps.supportMutableDescriptorType) {
+                devExtensions.push_back(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
 
-                    auto& mutableDescriptorTypeFeatures
-                        = featureStructs.Append<VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT,
-                                                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT>();
-                    mutableDescriptorTypeFeatures.mutableDescriptorType = VK_TRUE;
-                }
+                auto& mutableDescriptorTypeFeatures
+                    = featureStructs.Append<VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT,
+                                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT>();
+                mutableDescriptorTypeFeatures.mutableDescriptorType = VK_TRUE;
             }
         }
 
@@ -308,19 +383,19 @@ namespace alloy::vk {
         //if (options.debug)
         //    dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_UTILS);
 
-        dev->_features.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
+        dev->_features.flags.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
         if (options.preferStandardClipSpaceYDirection) {
-            dev->_features.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
+            dev->_features.flags.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
         }
-        dev->_features.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
-        dev->_features.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
+        dev->_features.flags.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
+        dev->_features.flags.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
 
         if (ctx.GetCaps().hasDrvProp2Ext) {
-            dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
+            dev->_features.flags.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
         }
 
-        dev->_features.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
-        dev->_features.supportReadOnlyAttachment = _AddExtIfPresent(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+        dev->_features.flags.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
+        dev->_features.flags.supportReadOnlyAttachment = _AddExtIfPresent(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(devExtensions.size());
         createInfo.ppEnabledExtensionNames = devExtensions.data();
@@ -356,8 +431,12 @@ namespace alloy::vk {
         _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
         _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLER);
 
-        if(devCaps.SupportsMutableDescriptorType()) {
+        if(devCaps.supportMutableDescriptorType) {
             _CreatePoolMgr(VK_DESCRIPTOR_TYPE_MUTABLE_EXT);
+            dev->_features.maxMutableDescriptorsPerSet =
+                dev->_QueryMaxSupportedMutDescPerSet();
+        } else {
+            dev->_features.maxMutableDescriptorsPerSet = 0;
         }
 
         //Get queues
@@ -384,7 +463,7 @@ namespace alloy::vk {
 
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
-        if(devCaps.ShouldEnableDescriptorBufferDevicePath()) {
+        if(devCaps.supportDescriptorBuffer) {
             allocatorInfo.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
         }
         allocatorInfo.vulkanApiVersion = VK_MAKE_API_VERSION(0, apiVer.major, apiVer.minor, apiVer.patch);
@@ -412,7 +491,7 @@ namespace alloy::vk {
         fn.vkInvalidateMappedMemoryRanges = dev->_fnTable.vkInvalidateMappedMemoryRanges;
         fn.vkMapMemory = dev->_fnTable.vkMapMemory;
         fn.vkUnmapMemory = dev->_fnTable.vkUnmapMemory;
-        if (dev->_features.supportsGetMemReq2 && dev->_features.supportsDedicatedAlloc) {
+        if (dev->_features.flags.supportsGetMemReq2 && dev->_features.flags.supportsDedicatedAlloc) {
             fn.vkGetBufferMemoryRequirements2KHR
                 = dev->_fnTable.vkGetBufferMemoryRequirements2KHR;
             fn.vkGetImageMemoryRequirements2KHR
@@ -450,7 +529,7 @@ namespace alloy::vk {
         VkPhysicalDeviceProperties deviceProps{};
         ctx.GetFnTable().vkGetPhysicalDeviceProperties(adp->GetHandle(), &deviceProps);
 
-        dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
+        dev->_commonFeat.computeShader = dev->_features.flags.hasComputeCap;
         dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
         dev->_commonFeat.tessellationShaders = deviceFeatures.tessellationShader;
         dev->_commonFeat.multipleViewports = deviceFeatures.multiViewport;
@@ -466,7 +545,7 @@ namespace alloy::vk {
         dev->_commonFeat.independentBlend = deviceFeatures.independentBlend;
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
-        dev->_commonFeat.commandListDebugMarkers = dev->_features.supportsDebug;
+        dev->_commonFeat.commandListDebugMarkers = dev->_features.flags.supportsDebug;
         dev->_commonFeat.bufferRangeBinding = true;
         dev->_commonFeat.shaderFloat64 = deviceFeatures.shaderFloat64;
 

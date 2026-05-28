@@ -15,7 +15,13 @@ namespace alloy {
 
         
         T0 = FixedBindings,
+        
+        // Legacy + mutable resource sets. Enables
+        // descriptor indexing shader ABI.
         T1 = DescriptorIndexing,
+
+        // Modern full bindless mode, global heap,
+        // acts like D3D12 SM6.6 bindless model.
         T2 = DescriptorHeap
     };
 
