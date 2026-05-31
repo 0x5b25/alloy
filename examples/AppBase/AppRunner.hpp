@@ -70,8 +70,8 @@ class AppRunner : public IAppRunner {
     uint32_t _wndWidth, _wndHeight;
 
     struct MsaaRenderTarget {
-        alloy_sp<alloy::IRenderTarget> color, depthStencil;
-    } _msaaTarget;
+        alloy_sp<alloy::ITextureView> msaaColorRT, depthStencilRT;
+    } _perFrameResource;
 
     alloy_sp<alloy::ICommandList> _submission;
     uint32_t _fenceVal = 0;

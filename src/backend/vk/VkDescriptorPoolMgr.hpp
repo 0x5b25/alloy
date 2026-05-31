@@ -10,85 +10,98 @@
 #include <unordered_set>
 #include <mutex>
 
+// Vulkan multithreading safety:
+// From: https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html
+// ...
+// A descriptor pool maintains a pool of descriptors, from which descriptor sets are allocated.
+// Descriptor pools are externally synchronized, meaning that the application must not allocate
+// and/or free descriptor sets from the same pool in multiple threads simultaneously.
+// ...
+// VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT specifies that if descriptors in this binding 
+// are updated between when the descriptor set is bound in a command buffer and when that 
+// command buffer is submitted to a queue, then the submission will use the most recently set 
+// descriptors for this binding and the updates do not invalidate the command buffer.
+// Descriptor bindings created with this flag are also partially exempt from the external 
+// synchronization requirement in vkUpdateDescriptorSetWithTemplateKHR and vkUpdateDescriptorSets.
+// Multiple descriptors with this flag set can be updated concurrently in different threads,
+// though the same descriptor must not be updated concurrently by two threads. Descriptors with
+// this flag set can be updated concurrently with the set being bound to a command buffer in
+// another thread, but not concurrently with the set being reset or freed.
+// ...
+
 namespace alloy::vk {
 
     class _DescriptorSet;
     class VulkanDevice;
-
-    struct DescriptorResourceCounts
-    {
-        std::uint32_t uniformBufferCount;
-        std::uint32_t sampledImageCount;
-        std::uint32_t samplerCount;
-        std::uint32_t storageBufferCount;
-        std::uint32_t storageImageCount;
-        std::uint32_t uniformBufferDynamicCount;
-        std::uint32_t storageBufferDynamicCount;
-    };
-
-    struct PoolSize {
-        VkDescriptorType type;
-        float multiplier;
-    };
-    struct PoolSizes {
-        std::vector<PoolSize> sizes =
-        {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 1.f },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4.f },
-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1.f },
-            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1.f }
-        };
-    };
+    class VulkanResourceLayout;
 
     class _DescriptorPoolMgr{
 
     public:
-         struct Container : public common::RefCntBase{
-            VkDescriptorPool pool;
-            _DescriptorPoolMgr* mgr;
+        constexpr static VkDescriptorType kMutableDescTypes [] = {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        };
 
-            ~Container(){
-                mgr->_ReleaseContainer(this);
-            }
+
+         struct Container {
+            VkDescriptorPool pool;
+            std::atomic<uint32_t> refCnt;
+            
+            // We generally don't want to reuse a dedicated
+            // allocation pool:
+            //   1. It has only 1 set capacity
+            //   2. It has non-standard descriptor capacity
+            bool isDedicatedAlloc;
          };
 
     private:
         VulkanDevice* _dev;
 
-        unsigned _maxSets;
-        PoolSizes _poolSizes;
+        VkDescriptorType _poolType;
+        unsigned _maxSetsPerPool;
+        unsigned _maxDescriptorsPerPool;
 
         //'Clean' pools.
         std::queue<VkDescriptorPool> _freePools;
         //previously full pools, some sets might be freed, but at least one set is in use.
-        std::unordered_set<Container*> _dirtyPools;
+        std::vector<std::unique_ptr<Container>> _dirtyPools;
         //Currently active pool, that is not full.
-        common::sp<Container> _currentPool;
+        Container* _currentPool;
 
         std::mutex _m_pool;
 
-        //Thread-safe release
-        void _ReleaseContainer(Container* container);
+        // Walk each "dirty pools" and gather no outstanding ref ones
+        // into _freePools. Not thread safe.
+        void _SweepDirtyPools();
 
         VkDescriptorPool _GetOnePool();
-        VkDescriptorPool _CreatePool();
+        VkDescriptorPool _CreatePool(
+            uint32_t maxSetsPerPool,
+            uint32_t maxDescriptorsPerPool);
 
     public:
+        struct CreateArgs {
+            VulkanDevice* dev;
+            VkDescriptorType type;
+            unsigned maxSetsPerPool;
+            unsigned maxDescriptorsPerPool;
+        };
+
+        
         //Must call Init
-        _DescriptorPoolMgr(){}
+        _DescriptorPoolMgr(const CreateArgs& args);
         ~_DescriptorPoolMgr();
 
-        void Init(VulkanDevice* dev, unsigned maxSets);
-        void DeInit();
-
-        _DescriptorSet Allocate(VkDescriptorSetLayout layout);
+        _DescriptorSet Allocate(
+            
+            VkDescriptorSetLayout layout,
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
+                                //   VkDescriptorSetLayout.
+            bool isVariableCnt // Enables variable count
+        );
     };
 
 
@@ -96,7 +109,7 @@ namespace alloy::vk {
     class _DescriptorSet{
         DISABLE_COPY_AND_ASSIGN(_DescriptorSet);
 
-        common::sp<_DescriptorPoolMgr::Container> _pool;
+        _DescriptorPoolMgr::Container* _pool;
         VkDescriptorSet _descSet;
 
     public:
@@ -106,31 +119,43 @@ namespace alloy::vk {
         {}
 
         _DescriptorSet(
-            const common::sp<_DescriptorPoolMgr::Container>& pool,
+            _DescriptorPoolMgr::Container* pool,
             VkDescriptorSet set    
         )
             : _pool(pool)
             , _descSet(set)
-        {}
+        {
+            if(_pool) {
+                auto origRefCnt = _pool->refCnt.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
 
 
         ~_DescriptorSet(){
             //No need to vkDestroy the desc set
             //since the whole will be reseted once
             //there is no reference to the pool.
+            if(_pool) {
+                auto origRefCnt = _pool->refCnt.fetch_sub(1, std::memory_order_release);
+                assert(origRefCnt != 0);
+            }
         }
 
         //move semantics support
         _DescriptorSet(_DescriptorSet&& another)
-            : _pool(std::move(another._pool))
+            : _pool(another._pool)
             , _descSet(another._descSet)
         {
+            another._pool = nullptr;
             another._descSet = VK_NULL_HANDLE;
         }
         
         _DescriptorSet& operator=(_DescriptorSet&& that){
-             _pool = std::move(that._pool);
+            _pool = that._pool;
             _descSet = that._descSet;
+
+            that._pool = nullptr;
+            that._descSet = VK_NULL_HANDLE;
             return *this;
         }
 

@@ -11,8 +11,6 @@
 namespace alloy::vk {
     
     VulkanTexture::~VulkanTexture() {
-        for(auto& timeline : timelines)
-            timeline->RemoveResource(this);
         if(IsOwnTexture()){
             vmaDestroyImage(_dev->Allocator(), _img, _allocation);
         }
@@ -39,8 +37,6 @@ namespace alloy::vk {
 
         bool isHostVisible = desc.hostAccess != HostAccess::None;
 
-        //if (!isStaging)
-        //{
             VkImageCreateInfo imageCI{};
             imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imageCI.mipLevels = desc.mipLevels;
@@ -103,100 +99,9 @@ namespace alloy::vk {
 
             if (res != VK_SUCCESS) return nullptr;
 
-            //auto subresourceCount = desc.mipLevels * actualImageArrayLayers * desc.depth;
-            //std::vector<VkImageLayout> imgLayouts(
-            //    subresourceCount,
-            //    VkImageLayout::VK_IMAGE_LAYOUT_PREINITIALIZED);
-            
-            
-        //}
-        //else // isStaging
-        //{
-        //    uint depthPitch = FormatHelpers.GetDepthPitch(
-        //        FormatHelpers.GetRowPitch(Width, Format),
-        //        Height,
-        //        Format);
-        //    uint stagingSize = depthPitch * Depth;
-        //    for (uint level = 1; level < MipLevels; level++)
-        //    {
-        //        Util.GetMipDimensions(this, level, out uint mipWidth, out uint mipHeight, out uint mipDepth);
-        //
-        //        depthPitch = FormatHelpers.GetDepthPitch(
-        //            FormatHelpers.GetRowPitch(mipWidth, Format),
-        //            mipHeight,
-        //            Format);
-        //
-        //        stagingSize += depthPitch * mipDepth;
-        //    }
-        //    stagingSize *= ArrayLayers;
-        //
-        //    VkBufferCreateInfo bufferCI = VkBufferCreateInfo.New();
-        //    bufferCI.usage = VkBufferUsageFlags.TransferSrc | VkBufferUsageFlags.TransferDst;
-        //    bufferCI.size = stagingSize;
-        //    VkResult result = vkCreateBuffer(_gd.Device, ref bufferCI, null, out _stagingBuffer);
-        //    CheckResult(result);
-        //
-        //    VkMemoryRequirements bufferMemReqs;
-        //    bool prefersDedicatedAllocation;
-        //    if (_gd.GetBufferMemoryRequirements2 != null)
-        //    {
-        //        VkBufferMemoryRequirementsInfo2KHR memReqInfo2 = VkBufferMemoryRequirementsInfo2KHR.New();
-        //        memReqInfo2.buffer = _stagingBuffer;
-        //        VkMemoryRequirements2KHR memReqs2 = VkMemoryRequirements2KHR.New();
-        //        VkMemoryDedicatedRequirementsKHR dedicatedReqs = VkMemoryDedicatedRequirementsKHR.New();
-        //        memReqs2.pNext = &dedicatedReqs;
-        //        _gd.GetBufferMemoryRequirements2(_gd.Device, &memReqInfo2, &memReqs2);
-        //        bufferMemReqs = memReqs2.memoryRequirements;
-        //        prefersDedicatedAllocation = dedicatedReqs.prefersDedicatedAllocation || dedicatedReqs.requiresDedicatedAllocation;
-        //    }
-        //    else
-        //    {
-        //        vkGetBufferMemoryRequirements(gd.Device, _stagingBuffer, out bufferMemReqs);
-        //        prefersDedicatedAllocation = false;
-        //    }
-        //
-        //    // Use "host cached" memory when available, for better performance of GPU -> CPU transfers
-        //    var propertyFlags = VkMemoryPropertyFlags.HostVisible | VkMemoryPropertyFlags.HostCoherent | VkMemoryPropertyFlags.HostCached;
-        //    if (!TryFindMemoryType(_gd.PhysicalDeviceMemProperties, bufferMemReqs.memoryTypeBits, propertyFlags, out _))
-        //    {
-        //        propertyFlags ^= VkMemoryPropertyFlags.HostCached;
-        //    }
-        //    _memoryBlock = _gd.MemoryManager.Allocate(
-        //        _gd.PhysicalDeviceMemProperties,
-        //        bufferMemReqs.memoryTypeBits,
-        //        propertyFlags,
-        //        true,
-        //        bufferMemReqs.size,
-        //        bufferMemReqs.alignment,
-        //        prefersDedicatedAllocation,
-        //        VkImage.Null,
-        //        _stagingBuffer);
-        //
-        //    result = vkBindBufferMemory(_gd.Device, _stagingBuffer, _memoryBlock.DeviceMemory, _memoryBlock.Offset);
-        //    CheckResult(result);
-        //}
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = img;
         tex->_allocation = allocation;
-        //tex->_layout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-        //tex->_accessFlag = 0;
-        //tex->_pipelineFlag = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        //ClearIfRenderTarget();
-        // If the image is going to be used as a render target, we need to clear the data before its first use.
-        //if (desc.usage.renderTarget) {
-        //    dev->ClearColorTexture(tex, new VkClearColorValue(0, 0, 0, 0));
-        //}
-        //else if (desc.usage.depthStencil) {
-        //    dev->ClearDepthTexture(tex, new VkClearDepthStencilValue(0, 0));
-        //}
-        ////TransitionIfSampled();
-        //if (desc.usage.sampled)
-        //{
-        //    dev->TransitionImageLayout(tex, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        //}
-        //RefCount = new ResourceRefCount(RefCountedDispose);
-        dev->RegisterTextureState(VK_IMAGE_LAYOUT_UNDEFINED, tex);
-		tex->RegisterTimeline(dev.get());
 
 		return common::sp<ITexture>(tex);
 	}
@@ -213,27 +118,6 @@ namespace alloy::vk {
         auto tex = new VulkanTexture{dev, desc};
         tex->_img = (VkImage)nativeHandle;
         tex->_allocation = VK_NULL_HANDLE;
-        //Debug.Assert(width > 0 && height > 0);
-        //    _gd = gd;
-        //    MipLevels = mipLevels;
-        //    _width = width;
-        //    _height = height;
-        //    _depth = 1;
-        //    VkFormat = vkFormat;
-        //    _format = VkFormats.VkToVdPixelFormat(VkFormat);
-        //    ArrayLayers = arrayLayers;
-        //    Usage = usage;
-        //    Type = TextureType.Texture2D;
-        //    SampleCount = sampleCount;
-        //    VkSampleCount = VkFormats.VdToVkSampleCount(sampleCount);
-        //    _optimalImage = existingImage;
-        //    _imageLayouts = new[] { VkImageLayout.Undefined };
-        //    _isSwapchainTexture = true;
-//
-        //    ClearIfRenderTarget();
-        //    RefCount = new ResourceRefCount(DisposeCore);
-        dev->RegisterTextureState(layout, tex);
-		tex->RegisterTimeline(dev.get());
         return common::sp(tex);
     }
 
@@ -258,7 +142,7 @@ namespace alloy::vk {
         VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
         auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
-        auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
+        auto elementSize = FormatHelpers::GetSizeInBytes(_desc.format);
 
         auto pDst = (char*)mappedData + subResLayout.offset;
 
@@ -307,7 +191,7 @@ namespace alloy::vk {
         VK_CHECK(vmaMapMemory(_dev->Allocator(), _allocation, &mappedData));
 
         auto subResLayout = GetSubresourceLayout(mipLevel, arrayLayer, SubresourceAspect::Color);
-        auto elementSize = FormatHelpers::GetSizeInBytes(description.format);
+        auto elementSize = FormatHelpers::GetSizeInBytes(_desc.format);
 
         auto pSrc = (char*)mappedData + subResLayout.offset;
 
@@ -390,88 +274,19 @@ namespace alloy::vk {
         return ret;
 
     }
-
-    void VulkanTexture::TransitionImageLayout(
-        VkCommandBuffer cb,
-        //std::uint32_t baseMipLevel,
-        //std::uint32_t levelCount,
-        //std::uint32_t baseArrayLayer,
-        //std::uint32_t layerCount,
-        VkImageLayout layout,
-        VkAccessFlags accessFlag,
-        VkPipelineStageFlags pipelineFlag
-    ){
-#if 0
-        /*VkImageLayout oldLayout = _imageLayouts[
-           CalculateSubresource(description, baseMipLevel, baseArrayLayer)];
-#ifdef VLD_DEBUG
-        //layout of all subresources should be the same
-        for (unsigned level = 0; level < levelCount; level++)
-        {
-            for (unsigned layer = 0; layer < layerCount; layer++)
-            {
-                assert(_imageLayouts[CalculateSubresource(
-                    description, baseMipLevel + level, baseArrayLayer + layer)] == oldLayout);
-            }
-        }
-#endif*/
-        if (_layout       == layout
-         && _accessFlag   == accessFlag
-         && _pipelineFlag == pipelineFlag) {
-            return;
-        }
-
-        VkImageMemoryBarrier barrier{};
-        barrier.oldLayout = _layout;
-        barrier.newLayout = layout;
-        barrier.srcAccessMask = _accessFlag;
-        barrier.dstAccessMask = accessFlag;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = _img;
-        auto& aspectMask = barrier.subresourceRange.aspectMask;
-        if (description.usage.depthStencil) {
-            aspectMask = FormatHelpers::IsStencilFormat(description.format)
-                ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT
-                : VK_IMAGE_ASPECT_DEPTH_BIT;
-        }
-        else {
-            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        }
-        barrier.subresourceRange.baseMipLevel = 0;
-        barrier.subresourceRange.levelCount = description.mipLevels;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = description.arrayLayers;
-
-        VkPipelineStageFlags srcStageFlags = _pipelineFlag;
-        VkPipelineStageFlags dstStageFlags = pipelineFlag;
-
-        VK_DEV_CALL(_dev, vkCmdPipelineBarrier(
-            cb,
-            srcStageFlags,
-            dstStageFlags,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrier));
-
-        _layout = layout;
-        _pipelineFlag = pipelineFlag;
-        _accessFlag = accessFlag;
-#endif
-    }
     
     VulkanTextureView::~VulkanTextureView() {
-        auto vkTex = static_cast<VulkanTexture*>(target.get());
-        auto& _dev = vkTex->GetDevice();
-        _dev.GetFnTable().vkDestroyImageView(_dev.LogicalDev(), _view, nullptr);
+        auto& _dev = target->GetDevice();
+        _dev.GetFnTable().vkDestroyImageView(_dev.LogicalDev(), view, nullptr);
     }
 
-	common::sp<VulkanTextureView> VulkanTextureView::Make(
-		const common::sp<VulkanTexture>& target,
-		const ITextureView::Description& desc
-	){
-        auto& dev = target->GetDevice();
+    
+    VkImageView VulkanTextureViewBase::MakeVkView(
+        const VulkanDevice& dev, 
+        VulkanTexture* target,
+        const ITextureView::Description& desc
+    ) {
+        
         auto& targetDesc = target->GetDesc();
         
         VkImageViewCreateInfo imageViewCI{};
@@ -480,18 +295,39 @@ namespace alloy::vk {
         imageViewCI.image = target->GetHandle();
         imageViewCI.format = VdToVkPixelFormat(targetDesc.format, targetDesc.usage.depthStencil);
 
-        VkImageAspectFlags aspectFlags;
-        if (targetDesc.usage.depthStencil)
-        {
-            aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-
-            if(FormatHelpers::IsStencilFormat(targetDesc.format)){
-                aspectFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
+        auto aspect = desc.aspect;
+        if(aspect == ITextureView::Aspect::Auto) {
+            aspect = FormatHelpers::GetAspectFromPixelFormat(targetDesc.format);
         }
-        else
-        {
-            aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+
+        VkImageAspectFlags aspectFlags;
+        switch (aspect) {
+
+            case Aspect::Depth: {
+                assert(targetDesc.usage.depthStencil);
+                assert(FormatHelpers::IsDepthStencilFormat(targetDesc.format));
+                aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+            }break;
+
+            case Aspect::Stencil: {
+                assert(targetDesc.usage.depthStencil);
+                assert(FormatHelpers::IsStencilFormat(targetDesc.format));
+                aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+
+            case Aspect::DepthStencil: {
+                assert(targetDesc.usage.depthStencil);
+                assert(FormatHelpers::IsDepthStencilFormat(targetDesc.format) && 
+                       FormatHelpers::IsStencilFormat(targetDesc.format));
+
+                aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
+                            | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            }break;
+
+            case Aspect::Color: 
+            default: {
+                aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+            } break;
         }
 
         //imageViewCI.subresourceRange = new VkImageSubresourceRange(
@@ -529,12 +365,24 @@ namespace alloy::vk {
         }
 
         VkImageView vkImgView;
-        dev.GetFnTable().vkCreateImageView(dev.LogicalDev(), &imageViewCI, nullptr, &vkImgView);
+        VK_CHECK(
+            dev.GetFnTable().vkCreateImageView(dev.LogicalDev(), &imageViewCI, nullptr, &vkImgView));
 
-        auto imgView = new VulkanTextureView(target, desc);
-        imgView->_view = vkImgView;
+        return vkImgView;
+    }
 
-        return common::sp(imgView);
+	common::sp<VulkanTextureView> VulkanTextureView::Make(
+		const common::sp<VulkanTexture>& target,
+		const ITextureView::Description& desc
+	){
+        auto& dev = target->GetDevice();
+
+        VkImageView vkImgView
+            = VulkanTextureViewBase::MakeVkView(dev, target.get(), desc);
+
+        auto texView = new VulkanTextureView(target, vkImgView, desc);
+
+        return common::sp{ texView };
 	}
 
     VkImageUsageFlags VdToVkTextureUsage(const ITexture::Description::Usage& vdUsage)
@@ -637,17 +485,21 @@ namespace alloy::vk {
         _debugName = name;
     }
 
-    void VulkanTexture::NotifyUsageOn(IVkTimeline* timeline) {
-        //Resource is used on timeline, clear stale data on other
-        //timelines
-        for(auto t : timelines) {
-            if(t == timeline) {
-                continue;
-            }
-            t->RemoveResource(this);
+
+    
+    void VulkanSampler::SetDebugName(const std::string& name) {
+        // Check for a valid function pointer
+
+        if (_dev->GetContext().GetCaps().hasDebugUtilExt)
+        {
+            VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+            nameInfo.objectType = VK_OBJECT_TYPE_SAMPLER;
+            nameInfo.objectHandle = (uint64_t)_sampler;
+            nameInfo.pObjectName = name.c_str();
+            VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
         }
 
-        timelines = {timeline};
+        _debugName = name;
     }
-
 }

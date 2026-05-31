@@ -4,7 +4,6 @@
 #include "alloy/BindableResource.hpp"
 #include "alloy/FixedFunctions.hpp"
 #include "alloy/Shader.hpp"
-#include "alloy/FrameBuffer.hpp"
 
 #include <cstdint>
 #include <string>

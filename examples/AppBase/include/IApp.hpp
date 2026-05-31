@@ -16,6 +16,12 @@ public:
     virtual void Update() = 0;
 
     virtual void OnDrawGui() = 0;
+
+    virtual std::vector<alloy::PassResourceAccess>
+    GetFrameBindlessResources() {
+        return {};
+    }
+
     virtual void OnRenderFrame(alloy::IRenderCommandEncoder& renderPass) = 0;
 
     virtual void OnFrameComplete(uint32_t frameIdx) {}
@@ -31,6 +37,6 @@ public:
 
 
     virtual int Run(IApp* pUserApp) = 0;
-    static IAppRunner* Create(unsigned width, unsigned height, const std::string& wndName); 
+    static IAppRunner* Create(unsigned width, unsigned height, const std::string& wndName);
 
 };

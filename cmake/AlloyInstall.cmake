@@ -13,7 +13,7 @@ function(alloy_install_runtime_deps)
         COMPONENT
         RUNTIME_DESTINATION
         DX12_DESTINATION
-        APPLE_XCFRAMEWORK_DESTINATION)
+        APPLE_FRAMEWORK_DESTINATION)
     cmake_parse_arguments(ARG "" "${oneValueArgs}" "" ${ARGN})
 
     if(ARG_UNPARSED_ARGUMENTS)
@@ -29,8 +29,8 @@ function(alloy_install_runtime_deps)
         set(ARG_DX12_DESTINATION "${ARG_RUNTIME_DESTINATION}/D3D12")
     endif()
 
-    if(NOT ARG_APPLE_XCFRAMEWORK_DESTINATION)
-        set(ARG_APPLE_XCFRAMEWORK_DESTINATION "${CMAKE_INSTALL_LIBDIR}/xcframeworks")
+    if(NOT APPLE_FRAMEWORK_DESTINATION)
+        set(APPLE_FRAMEWORK_DESTINATION "${CMAKE_INSTALL_LIBDIR}")
     endif()
 
     set(_component_arg)
@@ -77,10 +77,10 @@ function(alloy_install_runtime_deps)
             RUNTIME_DESTINATION "${ARG_RUNTIME_DESTINATION}")
     endif()
 
-    if(_backend_mtl_enabled AND COMMAND alloy_install_metal_sdk_runtime_deps)
-        alloy_install_metal_sdk_runtime_deps(
+    if(_backend_mtl_enabled AND COMMAND alloy_install_metal_runtime_deps)
+        alloy_install_metal_runtime_deps(
             ${_component_arg}
-            APPLE_XCFRAMEWORK_DESTINATION "${ARG_APPLE_XCFRAMEWORK_DESTINATION}")
+            APPLE_FRAMEWORK_DESTINATION "${ARG_APPLE_FRAMEWORK_DESTINATION}")
     endif()
 endfunction()
 

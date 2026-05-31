@@ -20,28 +20,17 @@
 #include "VkStructStream.hpp"
 #include "VulkanContext.hpp"
 #include "VulkanCommandList.hpp"
+//#include "VulkanDescriptorHeap.hpp"
 #include "VulkanSwapChain.hpp"
 //#include "VulkanResourceBarrier.hpp"
 
 namespace alloy::vk {
-
-template<typename T, typename U>
-std::unordered_set<T> ToSet(U&& obj) {
-    return std::unordered_set<T>(obj.begin(), obj.end());
-}
-
-template<typename T, typename U>
-bool Contains(T&& container, U&& element) {
-
-    return container.find(element) != container.end();
-}
 
     VulkanDevice::VulkanDevice() {};
 
     VulkanDevice::~VulkanDevice()
     {
         _fnTable.vkDeviceWaitIdle(_dev);
-
 
         delete _gfxQ;
         delete _copyQ;
@@ -52,8 +41,17 @@ bool Contains(T&& container, U&& element) {
         //}
         vmaDestroyAllocator(_allocator);
 
+        // Universal T2 heap layouts. All descriptor heaps that referenced these hold a
+        // strong ref to this device, so they are already destroyed by now.
+        if(_t2ResourceHeapDsl != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2ResourceHeapDsl, nullptr);
+        if(_t2SamplerHeapDsl != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2SamplerHeapDsl, nullptr);
+        if(_t2OffsetUBODSL != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2OffsetUBODSL, nullptr);
+
         //Uninit managers
-        _descPoolMgr.DeInit();
+        _descPoolMgrs.clear();
         //_cmdPoolMgr.DeInit();
 
         _fnTable.vkDestroyDevice(_dev, nullptr);
@@ -67,6 +65,252 @@ bool Contains(T&& container, U&& element) {
         DEBUGCODE(_computeQ = VK_NULL_HANDLE);
 
         //DEBUGCODE(_surface = VK_NULL_HANDLE);
+    }
+
+    
+    uint32_t VulkanDevice::_QueryMaxSupportedSamplerDescPerSet() {
+
+        auto& devCaps = _adp->GetCaps();
+        auto maxSetCnt = devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools;
+        
+        {
+            // Provided by VK_VERSION_1_2
+            VkDescriptorSetVariableDescriptorCountLayoutSupport varCntSupport {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT,
+                //uint32_t           maxVariableDescriptorCount;
+            };
+
+            VkDescriptorSetLayoutSupport supportStat {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+                .pNext = &varCntSupport,
+            };
+
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+                               | VK_SHADER_STAGE_VERTEX_BIT
+                               | VK_SHADER_STAGE_FRAGMENT_BIT
+                               | VK_SHADER_STAGE_TASK_BIT_EXT
+                               | VK_SHADER_STAGE_MESH_BIT_EXT
+                               , // Add raytracing in the future
+            };
+
+            
+            static constexpr VkDescriptorBindingFlags bindingFlags =
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindingFlags = &bindingFlags,
+            };
+
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
+
+            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &dslCI, &supportStat);
+
+            if(supportStat.supported) {
+                maxSetCnt = varCntSupport.maxVariableDescriptorCount;
+            }
+        };
+
+        return std::min({ 
+            maxSetCnt,
+            devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools,
+            
+            // Sampler heap
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindSamplers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindSamplers,
+        });
+    }
+    
+    uint32_t VulkanDevice::_QueryMaxSupportedMutDescPerSet() {
+
+        auto& devCaps = _adp->GetCaps();
+        auto maxSetCnt = devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools;
+
+        {
+            
+            // Provided by VK_VERSION_1_2
+            VkDescriptorSetVariableDescriptorCountLayoutSupport varCntSupport {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT,
+                //uint32_t           maxVariableDescriptorCount;
+            };
+
+            VkDescriptorSetLayoutSupport supportStat {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+                .pNext = &varCntSupport,
+            };
+
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+                               | VK_SHADER_STAGE_VERTEX_BIT
+                               | VK_SHADER_STAGE_FRAGMENT_BIT
+                               | VK_SHADER_STAGE_TASK_BIT_EXT
+                               | VK_SHADER_STAGE_MESH_BIT_EXT
+                               , // Add raytracing in the future
+            };
+
+            
+            static const VkDescriptorType mutableTypes [] = {
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            };
+            static constexpr VkDescriptorBindingFlags bindingFlags =
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+            VkMutableDescriptorTypeListEXT mutableTypeList {
+                .descriptorTypeCount = sizeof(mutableTypes) / sizeof(mutableTypes[0]),
+                .pDescriptorTypes = mutableTypes
+            };
+
+            VkMutableDescriptorTypeCreateInfoEXT mutableCI {
+                .sType = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+                .mutableDescriptorTypeListCount = 1,
+                .pMutableDescriptorTypeLists = &mutableTypeList
+            };
+
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = &mutableCI,
+                .bindingCount = 1,
+                .pBindingFlags = &bindingFlags,
+            };
+
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
+
+            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &dslCI, &supportStat);
+
+            if(supportStat.supported) {
+                maxSetCnt = varCntSupport.maxVariableDescriptorCount;
+            }
+        };
+
+        
+        // https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkGetDescriptorSetLayoutSupport.html:
+        // Conservative size is VkPhyDev1.1 maintenance3 props
+        // VkPhysicalDeviceVulkan11Properties::maxPerSetDescriptors
+        
+        return std::min( { 
+            maxSetCnt,
+            // Combined resoource heap
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindUniformBuffers,
+            //devCaps.properties12.maxDescriptorSetUpdateAfterBindUniformBuffersDynamic;
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageBuffers,
+            //devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageBuffersDynamic;
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindSampledImages,
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageImages,
+
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindUniformBuffers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindStorageBuffers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindSampledImages,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindStorageImages,
+            devCaps.properties12.maxPerStageUpdateAfterBindResources,
+        });
+    }
+
+    void VulkanDevice::_CreateT2DSLs() {
+        // Shared binding flags for both heap DSLs: the heap is a partially-populated,
+        // update-after-bind, variable-count array.
+        static constexpr VkDescriptorBindingFlags defaultBindingFlags =
+            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+           // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+        auto _CreateDSL = [&](
+            VkDescriptorType type,
+            uint32_t count,
+            VkDescriptorBindingFlags bindingFlags,
+            const VkMutableDescriptorTypeCreateInfoEXT* mutableCI
+        ) -> VkDescriptorSetLayout {
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = type,
+                .descriptorCount = count,
+                .stageFlags = VK_SHADER_STAGE_ALL,
+            };
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = mutableCI,
+                .bindingCount = 1,
+                .pBindingFlags = &bindingFlags,
+            };
+
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
+
+            VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+            VK_CHECK(VK_DEV_CALL(this,
+                vkCreateDescriptorSetLayout(_dev, &dslCI, nullptr, &dsl)));
+            return dsl;
+        };
+
+        // Resource heap: mutable-typed, candidate types match _QueryMaxSupportedMutDescPerSet.
+
+        VkMutableDescriptorTypeListEXT mutableTypeList{
+            .descriptorTypeCount = sizeof(_DescriptorPoolMgr::kMutableDescTypes) 
+                / sizeof(_DescriptorPoolMgr::kMutableDescTypes[0]),
+            .pDescriptorTypes = _DescriptorPoolMgr::kMutableDescTypes,
+        };
+
+        VkMutableDescriptorTypeCreateInfoEXT mutableCI{
+            .sType = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+            .mutableDescriptorTypeListCount = 1,
+            .pMutableDescriptorTypeLists = &mutableTypeList,
+        };
+
+        _t2ResourceHeapDsl = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+            _features.maxVariableCntDescriptorsPerSetMutableType,
+            defaultBindingFlags | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+            &mutableCI);
+
+        _t2SamplerHeapDsl = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_SAMPLER,
+            _features.maxVariableCntDescriptorsPerSetSampler,
+            defaultBindingFlags | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+            nullptr);
+        
+        _t2OffsetUBODSL = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            defaultBindingFlags,
+            1,
+            nullptr
+        );
     }
 
     common::sp<IGraphicsDevice> VulkanDevice::Make(
@@ -96,7 +340,7 @@ bool Contains(T&& container, U&& element) {
         //dev->_isOwnSurface = _surf.isOwnSurface;
         //dev->_phyDev = devInfo;
         dev->_features = {};
-        dev->_features.hasComputeCap = qInfo.graphicsQueueSupportsCompute;
+        dev->_features.flags.hasComputeCap = qInfo.graphicsQueueSupportsCompute;
 
         //Create logical device
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
@@ -120,7 +364,7 @@ bool Contains(T&& container, U&& element) {
 
             queuePriorities.push_back(0.8f);
 
-            dev->_features.hasUniqueCpyQueue = true;
+            dev->_features.flags.hasUniqueCpyQueue = true;
         }
 
         if (qInfo.computeQueueFamily.has_value()) {
@@ -132,7 +376,7 @@ bool Contains(T&& container, U&& element) {
 
             queuePriorities.push_back(0.6f);
 
-            dev->_features.hasUniqueComputeQueue = true;
+            dev->_features.flags.hasUniqueComputeQueue = true;
         }
 
         for (auto i = 0; i < queueCreateInfos.size(); i++) {
@@ -197,14 +441,55 @@ bool Contains(T&& container, U&& element) {
         //Bindless shader ABI and binding models
         {
             //Enable the resource heap indexing
-            if(devCaps.resourceBindingModel != VulkanDevCaps::ResourceBindingModel::Legacy) {
+            if(devCaps.resourceBindingModel != ResourceBindingModel::FixedBindings) {
                 features12.descriptorIndexing = true;
                 features12.descriptorBindingPartiallyBound = true;
+                features12.descriptorBindingUpdateUnusedWhilePending = true;
+                features12.descriptorBindingUniformBufferUpdateAfterBind = true;
+                features12.descriptorBindingSampledImageUpdateAfterBind = true;
+                features12.descriptorBindingStorageImageUpdateAfterBind = true;
+                features12.descriptorBindingStorageBufferUpdateAfterBind = true;
+                features12.runtimeDescriptorArray = true;
+                deviceFeatures.shaderUniformBufferArrayDynamicIndexing = true;
+                deviceFeatures.shaderSampledImageArrayDynamicIndexing = true;
+                deviceFeatures.shaderStorageBufferArrayDynamicIndexing = true;
+                deviceFeatures.shaderStorageImageArrayDynamicIndexing = true;
+                features12.shaderUniformTexelBufferArrayDynamicIndexing = true;
+                features12.shaderStorageTexelBufferArrayDynamicIndexing = true;
+
+                if(devCaps.SupportNonUniformResourceIndexing()) {
+                    features12.shaderUniformBufferArrayNonUniformIndexing = true;
+                    features12.shaderSampledImageArrayNonUniformIndexing = true;
+                    features12.shaderStorageBufferArrayNonUniformIndexing = true;
+                    features12.shaderStorageImageArrayNonUniformIndexing = true;
+                    features12.shaderUniformTexelBufferArrayNonUniformIndexing = true;
+                    features12.shaderStorageTexelBufferArrayNonUniformIndexing = true;
+                }
+
+                if(devCaps.resourceBindingModel == ResourceBindingModel::T2) {
+                    features12.descriptorBindingVariableDescriptorCount = true;
+                }
             }
 
             //Enable the descriptor buffer
-            if(devCaps.resourceBindingModel == VulkanDevCaps::ResourceBindingModel::DescriptorBuffer) {
+            if(devCaps.supportDescriptorBuffer) {
                 devExtensions.push_back(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+                features12.bufferDeviceAddress = true;
+
+                auto& descriptorBufferFeatures
+                    = featureStructs.Append<VkPhysicalDeviceDescriptorBufferFeaturesEXT,
+                                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT>();
+                descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
+            }
+
+            //Mutable desc types
+            if(devCaps.supportMutableDescriptorType) {
+                devExtensions.push_back(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
+
+                auto& mutableDescriptorTypeFeatures
+                    = featureStructs.Append<VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT,
+                                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT>();
+                mutableDescriptorTypeFeatures.mutableDescriptorType = VK_TRUE;
             }
         }
 
@@ -256,7 +541,7 @@ bool Contains(T&& container, U&& element) {
         createInfo.pNext = featureStructs.Front<void*>();
 
         auto _AddExtIfPresent = [&](const char* extName) {
-            if (Contains(availableDevExts, extName))
+            if (availableDevExts.contains(extName))
             {
                 devExtensions.push_back(extName);
                 return true;
@@ -283,19 +568,20 @@ bool Contains(T&& container, U&& element) {
         //if (options.debug)
         //    dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_UTILS);
 
-        dev->_features.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
-        if (options.preferStandardClipSpaceYDirection) {
-            dev->_features.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
-        }
-        dev->_features.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
-        dev->_features.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
+        dev->_features.flags.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
+        //if (options.preferStandardClipSpaceYDirection) {
+        //    dev->_features.flags.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
+        //}
+        dev->_features.flags.supportsMaintenance1 = true; // VK1.1 core behavior, no extension needed.
+        dev->_features.flags.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
+        dev->_features.flags.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
 
         if (ctx.GetCaps().hasDrvProp2Ext) {
-            dev->_features.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
+            dev->_features.flags.supportsDrvPropQuery = _AddExtIfPresent(VkDevExtNames::VK_KHR_DRIVER_PROPS);
         }
 
-        dev->_features.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
-        dev->_features.supportReadOnlyAttachment = _AddExtIfPresent(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+        dev->_features.flags.supportsDepthClip = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEPTH_CLIP_ENABLE);
+        dev->_features.flags.supportReadOnlyAttachment = _AddExtIfPresent(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME);
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(devExtensions.size());
         createInfo.ppEnabledExtensionNames = devExtensions.data();
@@ -312,7 +598,37 @@ bool Contains(T&& container, U&& element) {
         //poolInfo.flags = 0; // Optional
         //VK_CHECK(vkCreateCommandPool(dev->_dev, &poolInfo, nullptr, &dev->_cmdPool));
         //dev->_cmdPoolMgr.Init(dev->_dev, devInfo.graphicsQueueFamily);
-        dev->_descPoolMgr.Init(dev.get(), 1000);
+
+        auto _CreatePoolMgr = [&](VkDescriptorType type) {
+            
+            dev->_descPoolMgrs.emplace(
+                type, _DescriptorPoolMgr::CreateArgs{
+                    .dev = dev.get(),
+                    .type = type,
+                    .maxSetsPerPool = 128,
+                    .maxDescriptorsPerPool = 1024
+                }
+            );
+        };
+
+        _CreatePoolMgr(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        _CreatePoolMgr(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        _CreatePoolMgr(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+        _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLER);
+
+        dev->_features.maxVariableCntDescriptorsPerSetSampler =
+             dev->_QueryMaxSupportedSamplerDescPerSet();
+
+        if(devCaps.supportMutableDescriptorType) {
+            _CreatePoolMgr(VK_DESCRIPTOR_TYPE_MUTABLE_EXT);
+            dev->_features.maxVariableCntDescriptorsPerSetMutableType =
+                dev->_QueryMaxSupportedMutDescPerSet();
+            // Universal T2 heap layouts depend on maxMutableDescriptorsPerSet being set.
+            dev->_CreateT2DSLs();
+        } else {
+            dev->_features.maxVariableCntDescriptorsPerSetMutableType = 0;
+        }
 
         //Get queues
         {
@@ -338,6 +654,9 @@ bool Contains(T&& container, U&& element) {
 
         //Init allocator
         VmaAllocatorCreateInfo allocatorInfo = {};
+        if(devCaps.supportDescriptorBuffer) {
+            allocatorInfo.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        }
         allocatorInfo.vulkanApiVersion = VK_MAKE_API_VERSION(0, apiVer.major, apiVer.minor, apiVer.patch);
         allocatorInfo.physicalDevice = adp->GetHandle();
         allocatorInfo.device = dev->_dev;
@@ -363,7 +682,7 @@ bool Contains(T&& container, U&& element) {
         fn.vkInvalidateMappedMemoryRanges = dev->_fnTable.vkInvalidateMappedMemoryRanges;
         fn.vkMapMemory = dev->_fnTable.vkMapMemory;
         fn.vkUnmapMemory = dev->_fnTable.vkUnmapMemory;
-        if (dev->_features.supportsGetMemReq2 && dev->_features.supportsDedicatedAlloc) {
+        if (dev->_features.flags.supportsGetMemReq2 && dev->_features.flags.supportsDedicatedAlloc) {
             fn.vkGetBufferMemoryRequirements2KHR
                 = dev->_fnTable.vkGetBufferMemoryRequirements2KHR;
             fn.vkGetImageMemoryRequirements2KHR
@@ -401,7 +720,7 @@ bool Contains(T&& container, U&& element) {
         VkPhysicalDeviceProperties deviceProps{};
         ctx.GetFnTable().vkGetPhysicalDeviceProperties(adp->GetHandle(), &deviceProps);
 
-        dev->_commonFeat.computeShader = dev->_features.hasComputeCap;
+        dev->_commonFeat.computeShader = dev->_features.flags.hasComputeCap;
         dev->_commonFeat.geometryShader = deviceFeatures.geometryShader;
         dev->_commonFeat.tessellationShaders = deviceFeatures.tessellationShader;
         dev->_commonFeat.multipleViewports = deviceFeatures.multiViewport;
@@ -417,7 +736,7 @@ bool Contains(T&& container, U&& element) {
         dev->_commonFeat.independentBlend = deviceFeatures.independentBlend;
         dev->_commonFeat.structuredBuffer = true;
         dev->_commonFeat.subsetTextureView = true;
-        dev->_commonFeat.commandListDebugMarkers = dev->_features.supportsDebug;
+        dev->_commonFeat.commandListDebugMarkers = dev->_features.flags.supportsDebug;
         dev->_commonFeat.bufferRangeBinding = true;
         dev->_commonFeat.shaderFloat64 = deviceFeatures.shaderFloat64;
 
@@ -435,59 +754,15 @@ bool Contains(T&& container, U&& element) {
         return *_adp;
     }
 
-    //void VulkanDevice::SubmitCommand(const CommandList* cmd ){
-//
-    //    assert(cmd != nullptr);
-    //    auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
-    //    auto rawCmdBuf = vkCmd->GetHandle();
-    //
-    //    VkSubmitInfo info {};
-    //    info.commandBufferCount = 1;
-    //    info.pCommandBuffers = &rawCmdBuf;
-    //
-    //    VK_CHECK(vkQueueSubmit(
-    //        _queueGraphics, 1, &info, nullptr
-    //    ));
-    //}
-
-    void VulkanDevice::RegisterTextureState(
-        const VkImageLayout& request,
-        VulkanTexture* texture
-    ) {
-        auto texFormat = texture->GetDesc().format;
-        bool isColorFormat = true;
-
-        IVkTimeline::TextureState state {};
-
-        if(FormatHelpers::IsDepthStencilFormat(texFormat)) {
-            isColorFormat = false;
-            state.aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
-            state.depth.layout = request;
-        }
-
-        if(FormatHelpers::IsDepthStencilFormat(texFormat)) {
-            isColorFormat = false;
-            state.aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
-            state.stencil.layout = request;
-
-        }
-
-        if(isColorFormat) {
-            state.aspects |= VK_IMAGE_ASPECT_COLOR_BIT;
-            state.color.layout = request;
-        }
-
-        _currentState.textures[texture] = state;
-    }
 
     ISwapChain::State VulkanDevice::PresentToSwapChain(
         ISwapChain* sc
     ) {
 
         VulkanSwapChain* vkSC = PtrCast<VulkanSwapChain>(sc);
-        auto tex = vkSC->GetCurrentColorTarget()->GetTextureObject().get();
+        //auto tex = vkSC->GetCurrentColorTarget()->GetTextureObject().get();
 
-        auto sem = _gfxQ->PrepareTextureForPresent(PtrCast<VulkanTexture>(tex));
+        auto sem = _gfxQ->PrepareForPresent();
 
         VkSwapchainKHR deviceSwapchain = vkSC->GetHandle();
         VkPresentInfoKHR presentInfo{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -524,16 +799,24 @@ bool Contains(T&& container, U&& element) {
         }
     }
 
-    //bool VulkanDevice::WaitForFences(const sp<Fence>& fence, std::uint32_t timeOutNs) {
-    //    auto vkFence = PtrCast<VulkanFence>(fence.get());
-    //
-    //    VkResult result = vkWaitForFences(_dev, 1, &vkFence->GetHandle(), true, timeOutNs);
-    //    return result == VkResult::VK_SUCCESS;
-    //}
+    _DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout,
+            VkDescriptorType type,
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
+                                //   VkDescriptorSetLayout.
+            bool isVariableCnt, // Enables variable count
+            bool isMutableSet   // Implies partially bound and update after use.
+    ){
+        assert(_descPoolMgrs.contains(type));
+        assert(!isMutableSet ||
+           GetAdapter().GetAdapterInfo().resourceBindingModel
+               != ResourceBindingModel::FixedBindings
+            && "Vulkan mutable ResourceSet requires DescriptorIndexing support.");
 
-    //sp<_CmdPoolContainer> VulkanDevice::GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-    _DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout){
-        return _descPoolMgr.Allocate(layout);
+        return _descPoolMgrs.at(type).Allocate(
+            layout,
+            descriptorCnt,
+            isVariableCnt
+        );
     }
 
     common::sp<IBuffer> VulkanBuffer::Make(
@@ -671,7 +954,6 @@ bool Contains(T&& container, U&& element) {
         return value;
     }
     void VulkanFence::SignalFromCPU(uint64_t signalValue) {
-        RegisterSyncPoint(_dev.get(), signalValue);
         VkSemaphoreSignalInfo signalInfo {};
         signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
         signalInfo.pNext = nullptr;
@@ -694,7 +976,6 @@ bool Contains(T&& container, U&& element) {
         switch (res) {
         //On success, this command returns
             case VK_SUCCESS: {
-                SyncTimelineToThis(_dev.get(), expectedValue);
                 return true;
             }
             case VK_TIMEOUT: return false;
@@ -709,46 +990,6 @@ bool Contains(T&& container, U&& element) {
         }
 
         return false;
-    }
-
-    void VulkanFence::RegisterSyncPoint(IVkTimeline* timeline, uint64_t syncValue) {
-        _signalingTimelines[timeline] = syncValue;
-    }
-
-    void VulkanFence::SyncTimelineToThis(IVkTimeline* timeline, uint64_t syncValue) {
-
-        struct _Kvpair {
-            IVkTimeline* timeline;
-            uint64_t fenceValue;
-        };
-
-        std::vector<_Kvpair> timelinesSorted{};
-
-        for(auto& [k, v] : _signalingTimelines) {
-            if(k == timeline) {
-                //Same queue signal and wait may cause deadlocks.
-                //Put an assertion here for ease of debugging
-                assert(v >= syncValue);
-                continue;
-            }
-            timelinesSorted.push_back({k, v});
-        }
-
-        std::sort(timelinesSorted.begin(), timelinesSorted.end(),
-            [](const _Kvpair& a, const _Kvpair& b) {
-                return a.fenceValue < b.fenceValue;
-            }
-        );
-
-        IVkTimeline::ResourceStates states {};
-        for(auto&[k, _] : timelinesSorted) {
-            states.SyncTo(k->GetCurrentState());
-        }
-
-        timeline->GetCurrentState().SyncTo(states);
-        for(auto tex : states.textures) {
-            tex.first->RegisterTimeline(timeline);
-        }
     }
 
     common::sp<IEvent> VulkanFence::Make(const common::sp<VulkanDevice>& dev)
@@ -856,7 +1097,6 @@ bool Contains(T&& container, U&& element) {
         : _dev(dev)
         , _cmdPoolMgr(dev, queueFamily)
         , _q(q)
-        , _lastSubmittedFence(0)
     {
 
         VkSemaphoreTypeCreateInfo timelineCreateInfo {};
@@ -870,8 +1110,6 @@ bool Contains(T&& container, U&& element) {
         createInfo.pNext = &timelineCreateInfo;
         createInfo.flags = 0;
 
-        VK_CHECK(VK_DEV_CALL(dev,
-            vkCreateSemaphore(dev->LogicalDev(), &createInfo, nullptr, &_submissionFence)));
 
         createInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
@@ -880,13 +1118,11 @@ bool Contains(T&& container, U&& element) {
     }
 
     VulkanCommandQueue::~VulkanCommandQueue() {
-        VK_DEV_CALL(_dev,vkDestroySemaphore(_dev->LogicalDev(), _submissionFence, nullptr));
         VK_DEV_CALL(_dev,vkDestroySemaphore(_dev->LogicalDev(), _presentFence, nullptr));
     }
 
     void VulkanCommandQueue::EncodeSignalEvent(IEvent* evt, uint64_t value) {
         auto vkFence = PtrCast<VulkanFence>(evt);
-        vkFence->RegisterSyncPoint(this, value);
 
         auto rawFence = vkFence->GetHandle();
         const uint64_t signalValue = value; // Set semaphore value
@@ -909,7 +1145,6 @@ bool Contains(T&& container, U&& element) {
 
     void VulkanCommandQueue::EncodeWaitForEvent(IEvent* evt, uint64_t value) {
         auto vkFence = PtrCast<VulkanFence>(evt);
-        vkFence->SyncTimelineToThis(this, value);
 
         auto rawFence = vkFence->GetHandle();
 
@@ -930,274 +1165,12 @@ bool Contains(T&& container, U&& element) {
         VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
     }
 
-
-    void VulkanCommandQueue::_RecycleTransitionCmdBufs() {
-        uint64_t value;
-        _dev->GetFnTable().vkGetSemaphoreCounterValueKHR(
-            _dev->LogicalDev(), _submissionFence, &value);
-
-        while(! _transitionCmdBufs.empty()) {
-            auto& container = _transitionCmdBufs.front();
-            if(container.completionFenceValue <= value) {
-                container.cmdPool->FreeBuffer(container.cmdBuf);
-                _transitionCmdBufs.pop_front();
-            } else {
-                break;
-            }
-        }
-
-    }
-
-    void VulkanCommandQueue::_TransitResourceStatesBeforeSubmit(
-        const VulkanCommandList& cmdList
-    ) {
-        //Recycle completed transition command buffers
-        _RecycleTransitionCmdBufs();
-
-        auto& currCmdListReqStates = cmdList.GetRequestedResourceStates();
-
-        auto& cpuTimeline = _dev->GetCurrentState();
-
-        std::vector<VkImageMemoryBarrier2KHR> texBarriers {};
-
-        auto _TransitionLayoutIfNotMatch = [&](
-            const VulkanTexture* texture,
-            VkImageLayout currLayout, 
-            const VulkanCommandList::TextureState::AspectState& stateReq, 
-            VkImageAspectFlags aspects
-        ) {
-            
-            if(currLayout != stateReq.layout) {
-
-                auto& desc = texture->GetDesc();
-                auto& action = texBarriers.emplace_back(
-                    VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2_KHR
-                );
-                action.srcStageMask = VK_PIPELINE_STAGE_2_NONE_KHR;
-                action.srcAccessMask = VK_ACCESS_2_NONE_KHR;
-                action.dstStageMask = stateReq.stage;
-                action.dstAccessMask = stateReq.access;
-                action.oldLayout = currLayout;
-                action.newLayout = stateReq.layout;
-                action.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                action.image = texture->GetHandle();
-                action.subresourceRange.baseMipLevel = 0;
-                action.subresourceRange.levelCount = desc.mipLevels;
-                action.subresourceRange.baseArrayLayer = 0;
-                action.subresourceRange.layerCount = desc.arrayLayers;
-                action.subresourceRange.aspectMask = aspects;
-            }
-        };
-
-        for(auto& [texture, stateReq] : currCmdListReqStates.textures) {
-            //TextureState state {};
-            //Search for current recorded state
-            IVkTimeline::TextureState currLayout {} ;
-            auto it = _currentState.textures.find(texture);
-            if(it == _currentState.textures.end()) {
-                assert(cpuTimeline.textures.contains(texture));
-                currLayout = cpuTimeline.textures[texture];
-            } else {
-                currLayout = it->second;
-            }
-            //Acquire resource on this timeline
-            texture->NotifyUsageOn(this);
-
-            assert( (currLayout.aspects & stateReq.aspects) == stateReq.aspects &&
-                "Resource request aspects must be supported by the resource"
-            );
-
-            if(stateReq.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
-                _TransitionLayoutIfNotMatch(texture, 
-                                            currLayout.color.layout,
-                                            stateReq.color,
-                                            VK_IMAGE_ASPECT_COLOR_BIT);
-            }
-
-            if(stateReq.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-                _TransitionLayoutIfNotMatch(texture, 
-                                            currLayout.depth.layout,
-                                            stateReq.depth,
-                                            VK_IMAGE_ASPECT_DEPTH_BIT);
-            }
-
-            if(stateReq.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-                _TransitionLayoutIfNotMatch(texture, 
-                                            currLayout.stencil.layout,
-                                            stateReq.stencil,
-                                            VK_IMAGE_ASPECT_STENCIL_BIT);
-            }
-
-        }
-
-        VkDependencyInfoKHR depInfo {};
-        depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR;
-        //TODO: figure out which scope to use
-        depInfo.dependencyFlags = 0;
-        depInfo.imageMemoryBarrierCount = texBarriers.size();
-        depInfo.pImageMemoryBarriers = texBarriers.data();
-
-
-
-        TransitionCmdBuf container {};
-
-        auto cmdPool = _cmdPoolMgr.GetOnePool();
-        auto cmdBuf = cmdPool->AllocateBuffer();
-        container.cmdBuf = cmdBuf;
-        container.cmdPool = std::move(cmdPool);
-        container.completionFenceValue = _lastSubmittedFence;
-
+    VkSemaphore VulkanCommandQueue::PrepareForPresent() {
+        // We need a semaphore to mimc DX12 queue and present sync.
+        // Vulkan timeline semaphores currently can't sync between
+        // presentation engine and command queues. So we use a 
+        // VkSemaphore
         {
-            VkCommandBufferBeginInfo beginInfo {};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.pNext = NULL;
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            beginInfo.pInheritanceInfo = NULL;
-            VK_DEV_CALL(_dev, vkBeginCommandBuffer(cmdBuf, &beginInfo));
-            VK_DEV_CALL(_dev, vkCmdPipelineBarrier2KHR(cmdBuf, &depInfo));
-            VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
-        }
-
-        _transitionCmdBufs.push_back(container);
-
-        VkSubmitInfo submitInfo {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmdBuf;
-
-        VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
-    }
-
-
-    void VulkanCommandQueue::_MarkResourceStatesAfterSubmit(
-        const VulkanCommandList& cmdList
-    ) {
-        auto& finalStates = cmdList.GetFinalResourceStates();
-        for(auto&[tex, state] : finalStates.textures) {
-            
-            auto& currLayout = _currentState.textures[tex];
-            
-            currLayout.aspects |= state.aspects;
-            if(state.aspects & VK_IMAGE_ASPECT_COLOR_BIT) {
-                _currentState.textures[tex].color.layout = state.color.layout;
-            }
-
-            if(state.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-                _currentState.textures[tex].depth.layout = state.depth.layout;
-            }
-
-            if(state.aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-                _currentState.textures[tex].stencil.layout = state.stencil.layout;
-            }
-        }
-    }
-
-
-    VkSemaphore VulkanCommandQueue::PrepareTextureForPresent(VulkanTexture* tex) {
-        auto& cpuTimeline = _dev->GetCurrentState();
-
-        IVkTimeline::TextureState currState {};
-        auto it = _currentState.textures.find(tex);
-        if(it != _currentState.textures.end()) {
-            currState = it->second;
-        } else {
-            assert(cpuTimeline.textures.contains(tex));
-            currState = cpuTimeline.textures[tex];
-            _currentState.textures[tex] = currState;
-        }
-
-        assert(currState.aspects == VK_IMAGE_ASPECT_COLOR_BIT
-            && "Only color texture can be presented");
-
-        auto& currColorState = currState.color;
-
-        if(currColorState.layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-            //First time present, add to current timeline
-            // swap chains are bound to command queues. so we only notify once
-            tex->NotifyUsageOn(this);
-
-            auto& texDesc = tex->GetDesc();
-            VkImageMemoryBarrier barrier {};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.pNext = NULL;
-            barrier.srcAccessMask = 0;//vk_access_flags_from_d3d12_barrier(currState.access);
-            barrier.dstAccessMask = 0;
-            barrier.oldLayout = currColorState.layout;
-            barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = tex->GetHandle();
-            barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texDesc.mipLevels, 0, texDesc.arrayLayers };
-
-            auto stagesBefore = VK_PIPELINE_STAGE_NONE_KHR;//vk_stage_flags_from_d3d12_barrier(currState.stage, currState.access);
-
-
-            _RecycleTransitionCmdBufs();
-
-            TransitionCmdBuf container {};
-
-            _lastSubmittedFence++;
-            auto cmdPool = _cmdPoolMgr.GetOnePool();
-            auto cmdBuf = cmdPool->AllocateBuffer();
-            container.cmdBuf = cmdBuf;
-            container.cmdPool = std::move(cmdPool);
-            container.completionFenceValue = _lastSubmittedFence;
-
-            {
-                VkCommandBufferBeginInfo beginInfo {};
-                beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                beginInfo.pNext = NULL;
-                beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                beginInfo.pInheritanceInfo = NULL;
-                VK_DEV_CALL(_dev, vkBeginCommandBuffer(cmdBuf, &beginInfo));
-                VK_DEV_CALL(_dev, vkCmdPipelineBarrier(
-                    cmdBuf,
-                    stagesBefore,
-                    0,
-                    0 /*VkDependencyFlags*/,
-                    0, nullptr,
-                    0, nullptr,
-                    1, &barrier));
-                VK_DEV_CALL(_dev, vkEndCommandBuffer(cmdBuf));
-            }
-
-            //Give the transition buffer a debug name
-            if (_dev->GetContext().GetCaps().hasDebugUtilExt)
-            {
-                auto name = std::format("PresentImgTransitionCmdBuf_#{}", _lastSubmittedFence);
-                VkDebugUtilsObjectNameInfoEXT nameInfo = {};
-                nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-                nameInfo.objectType = VK_OBJECT_TYPE_COMMAND_BUFFER;
-                nameInfo.objectHandle = (uint64_t)cmdBuf;
-                nameInfo.pObjectName = name.c_str();
-                VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
-            }
-
-            _transitionCmdBufs.push_back(container);
-
-            uint64_t signalValues[] = {_lastSubmittedFence, 0};
-
-            VkTimelineSemaphoreSubmitInfo timelineInfo {};
-            timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-            timelineInfo.pNext = NULL;
-            timelineInfo.signalSemaphoreValueCount = 2;
-            timelineInfo.pSignalSemaphoreValues = signalValues;
-
-            VkSubmitInfo submitInfo {};
-            VkSemaphore sem[] = {_submissionFence, _presentFence};
-            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.pNext = &timelineInfo;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &cmdBuf;
-            submitInfo.signalSemaphoreCount = 2;
-            submitInfo.pSignalSemaphores = sem;
-
-
-            VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
-
-            currColorState.layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        } else {
             VkSubmitInfo submitInfo {};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.signalSemaphoreCount = 1;
@@ -1206,37 +1179,23 @@ bool Contains(T&& container, U&& element) {
             VK_DEV_CALL(_dev, vkQueueSubmit(_q, 1, &submitInfo, VK_NULL_HANDLE));
         }
 
-        //_currentState.textures[tex].stage = PipelineStage::None;
-        //_currentState.textures[tex].access = ResourceAccess::None;
-        _currentState.textures[tex] = currState;
-
         return _presentFence;
     }
 
     void VulkanCommandQueue::SubmitCommand(ICommandList* cmd) {
-        _lastSubmittedFence++;
 
         assert(cmd != nullptr);
         auto* vkCmd = PtrCast<VulkanCommandList>(cmd);
-        _TransitResourceStatesBeforeSubmit(*vkCmd);
-        _MarkResourceStatesAfterSubmit(*vkCmd);
 
         auto rawCmdBuf = vkCmd->GetHandle();
 
-
-        VkTimelineSemaphoreSubmitInfo timelineInfo {};
-        timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-        timelineInfo.pNext = NULL;
-        timelineInfo.signalSemaphoreValueCount = 1;
-        timelineInfo.pSignalSemaphoreValues = &_lastSubmittedFence;
-
         VkSubmitInfo submitInfo {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.pNext = &timelineInfo;
+        submitInfo.pNext = nullptr;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &rawCmdBuf;
-        submitInfo.signalSemaphoreCount  = 1;
-        submitInfo.pSignalSemaphores = &_submissionFence;
+        submitInfo.signalSemaphoreCount  = 0;
+        submitInfo.pSignalSemaphores = nullptr;
 
         VK_CHECK(VK_DEV_CALL(_dev, vkQueueSubmit(
             _q, 1, &submitInfo, nullptr

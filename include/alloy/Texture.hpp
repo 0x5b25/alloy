@@ -90,16 +90,8 @@ namespace alloy
             Color, Depth, Stencil
         };
 
-    protected:
-        Description description;
-
-    protected:
-        ITexture( const ITexture::Description& desc ) : 
-            description(desc)
-        {}
-
     public:
-        const Description& GetDesc() const {return description;}
+        virtual const Description& GetDesc() const = 0;
         
         virtual void* GetNativeHandle() const = 0;
 
@@ -137,6 +129,46 @@ namespace alloy
 
 
     public:
+        
+        enum Aspect {
+            // Automatic set aspects according to 
+            // pixel formats:
+            //   Depth: Depth only format
+            //   DepthStencil: combined formats
+            //   Color: Non of above.
+            //
+            //   Stencil: stencil only formats doesn't
+            //     exist in alloy. See backend mapping
+            Auto,
+
+            // Backend mapping:
+
+            // Vulkan
+            //   Barrier & Access:
+            //     Depth aspect   -> VK_IMAGE_ASPECT_DEPTH_BIT
+            //     Stencil aspect -> VK_IMAGE_ASPECT_STENCIL_BIT
+            // 
+            // DX12
+            //   Barrier:
+            //     Depth plane   -> plane 0
+            //     Stencil plane -> plane 1
+            //   Access:
+            //     No separate depth/stencil view.
+            //     Always use the same DSV, simulate
+            //     via special read only layouts
+            // 
+            // Metal
+            //   Barrier:
+            //     No explicit layout/state transition.
+            //   Access:
+            //     Use special "view" formats to simulate 
+
+            Color,
+            Depth,
+            Stencil,
+            DepthStencil
+        };
+        
         struct Description
         {
             std::uint32_t baseMipLevel;
@@ -144,31 +176,17 @@ namespace alloy
             std::uint32_t baseArrayLayer;
             std::uint32_t arrayLayers;
             //PixelFormat format;
-        };
-    
-    protected:
-        Description description;
-        common::sp<ITexture> target;
 
-    protected:
-        ITextureView(
-            common::sp<ITexture>&& target,
-            const ITextureView::Description& desc
-        ) :
-            description(desc),
-            target(std::move(target))
-        {}
+            Aspect aspect;
+        };
 
     public:
-        virtual ~ITextureView() {}
 
-        const Description& GetDesc() const {
-            return description;
-        }
+        virtual const Description& GetDesc() const = 0;
 
         virtual ResourceKind GetResourceKind() const override { return ResourceKind::Texture; }
 
-        const common::sp<ITexture>& GetTextureObject() const { return target; }
+        virtual common::sp<ITexture> GetTextureObject() const = 0;
 
     };
 

@@ -9,8 +9,8 @@
 #include "D3DCommon.hpp"
 #include "DXCTexture.hpp"
 #include "DXCPipeline.hpp"
-#include "DXCFrameBuffer.hpp"
 #include "DXCBindableResource.hpp"
+#include "DXCResourceHeap.hpp"
 #include "d3d12.h"
 
 #include "D3DPixEventEncoder.hpp"
@@ -18,32 +18,12 @@
 //#define USE_PIX
 //#include <WinPixEventRuntime/pix3.h>
 
+#include <stdexcept>
+
 namespace alloy::dxc
 {
 
 
-    constexpr D3D12_RESOURCE_STATES RESOURCE_STATE_ALL_WRITE_BITS =
-        D3D12_RESOURCE_STATE_RENDER_TARGET          |
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS       |
-        D3D12_RESOURCE_STATE_DEPTH_WRITE            |
-        D3D12_RESOURCE_STATE_STREAM_OUT             |
-        D3D12_RESOURCE_STATE_COPY_DEST              |
-        D3D12_RESOURCE_STATE_RESOLVE_DEST           |
-        D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE     |
-        D3D12_RESOURCE_STATE_VIDEO_PROCESS_WRITE;
-
-    static bool HasWriteAccess(D3D12_RESOURCE_STATES state) {
-        return (state & RESOURCE_STATE_ALL_WRITE_BITS) != 0;
-    };
-
-    bool IsStateCompatible(
-        D3D12_RESOURCE_STATES from,
-        D3D12_RESOURCE_STATES to
-    ) {
-        //Common state always come from explicit request
-        if(to == D3D12_RESOURCE_STATE_COMMON) return false;
-        return !HasWriteAccess(from | to);
-    };
 
     common::sp<DXCCommandList> DXCCommandList::Make( const common::sp<DXCDevice>& dev,
                                                      D3D12_COMMAND_LIST_TYPE type
@@ -119,162 +99,6 @@ namespace alloy::dxc
         return static_cast<ID3D12GraphicsCommandList1*>(cmdList->GetHandle());
     }
 
-    void DXCCmdEncBase::RegisterBufferUsage(
-        DXCBuffer* buffer,
-        D3D12_RESOURCE_STATES state
-    ) {
-        auto it = resStates.buffers.find(buffer);
-        if(it != resStates.buffers.end()) {
-            assert(IsStateCompatible(it->second.initial, state));
-            assert(it->second.final == DXC_RESOURCE_STATE_ANY);
-            it->second.initial |= state;
-        } else {
-            //Don't care about after states. Indicates no
-            // state transition is performed by this operation
-            resStates.buffers[buffer] = {state, DXC_RESOURCE_STATE_ANY};
-        }
-    }
-
-    void DXCCmdEncBase::RegisterTexUsage(
-        DXCTexture* tex,
-        D3D12_RESOURCE_STATES state
-    ) {
-        auto it = resStates.textures.find(tex);
-        if(it != resStates.textures.end()) {
-            assert(IsStateCompatible(it->second.initial, state));
-            assert(it->second.final == DXC_RESOURCE_STATE_ANY);
-            it->second.initial |= state;
-        } else {
-            //Don't care about before states. Indicates explicit
-            // state transition is performed by this operation
-            resStates.textures[tex] = {state, DXC_RESOURCE_STATE_ANY};
-        }
-    }
-
-    void DXCCmdEncBase::RegisterBufferStateChange(
-        DXCBuffer* buffer,
-        D3D12_RESOURCE_STATES state
-    ) {
-        auto it = resStates.buffers.find(buffer);
-        if(it != resStates.buffers.end()) {
-            it->second.final = state;
-        } else {
-            resStates.buffers[buffer] = {state, state};
-        }
-    }
-
-    void DXCCmdEncBase::RegisterTexStateChange(
-        DXCTexture* tex,
-        D3D12_RESOURCE_STATES state
-    ) {
-        auto it = resStates.textures.find(tex);
-        if(it != resStates.textures.end()) {
-            it->second.final = state;
-        } else {
-            resStates.textures[tex] = {state, state};
-        }
-    }
-
-    D3D12_RESOURCE_STATES DXCCmdEncBase::GetBufferState(DXCBuffer* tex) const {
-        return resStates.buffers.at(tex).final;
-    }
-
-    D3D12_RESOURCE_STATES DXCCmdEncBase::GetTexState(DXCTexture* tex) const {
-        return resStates.textures.at(tex).final;
-
-    }
-
-    //return old states
-    D3D12_RESOURCE_STATES DXCCmdEncBase::SetBufferState(DXCBuffer* tex, D3D12_RESOURCE_STATES newState) {
-        auto& statePair = resStates.buffers.at(tex);
-        auto oldState = statePair.final;
-        statePair.final = newState;
-        return oldState;
-    }
-    D3D12_RESOURCE_STATES DXCCmdEncBase::SetTexState(DXCTexture* tex, D3D12_RESOURCE_STATES newState) {
-        auto& statePair = resStates.textures.at(tex);
-        auto oldState = statePair.final;
-        statePair.final = newState;
-        return oldState;
-    }
-
-
-    void DXCCmdEncBase::RegisterResourceSet(DXCResourceSet* d3drs) {
-        auto dxcLayout = static_cast<DXCResourceLayout*>(d3drs->GetDesc().layout.get());
-        auto& boundResources = d3drs->GetDesc().boundResources;
-        auto& elemDescs = dxcLayout->GetDesc().shaderResources;
-        auto& elems = d3drs->GetDesc().boundResources;
-
-        std::vector<DXCBuffer*> bufReadOnly, bufRW;
-        std::vector<DXCTexture*> texReadOnly, texRW;
-
-        for(unsigned i = 0; i < elemDescs.size(); i++) {
-
-            auto& elemDesc = elemDescs[i];
-            auto& elem = elems[i];
-
-            using _ResKind = IBindableResource::ResourceKind;
-
-            switch (elemDesc.kind) {
-                case _ResKind::Texture: {
-                    auto* texView = PtrCast<DXCTextureView>(elem.get());
-                    auto texture = PtrCast<DXCTexture>(texView->GetTextureObject().get());
-                    if(elemDesc.options.writable) {
-                        texRW.push_back(texture);
-                    } else {
-                        texReadOnly.push_back(texture);
-                    }
-                } break;
-                case _ResKind::UniformBuffer: {
-                    auto* range = PtrCast<BufferRange>(elem.get());
-                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
-                    bufReadOnly.push_back(buffer);
-                } break;
-                case _ResKind::StorageBuffer: {
-                    auto* range = PtrCast<BufferRange>(elem.get());
-                    auto buffer = PtrCast<DXCBuffer>(range->GetBufferObject());
-                    auto usage = buffer->GetDesc().usage;
-                    if(elemDesc.options.writable) {
-                        assert(usage.structuredBufferReadWrite != 0);
-                        bufRW.push_back(buffer);
-                    } else {
-                        assert(usage.structuredBufferReadOnly != 0 ||
-                               usage.structuredBufferReadWrite != 0);
-                        bufReadOnly.push_back(buffer);
-                    }
-
-                } break;
-                default:
-                    // Samplers don't need to be registered for usage
-                    break;
-            }
-        }
-
-        if(!bufReadOnly.empty()) {
-            for(auto* buffer : bufReadOnly) {
-                RegisterBufferUsage(buffer, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            }
-        }
-
-        if(!bufRW.empty()) {
-            for(auto* buffer : bufRW) {
-                RegisterBufferUsage(buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            }
-        }
-
-        if(!texReadOnly.empty()) {
-            for(auto* tex : texReadOnly) {
-                RegisterTexUsage(tex, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-            }
-        }
-
-        if(!texRW.empty()) {
-            for(auto* tex : texRW) {
-                RegisterTexUsage(tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            }
-        }
-    }
-
     //Sadly this can't be made constexpr due to std::floor can't be constexpr
     static uint32_t Color4fToPixColor(const Color4f& c4f) {
 
@@ -285,28 +109,15 @@ namespace alloy::dxc
     }
 
     void DXCCmdEncBase::PushDebugGroup(const std::string& name, uint32_t color) {
-        recordedCmds.emplace_back([this, name, color]() {
-            EncodePIXBeginEvent(GetCmdList(), color, name);
-        });
+        EncodePIXBeginEvent(GetCmdList(), color, name);
     }
 
     void DXCCmdEncBase::PopDebugGroup() {
-        recordedCmds.emplace_back([this]() {
-            EncodePIXEndEvent(GetCmdList());
-        });
+        EncodePIXEndEvent(GetCmdList());
     }
 
     void DXCCmdEncBase::InsertDebugMarker(const std::string& name, uint32_t color) {
-        recordedCmds.emplace_back([this, name, color]() {
-            EncodePIXMarker(GetCmdList(), color, name);
-        });
-    }
-
-    void DXCCmdEncBase::EndPass() {
-        for(auto& cmd : recordedCmds) {
-            cmd();
-        }
-        recordedCmds.clear();
+        EncodePIXMarker(GetCmdList(), color, name);
     }
 
 #pragma endregion
@@ -322,145 +133,127 @@ namespace alloy::dxc
         : DXCCmdEncBase{dev, cmdList}
         , _fb(act)
     {
-        for (auto& ctAct : _fb.colorTargetActions)
+
         {
-            auto& texView = ctAct.target->GetTexture();
-            auto dxcColorTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
-
-            D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            RegisterTexUsage(dxcColorTex, state);
-
-            if(ctAct.msaaResolveTarget) {
-                auto& resolveTexView = ctAct.msaaResolveTarget->GetTexture();
-                auto dxcResolveTex = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
-
-                //See DXCRenderCmdEnc::End() for matched operations
-                RegisterTexStateChange(dxcColorTex, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-                RegisterTexUsage(dxcResolveTex, D3D12_RESOURCE_STATE_RESOLVE_DEST);
-            }
-        };
-
-        DXCTexture *dxcDepthTex = nullptr, *dxcStencilTex = nullptr;
-        D3D12_RESOURCE_STATES depthState, stencilState;
-
-        if (_fb.depthTargetAction.has_value())
-        {
-            auto& dtAct = _fb.depthTargetAction.value();
-            auto& texView = dtAct.target->GetTexture();
-            dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
-
-            //Emulate transient resources for StoreAction::DontCare
-            if(dtAct.msaaResolveTarget &&
-               dtAct.msaaResolveMode != MSAADepthResolveMode::None
-            ) {
-                depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            }
-            else if(dtAct.loadAction != alloy::LoadAction::ReadOnly)
-            {
-                depthState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            } else {
-                depthState = D3D12_RESOURCE_STATE_DEPTH_READ;
-            }
-        }
-
-        if(_fb.stencilTargetAction.has_value())
-        {
-            auto& texView = _fb.stencilTargetAction->target->GetTexture();
-            dxcStencilTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
-
-            assert(FormatHelpers::IsStencilFormat(dxcStencilTex->GetDesc().format));
-
-            if(_fb.stencilTargetAction->loadAction != alloy::LoadAction::ReadOnly)
-            {
-                stencilState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            } else {
-                stencilState = D3D12_RESOURCE_STATE_DEPTH_READ;
-            }
-        }
-
-        //Depth and stencil uses same texture
-        if(dxcStencilTex == dxcDepthTex) {
-            //Both used or both unused
-            if(dxcDepthTex) {
-                //We only have combined depth/stencil targets in dx12 but may 
-                // face different usages from user side, e.g. depth write by stencil
-                // test only. If anyone of them is a write, register as write
-                if(stencilState == D3D12_RESOURCE_STATE_DEPTH_WRITE ||
-                   depthState == D3D12_RESOURCE_STATE_DEPTH_WRITE
-                ) {
-                    RegisterTexUsage(dxcDepthTex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-                } else {
-                    RegisterTexUsage(dxcDepthTex, D3D12_RESOURCE_STATE_DEPTH_READ);
-                }
-            }
-        } else {
-
-            //Shouldn't have different depth and stencil targets
-            assert((dxcDepthTex == nullptr || dxcStencilTex == nullptr) &&
-                "Depth and stencil targets should point to the same resource"
-            );
-
-            if(dxcDepthTex) {
-                RegisterTexUsage(dxcDepthTex, depthState);
-            }
-            if(dxcStencilTex) {
-                RegisterTexUsage(dxcStencilTex, stencilState);
-            }
-        }
-
-        if (_fb.depthTargetAction.has_value()) {
-
-            auto& dtAct = _fb.depthTargetAction.value();
-            if(dtAct.msaaResolveTarget) {
-                auto& resolveTexView = dtAct.msaaResolveTarget->GetTexture();
-                auto dxcResolveTex = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
-
-                //See DXCRenderCmdEnc::End() for matched operations
-                RegisterTexStateChange(dxcDepthTex, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-                RegisterTexUsage(dxcResolveTex, D3D12_RESOURCE_STATE_RESOLVE_DEST);
-            }
-        }
-
-        recordedCmds.emplace_back([this]() {
-
             auto colorAttachmentCnt = _fb.colorTargetActions.size();
 
-            std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-            rtvHandles.reserve(colorAttachmentCnt);
+            std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHeapPtrs;
+            rtvHeapPtrs.reserve(colorAttachmentCnt);
+            _rtvHandles.reserve(colorAttachmentCnt);
             for(auto& action : _fb.colorTargetActions) {
-                auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
-                rtvHandles.push_back(dxcView->GetHandle());
-            }
-            D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle { };
-            if(_fb.depthTargetAction.has_value()) {
-                auto dxcView
-                    = common::PtrCast<DXCRenderTargetBase>(_fb.depthTargetAction->target.get());
-                dsvHandle = dxcView->GetHandle();
-            }
-            else if(_fb.stencilTargetAction.has_value()) {
-                auto dxcView
-                    = common::PtrCast<DXCRenderTargetBase>(_fb.stencilTargetAction->target.get());
-                dsvHandle = dxcView->GetHandle();
+                auto dxcView = common::PtrCast<DXCTextureView>(action.target.get());
+                const auto& dxcViewDesc = dxcView->GetDesc();
+                const auto& dxcTexDesc = dxcView->GetTextureObject()->GetDesc();
+                auto rtv = dev->AllocateRTV();
+
+                bool isMultisampled = dxcTexDesc.sampleCount != alloy::SampleCount::x1;
+                
+                D3D12_RENDER_TARGET_VIEW_DESC rtvDesc {
+                    .Format = VdToD3DPixelFormat(dxcTexDesc.format),
+                    .ViewDimension = isMultisampled?
+                        D3D12_RTV_DIMENSION_TEXTURE2DMS :
+                        D3D12_RTV_DIMENSION_TEXTURE2D,
+                };
+
+                if(!isMultisampled) {
+                    rtvDesc.Texture2D = {
+                        .MipSlice = dxcViewDesc.baseMipLevel,
+                        .PlaneSlice = 0,
+                    };
+                }
+
+                dev->GetDevice()->CreateRenderTargetView(
+                    dxcView->GetTextureHandle(),
+                    &rtvDesc, 
+                    rtv.handle);
+                
+                _rtvHandles.push_back(rtv);
+                rtvHeapPtrs.push_back(rtv.handle);
             }
 
-            GetCmdList()->OMSetRenderTargets(rtvHandles.size(), rtvHandles.data(), FALSE,
-                dsvHandle.ptr?&dsvHandle : nullptr);
+#ifdef VLD_DEBUG
+            //DX12 must use combined depth stencil target
+            if(_fb.depthTargetAction.has_value() && _fb.stencilTargetAction.has_value()) {
+                auto dtView = common::PtrCast<DXCTextureView>(_fb.depthTargetAction.value().target.get());
+                auto stView = common::PtrCast<DXCTextureView>(_fb.stencilTargetAction.value().target.get());
+
+                const auto& dtViewDesc = dtView->GetDesc();
+                const auto& stViewDesc = stView->GetDesc();
+
+                assert(dtViewDesc.baseMipLevel == stViewDesc.baseMipLevel && 
+                       dtViewDesc.baseArrayLayer == stViewDesc.baseArrayLayer );
+
+                assert(dtView->GetTextureHandle() == stView->GetTextureHandle());
+            }
+#endif
+            _dsvHandle = { };
+            DXCTextureView* dxcDSView = nullptr;
+            D3D12_DSV_FLAGS dsvFlags { };
+
+            if(_fb.depthTargetAction.has_value()) {
+                const auto& dtAct = *_fb.depthTargetAction;
+                dxcDSView
+                    = common::PtrCast<DXCTextureView>(dtAct.target.get());
+                if(dtAct.loadAction == LoadAction::ReadOnly) {
+                    dsvFlags |= D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+                }
+            }
+
+            if(_fb.stencilTargetAction.has_value()) {
+                const auto& stAct = *_fb.stencilTargetAction;
+                dxcDSView
+                    = common::PtrCast<DXCTextureView>(stAct.target.get());
+                if(stAct.loadAction == LoadAction::ReadOnly) {
+                    dsvFlags |= D3D12_DSV_FLAG_READ_ONLY_STENCIL;
+                }
+            }
+
+            if(dxcDSView) {
+                const auto& dxcViewDesc = dxcDSView->GetDesc();
+                const auto& dxcTexDesc = dxcDSView->GetTextureObject()->GetDesc();
+                _dsvHandle = dev->AllocateDSV();
+
+                bool isMultisampled = dxcTexDesc.sampleCount != alloy::SampleCount::x1;
+
+                D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc {
+                    .Format = VdToD3DPixelFormat(dxcTexDesc.format),
+                    .ViewDimension = isMultisampled?
+                        D3D12_DSV_DIMENSION_TEXTURE2DMS :
+                        D3D12_DSV_DIMENSION_TEXTURE2D,
+                    .Flags = dsvFlags,
+                }; 
+
+                if(!isMultisampled) {
+                    dsvDesc.Texture2D = {
+                        .MipSlice = dxcViewDesc.baseMipLevel,
+                    };
+                }
+
+                dev->GetDevice()->CreateDepthStencilView(
+                    dxcDSView->GetTextureHandle(),
+                    &dsvDesc, 
+                    _dsvHandle.handle);
+
+            }
+
+            GetCmdList()->OMSetRenderTargets(rtvHeapPtrs.size(), rtvHeapPtrs.data(), FALSE,
+                _dsvHandle?&_dsvHandle.handle : nullptr);
 
             //_resReg.InsertPipelineBarrierIfNecessary(_cmdBuf);
 
-            for(auto& action : _fb.colorTargetActions) {
+            for(uint32_t i = 0; i < _fb.colorTargetActions.size(); ++i) {
 
-                auto dxcView = common::PtrCast<DXCRenderTargetBase>(action.target.get());
+                const auto& action = _fb.colorTargetActions[i];
+                const auto& rtv = _rtvHandles[i];
 
                 if(action.loadAction == alloy::LoadAction::Clear){
-                    auto rtv = dxcView->GetHandle();
 
                     float clearColor[4] = {action.clearColor.r,
                                            action.clearColor.g,
                                            action.clearColor.b,
                                            action.clearColor.a};
 
-                    GetCmdList()->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+                    GetCmdList()->ClearRenderTargetView(rtv.handle, clearColor, 0, nullptr);
                 }
             }
 
@@ -487,13 +280,24 @@ namespace alloy::dxc
 
             if(clearFlags != 0) {
                 GetCmdList()->ClearDepthStencilView(
-                    dsvHandle,
+                    _dsvHandle.handle,
                     clearFlags,
                     depthClear, stencilClear,
                     0, nullptr
                 );
             }
-        });
+        }
+    }
+
+    
+    DXCRenderCmdEnc::~DXCRenderCmdEnc() {
+        for(const auto& rtv: _rtvHandles) {
+            dev->FreeRTV(rtv);
+        }
+
+        if(_dsvHandle) {
+            dev->FreeDSV(_dsvHandle);
+        }
     }
 
 
@@ -504,80 +308,57 @@ namespace alloy::dxc
 
     void DXCRenderCmdEnc::EndPass() {
         DXCCmdEncBase::EndPass();
-        //Inject MSAA resolve
-
-        //Gather barriers
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
+        std::vector<const DXCTextureView*> colorResolveSrcViews, colorResolveDstViews;
+        
+        bool isDSReadOnly;
+        DXCTextureView* dsResolveSrcView = nullptr,
+                      * dsResolveDstView = nullptr;
 
         for(auto& ctAct : _fb.colorTargetActions) {
             if(ctAct.msaaResolveTarget) {
-                auto& texView = ctAct.target->GetTexture();
-                auto dxcColorTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+                auto texView = PtrCast<DXCTextureView>(ctAct.target.get());
+                auto resolveTexView = PtrCast<DXCTextureView>(ctAct.msaaResolveTarget.get());
 
-                auto srcState = GetTexState(dxcColorTex);
-                auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+                colorResolveSrcViews.emplace_back(texView);
+                colorResolveDstViews.emplace_back(resolveTexView);
 
-                if(srcState != dstState) {
-
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-                    barrier.Transition.pResource = dxcColorTex->GetHandle();
-                    barrier.Transition.StateBefore = srcState;
-                    barrier.Transition.StateAfter = dstState;
-                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-                    SetTexState(dxcColorTex, dstState);
-                }
             }
         }
 
         if (_fb.depthTargetAction.has_value())
         {
             auto& dsAct = _fb.depthTargetAction.value();
-            if(dsAct.msaaResolveTarget) {
-                auto& dtAct = _fb.depthTargetAction.value();
-                auto& texView = dtAct.target->GetTexture();
-                auto dxcDepthTex = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+            if(dsAct.msaaResolveTarget &&
+               dsAct.msaaResolveMode != MSAADepthResolveMode::None) {
+                
+                auto texView = PtrCast<DXCTextureView>(dsAct.target.get());
+                auto resolveTexView = PtrCast<DXCTextureView>(dsAct.msaaResolveTarget.get());
 
-                auto srcState = GetTexState(dxcDepthTex);
-                auto dstState = D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+                isDSReadOnly = dsAct.loadAction == LoadAction::ReadOnly;
 
-                if(srcState != dstState) {
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-                    barrier.Transition.pResource = dxcDepthTex->GetHandle();
-                    barrier.Transition.StateBefore = srcState;
-                    barrier.Transition.StateAfter = dstState;
-                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                dsResolveSrcView = texView;
+                dsResolveDstView = resolveTexView;
 
-                    SetTexState(dxcDepthTex, dstState);
-                }
             }
         }
+        
+        cmdList->_TransitionColorTargetsToMSAAResolveLayout(colorResolveSrcViews, colorResolveDstViews);
+        if(dsResolveSrcView)
+            cmdList->_TransitionDSTargetsToMSAAResolveLayout(dsResolveSrcView, dsResolveDstView, isDSReadOnly);
 
-        //Inject barrier
-        if(!barriers.empty()) {
-            auto gfxCmdList = GetCmdList();
-            gfxCmdList->ResourceBarrier(barriers.size(), barriers.data());
-        }
-
-        //Run resolve command
         for(auto& ctAct : _fb.colorTargetActions) {
             if(ctAct.msaaResolveTarget) {
-                auto& texView = ctAct.target->GetTexture();
-                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+                auto texView = PtrCast<DXCTextureView>(ctAct.target.get());
 
-                auto& resolveTexView = ctAct.msaaResolveTarget->GetTexture();
-                auto dxcDestination = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+                auto resolveTexView = PtrCast<DXCTextureView>(ctAct.msaaResolveTarget.get());
+                auto resolveTex = PtrCast<DXCTexture>(resolveTexView->GetTextureObject().get());
 
                 GetCmdList()->ResolveSubresource(
-                    dxcDestination->GetHandle(),
-                    0,
-                    dxcSource->GetHandle(),
-                    0,
-                    dxcDestination->GetHandle()->GetDesc().Format);
+                    resolveTexView->GetTextureHandle(),
+                    resolveTexView->ComputeSubresource(0,0),
+                    texView->GetTextureHandle(),
+                    texView->ComputeSubresource(0,0),
+                    resolveTex->GetHandle()->GetDesc().Format);
             }
         }
 
@@ -585,11 +366,11 @@ namespace alloy::dxc
         {
             auto& dsAct = _fb.depthTargetAction.value();
             if(dsAct.msaaResolveTarget) {
-                auto& texView = dsAct.target->GetTexture();
-                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+                
+                auto texView = PtrCast<DXCTextureView>(dsAct.target.get());
 
-                auto& resolveTexView = dsAct.msaaResolveTarget->GetTexture();
-                auto dxcDestination = PtrCast<DXCTexture>(resolveTexView.GetTextureObject().get());
+                auto resolveTexView = PtrCast<DXCTextureView>(dsAct.msaaResolveTarget.get());
+                auto resolveTex = PtrCast<DXCTexture>(resolveTexView->GetTextureObject().get());
 
                 auto resolveMode = _fb.depthTargetAction->msaaResolveMode;
 
@@ -600,60 +381,93 @@ namespace alloy::dxc
                         D3D12_RESOLVE_MODE_MAX ;
 
                     GetCmdList()->ResolveSubresourceRegion(
-                        dxcDestination->GetHandle(),
+                        resolveTexView->GetTextureHandle(),
+                        resolveTexView->ComputeSubresource(0,0),
                         0,
                         0,
-                        0,
-                        dxcSource->GetHandle(),
-                        0,
+                        texView->GetTextureHandle(),
+                        texView->ComputeSubresource(0,0),
                         nullptr,
-                        dxcDestination->GetHandle()->GetDesc().Format,
+                        resolveTex->GetHandle()->GetDesc().Format,
                         dxcResovleMode
                     );
                 }
             }
         }
 
+        cmdList->_TransitionColorTargetsFromMSAAResolveLayout(colorResolveSrcViews, colorResolveDstViews);
+        if(dsResolveSrcView)
+            cmdList->_TransitionDSTargetsFromMSAAResolveLayout(dsResolveSrcView, dsResolveDstView, isDSReadOnly);
+
+
         //Handle discard loads
 
         for(auto& ctAct : _fb.colorTargetActions) {
-
-            // We can only discard RT resources in render target state.
-            // after resolve, it's in resolve source state
-            if(ctAct.msaaResolveTarget) continue;
-
             if(ctAct.loadAction != LoadAction::ReadOnly &&
                ctAct.storeAction == StoreAction::DontCare
             ) {
-                auto& texView = ctAct.target->GetTexture();
-                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
+                auto texView = PtrCast<DXCTextureView>(ctAct.target.get());
+                auto dxcSource = PtrCast<DXCTexture>(texView->GetTextureObject().get());
+
+                D3D12_DISCARD_REGION descardRegion {
+                    .NumRects = 0,
+                    .pRects = nullptr,
+                    .FirstSubresource = texView->ComputeSubresource(0,0),
+                    .NumSubresources = 1
+                };
 
                 GetCmdList()->DiscardResource(
                     dxcSource->GetHandle(),
-                    nullptr
+                    &descardRegion
                 );
             }
         }
 
         // DX12 only supports combined depth stencil. We only need to handle
         // depth here.
-        if (_fb.depthTargetAction.has_value())
-        {
+        DXCTextureView* dsView = nullptr;
+        bool discardDepthStencil = false;
+        if (_fb.depthTargetAction.has_value()) {
             auto& dsAct = _fb.depthTargetAction.value();
-            // We can only discard DS resources in depth write state.
-            // after resolve, it's in resolve source state
-            if(  !dsAct.msaaResolveTarget  &&
-                  dsAct.loadAction != LoadAction::ReadOnly &&
-                  dsAct.storeAction == StoreAction::DontCare
-            ) {
-                auto& texView = dsAct.target->GetTexture();
-                auto dxcSource = PtrCast<DXCTexture>(texView.GetTextureObject().get());
-
-                GetCmdList()->DiscardResource(
-                    dxcSource->GetHandle(),
-                    nullptr
-                );
+            if(  dsAct.loadAction != LoadAction::ReadOnly &&
+                 dsAct.storeAction == StoreAction::DontCare
+            ) { 
+                discardDepthStencil = true;
             }
+
+            dsView = PtrCast<DXCTextureView>(dsAct.target.get());
+        }
+
+        if (_fb.stencilTargetAction.has_value()) {
+            auto& dsAct = _fb.stencilTargetAction.value();
+            bool discardStencil = dsAct.loadAction != LoadAction::ReadOnly &&
+                                  dsAct.storeAction == StoreAction::DontCare;
+            // Only discard if both depth and stencil discards
+            if(dsView) {
+                if(discardDepthStencil != discardStencil) {
+                    discardDepthStencil = false;
+                }
+            } else {
+                discardDepthStencil = discardStencil;
+                dsView = PtrCast<DXCTextureView>(dsAct.target.get());
+            }
+        }
+
+        if (discardDepthStencil)
+        {
+            auto dxcSource = PtrCast<DXCTexture>(dsView->GetTextureObject().get());
+
+            D3D12_DISCARD_REGION descardRegion {
+                .NumRects = 0,
+                .pRects = nullptr,
+                .FirstSubresource = dsView->ComputeSubresource(0,0),
+                .NumSubresources = 1
+            };
+
+            GetCmdList()->DiscardResource(
+                dxcSource->GetHandle(),
+                &descardRegion
+            );
         }
 
     }
@@ -664,9 +478,7 @@ namespace alloy::dxc
         assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
         resources.insert(pipeline);
 
-        recordedCmds.emplace_back([dxcPipeline, this]() {
-            dxcPipeline->CmdBindPipeline(GetCmdList());
-        });
+        dxcPipeline->CmdBindPipeline(GetCmdList());
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -694,9 +506,7 @@ namespace alloy::dxc
         auto gfxPipeline = GetPipeline();
         auto& pipeDesc = gfxPipeline->GetDesc();
 
-        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
-
-        RegisterBufferUsage(dxcBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject().get());
 
         auto pRes = dxcBuffer->GetHandle();
         D3D12_VERTEX_BUFFER_VIEW view{};
@@ -704,9 +514,7 @@ namespace alloy::dxc
         view.StrideInBytes = pipeDesc.shaderSet.vertexLayouts[index].stride;
         view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        recordedCmds.emplace_back([index, view, this]() {
-            GetCmdList()->IASetVertexBuffers(index, 1, &view);
-        });
+        GetCmdList()->IASetVertexBuffers(index, 1, &view);
     }
 
     void DXCRenderCmdEnc::SetIndexBuffer(
@@ -722,9 +530,7 @@ namespace alloy::dxc
 
         resources.insert(buffer);
 
-        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject());
-
-        RegisterBufferUsage(dxcBuffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        auto dxcBuffer = PtrCast<DXCBuffer>(buffer->GetBufferObject().get());
 
         auto pRes = dxcBuffer->GetHandle();
         D3D12_INDEX_BUFFER_VIEW view{};
@@ -732,10 +538,7 @@ namespace alloy::dxc
         view.BufferLocation = pRes->GetGPUVirtualAddress() + buffer->GetShape().GetOffsetInBytes();
         view.SizeInBytes = buffer->GetShape().GetSizeInBytes();
 
-        recordedCmds.emplace_back([view, this]() {
-
-            GetCmdList()->IASetIndexBuffer(&view);
-        });
+        GetCmdList()->IASetIndexBuffer(&view);
     }
 
 
@@ -747,16 +550,12 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        RegisterResourceSet(d3dkrs);
+        auto& heaps = d3dkrs->GetHeaps();
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        recordedCmds.emplace_back([d3dkrs, this]() {
-            auto& heaps = d3dkrs->GetHeaps();
-            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
-
-            for(uint32_t i = 0; i < heaps.size(); i++) {
-                GetCmdList()->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
-            }
-        });
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            GetCmdList()->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        }
 
         //auto& entry = _resourceSets[slot];
         //entry.isNewlyChanged = true;
@@ -764,10 +563,47 @@ namespace alloy::dxc
         //entry.offsets = dynamicOffsets;
     }
 
+    void DXCRenderCmdEnc::SetGraphicsMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs
+    ) {
+        resources.insert(rs);
+
+        auto d3dkrs = PtrCast<DXCMutableResourceSet>(rs.get());
+
+        auto& heaps = d3dkrs->GetHeaps();
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            GetCmdList()->SetGraphicsRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        }
+    }
+
+    void DXCRenderCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        ID3D12DescriptorHeap* heaps[2]{};
+        UINT heapCount = 0;
+
+        if(resourceHeap) {
+            resources.insert(resourceHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCResourceDescriptorHeap>(resourceHeap.get())->GetHandle();
+        }
+
+        if(samplerHeap) {
+            resources.insert(samplerHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCSamplerDescriptorHeap>(samplerHeap.get())->GetHandle();
+        }
+
+        GetCmdList()->SetDescriptorHeaps(heapCount, heaps);
+    }
+
 
     void DXCRenderCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
+        std::span<const uint32_t> data,
         std::uint32_t destOffsetIn32BitValues
     ) {
         //assert(slot < _resourceSets.size());
@@ -778,29 +614,21 @@ namespace alloy::dxc
 
         std::vector<uint32_t> dataCopy(data.begin(), data.end());
 
-        recordedCmds.emplace_back([
-            pushConstantIndex,
-            argBase,
-            data = std::move(dataCopy),
-            destOffsetIn32BitValues,
-            this
-        ]() {
-
-            GetCmdList()->SetGraphicsRoot32BitConstants(
-                pushConstantIndex + argBase,
-                data.size(),
-                data.data(),
-                destOffsetIn32BitValues
-            );
-        });
+        GetCmdList()->SetGraphicsRoot32BitConstants(
+            pushConstantIndex + argBase,
+            dataCopy.size(),
+            dataCopy.data(),
+            destOffsetIn32BitValues
+        );
     }
 
 
-    void DXCRenderCmdEnc::SetViewports(const std::span<Viewport>& viewport){
+    void DXCRenderCmdEnc::SetViewports(std::span<const Viewport> viewport){
         //dx12 requires all viewports set as an atomic operation.
         std::vector<Viewport> savedData {viewport.begin(), viewport.end()};
 
-        recordedCmds.emplace_back([viewport = std::move(savedData), this]() {
+        {
+            const auto& viewport = savedData;
             if (viewport.size() == 1 || dev->GetFeatures().multipleViewports)
             {
                 //bool flip = gd->SupportsFlippedYDirection();
@@ -821,7 +649,7 @@ namespace alloy::dxc
                 }
                 GetCmdList()->RSSetViewports(vps.size(), vps.data());
             }
-        });
+        }
     }
 
     void DXCRenderCmdEnc::SetFullViewport() {
@@ -842,7 +670,7 @@ namespace alloy::dxc
         };
 
         for(auto& rt : _fb.colorTargetActions) {
-            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = rt.target->GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             break;
         }
@@ -850,7 +678,7 @@ namespace alloy::dxc
         if(!vpIsSet) {
             if(_fb.depthTargetAction) {
                 auto& dt = _fb.depthTargetAction.value();
-                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = dt.target->GetTextureObject()->GetDesc();
                 _SetVP(texDesc);
                 vpIsSet = true;
             }
@@ -859,20 +687,19 @@ namespace alloy::dxc
         if(!vpIsSet) {
             if(_fb.stencilTargetAction) {
                 auto& st = _fb.stencilTargetAction.value();
-                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = st.target->GetTextureObject()->GetDesc();
                 _SetVP(texDesc);
                 vpIsSet = true;
             }
         }
         assert(vpIsSet && "Pass with no render / depth / stencil targets!");
-        recordedCmds.emplace_back([this, vp]() {
-            GetCmdList()->RSSetViewports(1, &vp);
-        });
+        GetCmdList()->RSSetViewports(1, &vp);
     }
 
-    void DXCRenderCmdEnc::SetScissorRects(const std::span<Rect>& rects) {
+    void DXCRenderCmdEnc::SetScissorRects(std::span<const Rect> rects) {
         std::vector<Rect> savedData {rects.begin(), rects.end()};
-        recordedCmds.emplace_back([rects = std::move(savedData), this]() {
+        {
+            const auto& rects = savedData;
             //dx12 requires all scissor rects set as an atomic operation.
             if (rects.size() == 1 || dev->GetFeatures().multipleViewports) {
                 std::vector<D3D12_RECT> srs(rects.size());
@@ -887,7 +714,7 @@ namespace alloy::dxc
                 //    _scissorRects[index] = scissor;
                 GetCmdList()->RSSetScissorRects(srs.size(), srs.data());
             }
-        });
+        }
     }
 
     void DXCRenderCmdEnc::SetFullScissorRect(){
@@ -907,7 +734,7 @@ namespace alloy::dxc
         };
 
         for(auto& rt : _fb.colorTargetActions) {
-            auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = rt.target->GetTextureObject()->GetDesc();
             _SetSR(texDesc);
             break;
         }
@@ -915,7 +742,7 @@ namespace alloy::dxc
         if(!srIsSet) {
             if(_fb.depthTargetAction) {
                 auto& dt = _fb.depthTargetAction.value();
-                auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = dt.target->GetTextureObject()->GetDesc();
                 _SetSR(texDesc);
             }
         }
@@ -923,15 +750,13 @@ namespace alloy::dxc
         if(!srIsSet) {
             if(_fb.stencilTargetAction) {
                 auto& st = _fb.stencilTargetAction.value();
-                auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+                auto& texDesc = st.target->GetTextureObject()->GetDesc();
                 _SetSR(texDesc);
             }
         }
 
         assert(srIsSet && "Pass with no render / depth / stencil targets!");
-        recordedCmds.emplace_back([this, sr]() {
-            GetCmdList()->RSSetScissorRects(1, &sr);
-        });
+        GetCmdList()->RSSetScissorRects(1, &sr);
     }
 
     void DXCRenderCmdEnc::Draw(
@@ -940,9 +765,7 @@ namespace alloy::dxc
     ){
         CHK_GFX_PIPELINE_SET();
         //PreDrawCommand();
-        recordedCmds.emplace_back([this, vertexCount, instanceCount, vertexStart, instanceStart]() {
-            GetCmdList()->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
-        });
+        GetCmdList()->DrawInstanced(vertexCount, instanceCount, vertexStart, instanceStart);
     }
 
     void DXCRenderCmdEnc::DrawIndexed(
@@ -953,9 +776,7 @@ namespace alloy::dxc
         CHK_GFX_PIPELINE_SET();
         //PreDrawCommand();
         //vkCmdDrawIndexed(_cmdBuf, indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
-        recordedCmds.emplace_back([this, indexCount, instanceCount, indexStart, vertexOffset, instanceStart]() {
-            GetCmdList()->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
-        });
+        GetCmdList()->DrawIndexedInstanced(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
     }
 
 #pragma endregion RenderCmdEnc
@@ -1028,9 +849,7 @@ namespace alloy::dxc
         assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
         resources.insert(pipeline);
 
-        recordedCmds.emplace_back([dxcPipeline, this]() {
-            dxcPipeline->CmdBindPipeline(GetCmdList());
-        });
+        dxcPipeline->CmdBindPipeline(GetCmdList());
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -1049,10 +868,8 @@ namespace alloy::dxc
         assert(dev->GetDevCaps().SupportMeshShader());
         CHK_MESH_PIPELINE_SET();
 
-        recordedCmds.emplace_back([this, groupCountX, groupCountY, groupCountZ]() {
-            auto cmdList6 = static_cast<DXCCommandList6*>(cmdList);
-            cmdList6->GetCmdList()->DispatchMesh(groupCountX, groupCountY, groupCountZ);
-        });
+        auto cmdList6 = static_cast<DXCCommandList6*>(cmdList);
+        cmdList6->GetCmdList()->DispatchMesh(groupCountX, groupCountY, groupCountZ);
 
     }
 #pragma endregion
@@ -1070,9 +887,7 @@ namespace alloy::dxc
         assert((DXCPipelineBase*)dxcPipeline != currentPipeline);
         resources.insert(pipeline);
 
-        recordedCmds.emplace_back([dxcPipeline, this]() {
-            dxcPipeline->CmdBindPipeline(GetCmdList());
-        });
+        dxcPipeline->CmdBindPipeline(GetCmdList());
 
         //ensure resource set counts
         //auto setCnt = vkPipeline->GetResourceSetCount();
@@ -1093,22 +908,55 @@ namespace alloy::dxc
 
         auto d3dkrs = PtrCast<DXCResourceSet>(rs.get());
 
-        RegisterResourceSet(d3dkrs);
+        auto& heaps = d3dkrs->GetHeaps();
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
 
-        recordedCmds.emplace_back([d3dkrs, this]() {
-            auto& heaps = d3dkrs->GetHeaps();
-            GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        }
+    }
 
-            for(uint32_t i = 0; i < heaps.size(); i++) {
-                GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
-            }
-        });
+    void DXCComputeCmdEnc::SetComputeMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs
+    ) {
+        resources.insert(rs);
+
+        auto d3dkrs = PtrCast<DXCMutableResourceSet>(rs.get());
+
+        auto& heaps = d3dkrs->GetHeaps();
+        GetCmdList()->SetDescriptorHeaps(heaps.size(), heaps.data());
+
+        for(uint32_t i = 0; i < heaps.size(); i++) {
+            GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
+        }
+    }
+
+    void DXCComputeCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        ID3D12DescriptorHeap* heaps[2]{};
+        UINT heapCount = 0;
+
+        if(resourceHeap) {
+            resources.insert(resourceHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCResourceDescriptorHeap>(resourceHeap.get())->GetHandle();
+        }
+
+        if(samplerHeap) {
+            resources.insert(samplerHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCSamplerDescriptorHeap>(samplerHeap.get())->GetHandle();
+        }
+
+        GetCmdList()->SetDescriptorHeaps(heapCount, heaps);
     }
 
 
     void DXCComputeCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
+        std::span<const uint32_t> data,
         std::uint32_t destOffsetIn32BitValues
     ) {
         //assert(slot < _resourceSets.size());
@@ -1119,20 +967,12 @@ namespace alloy::dxc
 
         std::vector<uint32_t> dataCopy(data.begin(), data.end());
 
-        recordedCmds.emplace_back([
-            pushConstantIndex,
-            argBase,
-            data = std::move(dataCopy),
-            destOffsetIn32BitValues,
-            this
-        ]() {
-            GetCmdList()->SetComputeRoot32BitConstants(
-                pushConstantIndex + argBase,
-                data.size(),
-                data.data(),
-                destOffsetIn32BitValues
-            );
-        });
+        GetCmdList()->SetComputeRoot32BitConstants(
+            pushConstantIndex + argBase,
+            dataCopy.size(),
+            dataCopy.data(),
+            destOffsetIn32BitValues
+        );
     }
 
     void DXCComputeCmdEnc::Dispatch(
@@ -1141,9 +981,7 @@ namespace alloy::dxc
         CHK_COMPUTE_PIPELINE_SET();
         //PreDispatchCommand();
         //vkCmdDispatch(_cmdBuf, groupCountX, groupCountY, groupCountZ);
-        recordedCmds.emplace_back([this, groupCountX, groupCountY, groupCountZ]() {
-            GetCmdList()->Dispatch(groupCountX, groupCountY, groupCountZ);
-        });
+        GetCmdList()->Dispatch(groupCountX, groupCountY, groupCountZ);
     };
 
 #if 0
@@ -1203,14 +1041,12 @@ namespace alloy::dxc
         //vkSource.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferSrcOptimal);
         //vkDestination.TransitionImageLayout(_cmdBuf, 0, 1, 0, 1, VkImageLayout.TransferDstOptimal);
 
-        recordedCmds.emplace_back([this, dxcSource, dxcDestination]() {
-            GetCmdList()->ResolveSubresource(
-                dxcDestination->GetHandle(),
-                0,
-                dxcSource->GetHandle(),
-                0,
-                dxcDestination->GetHandle()->GetDesc().Format);
-        });
+        GetCmdList()->ResolveSubresource(
+            dxcDestination->GetHandle(),
+            0,
+            dxcSource->GetHandle(),
+            0,
+            dxcDestination->GetHandle()->GetDesc().Format);
     }
 #endif
 
@@ -1218,38 +1054,37 @@ namespace alloy::dxc
         const common::sp<BufferRange>& src,
         std::uint32_t srcBytesPerRow,
         std::uint32_t srcBytesPerImage,
-        const common::sp<ITexture>& dst,
+        const common::sp<ITextureView>& dst,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
         const Size3D& copySize
     ){
 
-        auto* srcDxcBuffer = PtrCast<DXCBuffer>(src->GetBufferObject());
-        auto* dstDxcTexture = PtrCast<DXCTexture>(dst.get());
+        auto* srcDxcBuffer = PtrCast<DXCBuffer>(src->GetBufferObject().get());
+        
+        auto dstDxcView = PtrCast<DXCTextureView>(dst.get());
+        auto dstDxcTexture = PtrCast<DXCTexture>(dst->GetTextureObject().get());
+        const auto& dstViewDesc = dstDxcView->GetDesc();
 
         resources.insert(src);
-        RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
 
-
-
-        auto& srcDesc = dst->GetDesc();
-
+        auto& dstDesc = dstDxcTexture->GetDesc();
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dstSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            dstMipLevel, dstDxcTexture->GetDesc().mipLevels, dstBaseArrayLayer);
+        dstSubresource.SubresourceIndex = dstDxcView->ComputeSubresource(
+            dstMipLevel,
+            dstBaseArrayLayer);
 
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcBuffer->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
         srcSubresource.PlacedFootprint.Offset = src->GetShape().GetOffsetInBytes();
-        srcSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(srcDesc.format);
+        srcSubresource.PlacedFootprint.Footprint.Format = VdToD3DPixelFormat(dstDesc.format);
         srcSubresource.PlacedFootprint.Footprint.Width = copySize.width;
         srcSubresource.PlacedFootprint.Footprint.Height = copySize.height;
         srcSubresource.PlacedFootprint.Footprint.Depth = copySize.depth;
@@ -1263,15 +1098,13 @@ namespace alloy::dxc
         srcRegion.bottom = copySize.height;
         srcRegion.back = copySize.depth;
 
-        recordedCmds.emplace_back([this, dstOrigin, dstSubresource, srcSubresource, srcRegion]() {
-            GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z,
-                                       &srcSubresource, &srcRegion);
-        });
+        GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z,
+                                   &srcSubresource, &srcRegion);
     }
 
 
     void DXCTransferCmdEnc::CopyTextureToBuffer(
-        const common::sp<ITexture>& src,
+        const common::sp<ITextureView>& src,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
@@ -1282,21 +1115,23 @@ namespace alloy::dxc
     ) {
 
 
-        auto srcImage = PtrCast<DXCTexture>(src.get());
-        auto dstBuffer = PtrCast<DXCBuffer>(dst->GetBufferObject());
+        auto srcDxcView = PtrCast<DXCTextureView>(src.get());
+        auto srcDxcTexture = PtrCast<DXCTexture>(src->GetTextureObject().get());
+        const auto& srcViewDesc = srcDxcView->GetDesc();
+
+        auto dstBuffer = PtrCast<DXCBuffer>(dst->GetBufferObject().get());
 
         resources.insert(src);
-        RegisterTexUsage(srcImage, D3D12_RESOURCE_STATE_COPY_SOURCE);
         resources.insert(dst);
-        RegisterBufferUsage(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
 
-        auto srcDesc = srcImage->GetDesc();
+        const auto& srcDesc = srcDxcTexture->GetDesc();
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
-        srcSubresource.pResource = srcImage->GetHandle();
+        srcSubresource.pResource = srcDxcTexture->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        srcSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            srcMipLevel, srcImage->GetDesc().mipLevels, srcBaseArrayLayer);
+        srcSubresource.SubresourceIndex = srcDxcView->ComputeSubresource(
+            srcMipLevel,
+            srcBaseArrayLayer);
 
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
@@ -1317,9 +1152,7 @@ namespace alloy::dxc
         srcRegion.bottom = srcOrigin.y + copySize.height;
         srcRegion.back   = srcOrigin.z + copySize.depth;
 
-        recordedCmds.emplace_back([this, dstSubresource, srcSubresource, srcRegion]() {
-            GetCmdList()->CopyTextureRegion(&dstSubresource, 0, 0, 0, &srcSubresource, &srcRegion);
-        });
+        GetCmdList()->CopyTextureRegion(&dstSubresource, 0, 0, 0, &srcSubresource, &srcRegion);
     }
 
     void DXCTransferCmdEnc::CopyBuffer(
@@ -1328,71 +1161,53 @@ namespace alloy::dxc
         std::uint32_t sizeInBytes
     ){
 
-        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
-        auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject());
+        auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject().get());
+        auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject().get());
 
-        resources.insert(source);
-        resources.insert(destination);
-        if(dstDxcBuffer != srcDxcBuffer) {
-            RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
-            RegisterBufferUsage(dstDxcBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
-        } else {
-            //If we're copying within the same buffer, use common state
-            //Remove this assert once figured out how to not use common state
-            assert(false);
-            RegisterBufferUsage(srcDxcBuffer, D3D12_RESOURCE_STATE_COMMON);
-        }
-
-        recordedCmds.emplace_back([this, destination, source, sizeInBytes]() {
-            auto* srcDxcBuffer = PtrCast<DXCBuffer>(source->GetBufferObject());
-            auto* dstDxcBuffer = PtrCast<DXCBuffer>(destination->GetBufferObject());
-            GetCmdList()->CopyBufferRegion(
-                dstDxcBuffer->GetHandle(), destination->GetShape().GetOffsetInBytes(),
-                srcDxcBuffer->GetHandle(), source->GetShape().GetOffsetInBytes(),
-                sizeInBytes
-            );
-        });
+        GetCmdList()->CopyBufferRegion(
+            dstDxcBuffer->GetHandle(), destination->GetShape().GetOffsetInBytes(),
+            srcDxcBuffer->GetHandle(), source->GetShape().GetOffsetInBytes(),
+            sizeInBytes
+        );
     }
 
     void DXCTransferCmdEnc::CopyTexture(
-        const common::sp<ITexture>& src,
+        const common::sp<ITextureView>& src,
         const Point3D& srcOrigin,
         std::uint32_t srcMipLevel,
         std::uint32_t srcBaseArrayLayer,
-        const common::sp<ITexture>& dst,
+        const common::sp<ITextureView>& dst,
         const Point3D& dstOrigin,
         std::uint32_t dstMipLevel,
         std::uint32_t dstBaseArrayLayer,
         const Size3D& copySize
     ){
 
-        auto srcDxcTexture = PtrCast<DXCTexture>(src.get());
-        auto dstDxcTexture = PtrCast<DXCTexture>(dst.get());
+        auto srcDxcView = PtrCast<DXCTextureView>(src.get());
+        auto srcDxcTexture = PtrCast<DXCTexture>(src->GetTextureObject().get());
+        const auto& srcViewDesc = srcDxcView->GetDesc();
+        
+        auto dstDxcView = PtrCast<DXCTextureView>(dst.get());
+        auto dstDxcTexture = PtrCast<DXCTexture>(dst->GetTextureObject().get());
+        const auto& dstViewDesc = dstDxcView->GetDesc();
 
         resources.insert(src);
         resources.insert(dst);
-        if(dstDxcTexture != srcDxcTexture) {
-            RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
-            RegisterTexUsage(dstDxcTexture, D3D12_RESOURCE_STATE_COPY_DEST);
-        } else {
-            //If we're copying within the same buffer, use common state
-            //Remove this assert once figured out how to not use common state
-            assert(false);
-            RegisterTexUsage(srcDxcTexture, D3D12_RESOURCE_STATE_COMMON);
-        }
 
         D3D12_TEXTURE_COPY_LOCATION srcSubresource{};
         srcSubresource.pResource = srcDxcTexture->GetHandle();
         srcSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        srcSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            srcMipLevel, srcDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+        srcSubresource.SubresourceIndex = srcDxcView->ComputeSubresource(
+            srcMipLevel, 
+            srcBaseArrayLayer);
 
 
         D3D12_TEXTURE_COPY_LOCATION dstSubresource{};
         dstSubresource.pResource = dstDxcTexture->GetHandle();
         dstSubresource.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dstSubresource.SubresourceIndex = DXCTexture::ComputeSubresource(
-            dstMipLevel, dstDxcTexture->GetDesc().mipLevels, srcBaseArrayLayer);
+        dstSubresource.SubresourceIndex = dstDxcView->ComputeSubresource(
+            dstMipLevel, 
+            dstBaseArrayLayer);
 
         D3D12_BOX srcRegion {};
         srcRegion.left  = srcOrigin.x;
@@ -1402,10 +1217,8 @@ namespace alloy::dxc
         srcRegion.bottom = srcOrigin.y + copySize.height;
         srcRegion.back   = srcOrigin.z + copySize.depth;
 
-        recordedCmds.emplace_back([this, dstOrigin, dstSubresource, srcSubresource, srcRegion]() {
-            GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z,
-                                       &srcSubresource, &srcRegion);
-        });
+        GetCmdList()->CopyTextureRegion(&dstSubresource, dstOrigin.x, dstOrigin.y, dstOrigin.z,
+                                   &srcSubresource, &srcRegion);
     }
 
     void DXCTransferCmdEnc::GenerateMipmaps(const common::sp<ITexture>& texture){
@@ -1427,8 +1240,10 @@ namespace alloy::dxc
 
 
     void DXCCommandList::_EndCurrentActivePass() {
-        if(_currentPass)
+        if(_currentPass) {
+            _currentPass->EndPass();
             _currentPass = nullptr;
+        }
     }
 
     void DXCCommandList::_BeginDummyPassIfNoActivePass() {
@@ -1439,6 +1254,136 @@ namespace alloy::dxc
             _passes.push_back(dummyPass);
             _currentPass = dummyPass;
         }
+    }
+
+    static void _FillInTransitionBarrierLegacy(
+        D3D12_RESOURCE_BARRIER& barrier,
+        const DXCTextureView* pView,
+        D3D12_RESOURCE_STATES stateFrom,
+        D3D12_RESOURCE_STATES stateTo
+    ) {
+
+        auto view = pView;
+        auto texture = view->GetTextureObject();
+        auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
+
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = dxcTex->GetHandle();
+        barrier.Transition.Subresource = pView->ComputeSubresource(0,0);
+        barrier.Transition.StateBefore = stateFrom;
+        barrier.Transition.StateAfter = stateTo;
+
+        
+        const auto& viewDesc = view->GetDesc();
+        if(viewDesc.arrayLayers == 1 && viewDesc.mipLevels == 1) {
+            barrier.Transition.Subresource = pView->ComputeSubresource(0,0);
+        } else {
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        }
+    };
+    
+    void DXCCommandList::_TransitionColorTargetsToMSAAResolveLayout(
+        std::span<const DXCTextureView*> resolveSrcs,
+        std::span<const DXCTextureView*> resolveDsts
+    ) {
+        
+        std::vector<D3D12_RESOURCE_BARRIER> barriers{};
+
+        for(auto pSrcView : resolveSrcs) {
+            _FillInTransitionBarrierLegacy(
+                barriers.emplace_back(), 
+                pSrcView,
+                D3D12_RESOURCE_STATE_RENDER_TARGET, 
+                D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+        }
+
+        
+        for(auto pDstView : resolveDsts) {
+            _FillInTransitionBarrierLegacy(
+                barriers.emplace_back(), 
+                pDstView,
+                D3D12_RESOURCE_STATE_RENDER_TARGET, 
+                D3D12_RESOURCE_STATE_RESOLVE_DEST);
+        }
+
+        if(!barriers.empty())
+            _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+    }
+
+    void DXCCommandList::_TransitionColorTargetsFromMSAAResolveLayout(
+        std::span<const DXCTextureView*> resolveSrcs,
+        std::span<const DXCTextureView*> resolveDsts
+    ) {
+        std::vector<D3D12_RESOURCE_BARRIER> barriers{};
+
+        for(auto pSrcView : resolveSrcs) {
+            _FillInTransitionBarrierLegacy(
+                barriers.emplace_back(), 
+                pSrcView,
+                D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+                D3D12_RESOURCE_STATE_RENDER_TARGET );
+        }
+
+        
+        for(auto pDstView : resolveDsts) {
+            _FillInTransitionBarrierLegacy(
+                barriers.emplace_back(), 
+                pDstView,
+                D3D12_RESOURCE_STATE_RESOLVE_DEST, 
+                D3D12_RESOURCE_STATE_RENDER_TARGET);
+        }
+
+        if(!barriers.empty())
+            _cmdList->ResourceBarrier(barriers.size(), barriers.data());
+    }
+    
+    void DXCCommandList::_TransitionDSTargetsToMSAAResolveLayout(
+        DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+    ) {
+        
+        D3D12_RESOURCE_BARRIER barriers[2]{};
+
+        auto srcState = isSrcReadOnly ? D3D12_RESOURCE_STATE_DEPTH_READ
+                          : D3D12_RESOURCE_STATE_DEPTH_WRITE;
+
+        _FillInTransitionBarrierLegacy(
+            barriers[0], 
+            src,
+            srcState,
+            D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+    
+        _FillInTransitionBarrierLegacy(
+            barriers[1], 
+            dst,
+            srcState,
+            D3D12_RESOURCE_STATE_RESOLVE_DEST);
+
+        _cmdList->ResourceBarrier(2, barriers);
+    }
+    void DXCCommandList::_TransitionDSTargetsFromMSAAResolveLayout(
+        DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+    ) {
+        D3D12_RESOURCE_BARRIER barriers[2]{};
+
+        
+        auto srcState = isSrcReadOnly ? D3D12_RESOURCE_STATE_DEPTH_READ
+                          : D3D12_RESOURCE_STATE_DEPTH_WRITE;
+
+
+        _FillInTransitionBarrierLegacy(
+            barriers[0], 
+            src,
+            D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+            srcState);
+    
+
+        _FillInTransitionBarrierLegacy(
+            barriers[1], 
+            dst,
+            D3D12_RESOURCE_STATE_RESOLVE_DEST, 
+            srcState);
+
+        _cmdList->ResourceBarrier(2, barriers);
     }
 
     void DXCCommandList::Begin(){
@@ -1467,209 +1412,15 @@ namespace alloy::dxc
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
 
-
-        //Push state transitions as earily as possible
-        //Also combine compatible states to avoid read to read state
-        //transitions
-        //After the loop, resStates in each render pass will only contain
-        //resources that need state transition
-        for(int i = _passes.size() - 1; i > 0; i--) {
-            auto* currPass = _passes[i];
-            auto* prevPass = _passes[i - 1];
-
-            //Empty the current pass resource states
-            auto requestedStates = std::move(currPass->resStates);
-            auto& prevStates = prevPass->resStates;
-
-            //Check buffer states
-            for(auto& [buffer, statePair] : requestedStates.buffers) {
-
-                auto stateReq = statePair.initial;
-                auto it = prevStates.buffers.find(buffer);
-                if(it == prevStates.buffers.end()) {
-                    //Generally we don't care about statePair.final
-                    //Back-to-front scanning will only use
-                    //currentPass's statePair.initial and previousPass's statePair.final
-                    prevStates.buffers.insert({buffer, statePair});
-                    continue;
-                }
-                auto& prevStatePair = it->second;
-                bool hasExplicitTransitionInPrevPass = prevStatePair.final != DXC_RESOURCE_STATE_ANY;
-                auto prevFinalState = hasExplicitTransitionInPrevPass ? prevStatePair.final
-                                                                      : prevStatePair.initial
-                                                                      ;
-                if(!IsStateCompatible(prevFinalState, stateReq)) {
-                    //Not compatible. Add to current pass
-                    currPass->resStates.buffers.insert({buffer, statePair});
-                }
-                else {
-                    //Compatible. Merge the states into prev pass
-                    if(!hasExplicitTransitionInPrevPass)
-                        prevStatePair.initial |= stateReq;
-                    else {
-                        //According to https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12#implicit-state-transitions
-                        //Explicit transition may not happen on prev pass
-                        // if resource states are compatible during barrier encoding
-                        // which means the auto promote/decay is uninterrupted
-                        //TODO: confirm:
-                        //If the transition happens(The barrier is encoded), will the
-                        // auto promote still happen?
-                        // If so, then the current implementation is fine
-                        // If not, additional buffer state tracking & barrier insertion
-                        //  is needed during pass playback
-                    }
-                }
-            }
-
-            //Check texture states
-            for(auto& [texture, statePair] : requestedStates.textures) {
-                auto stateReq = statePair.initial;
-                auto it = prevStates.textures.find(texture);
-                if(it == prevStates.textures.end()) {
-                    prevStates.textures.insert({texture, statePair});
-                    continue;
-                }
-                auto& prevStatePair = it->second;
-
-                bool hasExplicitTransitionInPrevPass = prevStatePair.final != DXC_RESOURCE_STATE_ANY;
-                auto prevFinalState = hasExplicitTransitionInPrevPass ? prevStatePair.final
-                                                                      : prevStatePair.initial
-                                                                      ;
-                if(!IsStateCompatible(prevFinalState, stateReq)) {
-                    //Not compatible. Add to current pass
-                    currPass->resStates.textures.insert({texture, statePair});
-                }
-                else {
-                    //Compatible. Merge the states into prev pass
-                    if(!hasExplicitTransitionInPrevPass)
-                        prevStatePair.initial |= stateReq;
-                    else {
-                        //Textures generally don't have auto promote/decay.
-                        //If prev/after states aren't matched, we need explicit
-                        // transition
-                        if((prevFinalState & stateReq) != stateReq) {
-                            //We have missing states. Add to current pass
-                            currPass->resStates.textures.insert({texture, statePair});
-                        }
-                    }
-                }
-            }
-
-        }
-
-        ResourceStates currentStates {};
-
-        //Playback begin
-        for(auto pass : _passes) {
-
-            //Setup inital status for pass & insert barriers if necessary
-            std::vector<D3D12_RESOURCE_BARRIER> barriers;
-
-            auto& resStates = pass->resStates;
-            for(auto& [buffer, statePair] : resStates.buffers) {
-                auto stateReq = statePair.initial;
-                bool hasExplicitTransition = statePair.final != DXC_RESOURCE_STATE_ANY;
-                auto it = currentStates.buffers.find(buffer);
-                D3D12_RESOURCE_STATES prevState = D3D12_RESOURCE_STATE_COMMON;
-                if(it == currentStates.buffers.end()) {
-                    //DX12 buffers are always in common state when submission begins.
-                    //So it is always compatible on first use.
-                    currentStates.buffers.insert({buffer,
-                        {
-                            .initial = D3D12_RESOURCE_STATE_COMMON,
-                            .final = stateReq,
-                        }
-                    });
-                    continue;
-                } else {
-                    prevState = it->second.final;
-                }
-                if(prevState & (stateReq == stateReq)) {
-                    if ((prevState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) != 0) {
-                        //UAV barrier is needed on write-after-write scenario
-                        auto& barrier = barriers.emplace_back();
-                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                        barrier.UAV.pResource = buffer->GetHandle();
-                    } else {
-                        //DX12 seemingly don't have ways to handle
-                        //write-after-write hazards unless enhanced sync
-                        //is enabled
-                    }
-
-                } else {
-                    //Transition barrier
-                    assert(prevState != stateReq);
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    barrier.Transition.pResource = buffer->GetHandle();
-                    barrier.Transition.StateBefore = prevState;
-                    barrier.Transition.StateAfter = stateReq;
-                }
-                //Will be set to statePair.final after pass completed. we need
-                // to setup initial states for pass
-                currentStates.buffers[buffer].final = stateReq;
-            }
-
-            for(auto& [texture, statePair] : resStates.textures) {
-                auto stateReq = statePair.initial;
-                auto it = currentStates.textures.find(texture);
-                if(it == currentStates.textures.end()) {
-                    //DX12 textures often can't auto-decay, so we need to request
-                    //states on first use
-                    //Erase RESOURCE_STATE_ANY
-                    auto initStatePair = statePair;
-                    initStatePair.final = initStatePair.initial;
-                    //We can't have init as DXC_RESOURCE_STATE_ANY
-                    assert(statePair.initial != DXC_RESOURCE_STATE_ANY);
-
-                    currentStates.textures.insert({texture, initStatePair});
-                    //_statePairs.insert({texture, statePair});
-                    continue;
-                }
-                auto& prevState = it->second.final;
-                if ((prevState & stateReq) == stateReq) {
-                    if ((prevState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS) != 0) {
-                        //UAV barrier is needed on write-after-write scenario
-                        auto& barrier = barriers.emplace_back();
-                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                        barrier.UAV.pResource = texture->GetHandle();
-                    } else {
-                        //DX12 seemingly don't have ways to handle
-                        //write-after-write hazards unless enhanced sync
-                        //is enabled
-                    }
-                } else {
-                    //Transition barrier
-                    assert(prevState != stateReq);
-                    auto& barrier = barriers.emplace_back();
-                    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    barrier.Transition.pResource = texture->GetHandle();
-                    barrier.Transition.StateBefore = prevState;
-                    barrier.Transition.StateAfter = stateReq;
-                }
-
-                currentStates.textures[texture].final = statePair.initial;
-            }
-            if(!barriers.empty())
-                _cmdList->ResourceBarrier(barriers.size(), barriers.data());
-
-            //Fill in current states
-            pass->resStates = std::move(currentStates);
-            //Replay recorded commands
-            pass->EndPass();
-            //Retrive current states after pass
-            currentStates = std::move(pass->resStates);
-
-        }
-
-        //Replay completed. Update final state
-        _statePairs = std::move(currentStates.textures);
-
         ThrowIfFailed(_cmdList->Close());
+
     }
 
 
-    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const RenderPassAction& actions) {
+    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
         ////Record render pass
@@ -1686,7 +1437,9 @@ namespace alloy::dxc
         return *pNewEnc;
     }
 
-    IComputeCommandEncoder& DXCCommandList::BeginComputePass() {
+    IComputeCommandEncoder& DXCCommandList::BeginComputePass(
+        const PassResourceUsage&
+    ) {
 
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
@@ -1714,54 +1467,37 @@ namespace alloy::dxc
 
     void DXCCommandList::EndPass() {
         CHK_RENDERPASS_BEGUN();
+        _currentPass->EndPass();
         _currentPass = nullptr;
     }
 
 
     static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
-        const D3D12_BARRIER_SYNC& sync,
+        const D3D12_BARRIER_SYNC&,
         const D3D12_BARRIER_ACCESS& access
     ){
         D3D12_RESOURCE_STATES legacyState{};
 
-        //if(sync & D3D12_BARRIER_SYNC_RESOLVE) {
-            if(access & D3D12_BARRIER_ACCESS_RESOLVE_SOURCE)
-                legacyState |= D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
-            if(access & D3D12_BARRIER_ACCESS_RESOLVE_DEST)
-                legacyState |= D3D12_RESOURCE_STATE_RESOLVE_DEST;
-        //}
+        if(access & D3D12_BARRIER_ACCESS_COPY_SOURCE)
+            legacyState |= D3D12_RESOURCE_STATE_COPY_SOURCE;
+        if(access & D3D12_BARRIER_ACCESS_COPY_DEST)
+            legacyState |= D3D12_RESOURCE_STATE_COPY_DEST;
 
-        //if(sync & D3D12_BARRIER_SYNC_COPY) {
-            if(access & D3D12_BARRIER_ACCESS_COPY_SOURCE)
-                legacyState |= D3D12_RESOURCE_STATE_COPY_SOURCE;
-            if(access & D3D12_BARRIER_ACCESS_COPY_DEST)
-                legacyState |= D3D12_RESOURCE_STATE_COPY_DEST;
-        //}
+        if(access & ( D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ
+                    | D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE))
+            legacyState |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 
-        //if(sync & D3D12_BARRIER_SYNC_RAYTRACING) {
-            if(access & ( D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ
-                        | D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE))
-                legacyState |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-        //}
-
-        //if(sync & D3D12_BARRIER_SYNC_EXECUTE_INDIRECT) {
         if(access & D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT)
             legacyState |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-        //}
 
-        //if(sync & D3D12_BARRIER_SYNC_RENDER_TARGET) {
         if(access & D3D12_BARRIER_ACCESS_RENDER_TARGET)
             legacyState |= D3D12_RESOURCE_STATE_RENDER_TARGET;
-        //}
 
-        //if(sync & D3D12_BARRIER_SYNC_DEPTH_STENCIL) {
-            if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE)
-                legacyState |= D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ)
-                legacyState |= D3D12_RESOURCE_STATE_DEPTH_READ;
-        //}
+        if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE)
+            legacyState |= D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        if(access & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ)
+            legacyState |= D3D12_RESOURCE_STATE_DEPTH_READ;
 
-        //Infer from access flags
         if(access & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) {
             legacyState |= D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
@@ -1781,63 +1517,42 @@ namespace alloy::dxc
             legacyState |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
         }
 
-        if(access & D3D12_BARRIER_ACCESS_STREAM_OUTPUT) {
-            legacyState |= D3D12_RESOURCE_STATE_STREAM_OUT;
-        }
-
         return legacyState;
     };
 
-    static D3D12_BARRIER_SYNC _GetSyncStages(const alloy::PipelineStages& stages, bool isStagesBefore) {
+    static D3D12_BARRIER_SYNC _GetSyncStages(const alloy::PipelineStages& stages, bool) {
         D3D12_BARRIER_SYNC flags = D3D12_BARRIER_SYNC_NONE;
 
-        if(stages[alloy::PipelineStage::All])
+        if(stages[alloy::PipelineStage::AllCommands])
             return D3D12_BARRIER_SYNC_ALL;
 
-        //if(stages[alloy::PipelineStage::TopOfPipe]){
-        //    if(isStagesBefore)
-        //        flags |= D3D12_BARRIER_SYNC_NONE;
-        //    else
-        //        flags |= D3D12_BARRIER_SYNC_ALL;
-        //}
-        //if(stages[alloy::PipelineStage::BottomOfPipe]) {
-        //    if(isStagesBefore)
-        //        flags |= D3D12_BARRIER_SYNC_ALL;
-        //    else
-        //        flags |= D3D12_BARRIER_SYNC_NONE;
-        //}
-
-        if(stages[alloy::PipelineStage::Draw])
+        if(stages[alloy::PipelineStage::AllGraphics])
             flags |= D3D12_BARRIER_SYNC_DRAW;
-        if(stages[alloy::PipelineStage::NonPixelShading])
-            flags |= D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
-        if(stages[alloy::PipelineStage::AllShading])
+        if(stages[alloy::PipelineStage::AllShaders])
             flags |= D3D12_BARRIER_SYNC_ALL_SHADING;
 
-
-        if(stages[alloy::PipelineStage::INPUT_ASSEMBLER])
-            flags |= D3D12_BARRIER_SYNC_INDEX_INPUT;
-        if(stages[alloy::PipelineStage::VERTEX_SHADING])
-            flags |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
-        if(stages[alloy::PipelineStage::PIXEL_SHADING])
-            flags |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
-        if(stages[alloy::PipelineStage::DEPTH_STENCIL])
-            flags |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
-        if(stages[alloy::PipelineStage::RENDER_TARGET])
-            flags |= D3D12_BARRIER_SYNC_RENDER_TARGET;
-        if(stages[alloy::PipelineStage::COMPUTE_SHADING])
-            flags |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-        if(stages[alloy::PipelineStage::RAYTRACING])
-            flags |= D3D12_BARRIER_SYNC_RAYTRACING;
-        if(stages[alloy::PipelineStage::COPY])
-            flags |= D3D12_BARRIER_SYNC_COPY;
-        if(stages[alloy::PipelineStage::RESOLVE])
-            flags |= D3D12_BARRIER_SYNC_RESOLVE;
-        if(stages[alloy::PipelineStage::EXECUTE_INDIRECT])
+        if(stages[alloy::PipelineStage::DrawIndirect])
             flags |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
-        //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
-        //if(stages[alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE]){  }
-        //if(stages[alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        if(stages[alloy::PipelineStage::VertexInput])
+            flags |= D3D12_BARRIER_SYNC_INDEX_INPUT;
+        if(stages[alloy::PipelineStage::VertexShader])
+            flags |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+        if(stages[alloy::PipelineStage::MeshShader])
+            flags |= D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
+        if(stages[alloy::PipelineStage::FragmentShader])
+            flags |= D3D12_BARRIER_SYNC_PIXEL_SHADING;
+        if(stages[alloy::PipelineStage::DepthStencil])
+            flags |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+        if(stages[alloy::PipelineStage::ColorOutput])
+            flags |= D3D12_BARRIER_SYNC_RENDER_TARGET;
+        if(stages[alloy::PipelineStage::ComputeShader])
+            flags |= D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+        if(stages[alloy::PipelineStage::RayTracing])
+            flags |= D3D12_BARRIER_SYNC_RAYTRACING;
+        if(stages[alloy::PipelineStage::Copy])
+            flags |= D3D12_BARRIER_SYNC_COPY;
+        if(stages[alloy::PipelineStage::BuildAS])
+            flags |= D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
         return flags;
     };
 
@@ -1847,56 +1562,44 @@ namespace alloy::dxc
         if(!accesses)
             return D3D12_BARRIER_ACCESS_NO_ACCESS;
 
-        if(accesses[alloy::ResourceAccess::COMMON])
-            flags |= D3D12_BARRIER_ACCESS_COMMON;
-        if(accesses[alloy::ResourceAccess::VERTEX_BUFFER])
-            flags |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
-        if(accesses[alloy::ResourceAccess::CONSTANT_BUFFER])
-            flags |= D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
-        if(accesses[alloy::ResourceAccess::INDEX_BUFFER])
-            flags |= D3D12_BARRIER_ACCESS_INDEX_BUFFER;
-        if(accesses[alloy::ResourceAccess::RENDER_TARGET])
-            flags |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
-        if(accesses[alloy::ResourceAccess::UNORDERED_ACCESS])
-            flags |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-        if(accesses[alloy::ResourceAccess::DepthStencilWritable])
-            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
-        if(accesses[alloy::ResourceAccess::DepthStencilReadOnly])
-            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
-        if(accesses[alloy::ResourceAccess::SHADER_RESOURCE])
-            flags |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
-        if(accesses[alloy::ResourceAccess::STREAM_OUTPUT])
-            flags |= D3D12_BARRIER_ACCESS_STREAM_OUTPUT;
-        if(accesses[alloy::ResourceAccess::INDIRECT_ARGUMENT])
+        if(accesses[alloy::ResourceAccess::IndirectArgumentRead])
             flags |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
-        if(accesses[alloy::ResourceAccess::PREDICATION])
-            flags |= D3D12_BARRIER_ACCESS_PREDICATION;
-        if(accesses[alloy::ResourceAccess::COPY_DEST])
-            flags |= D3D12_BARRIER_ACCESS_COPY_DEST;
-        if(accesses[alloy::ResourceAccess::COPY_SOURCE])
+        if(accesses[alloy::ResourceAccess::VertexBufferRead])
+            flags |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+        if(accesses[alloy::ResourceAccess::IndexBufferRead])
+            flags |= D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+        if(accesses[alloy::ResourceAccess::ConstantBufferRead])
+            flags |= D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+        if(accesses[alloy::ResourceAccess::ShaderResourceRead])
+            flags |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+        if(accesses[alloy::ResourceAccess::UnorderedAccess])
+            flags |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+        if(accesses[alloy::ResourceAccess::RenderTarget])
+            flags |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
+        if(accesses[alloy::ResourceAccess::DepthStencilRead])
+            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+        if(accesses[alloy::ResourceAccess::DepthStencilWrite])
+            flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+        if(accesses[alloy::ResourceAccess::CopySource])
             flags |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
-        if(accesses[alloy::ResourceAccess::RESOLVE_DEST])
-            flags |= D3D12_BARRIER_ACCESS_RESOLVE_DEST;
-        if(accesses[alloy::ResourceAccess::RESOLVE_SOURCE])
-            flags |= D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
-        if(accesses[alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_READ])
+        if(accesses[alloy::ResourceAccess::CopyDest])
+            flags |= D3D12_BARRIER_ACCESS_COPY_DEST;
+        if(accesses[alloy::ResourceAccess::AccelerationStructureRead])
             flags |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ;
-        if(accesses[alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_WRITE])
+        if(accesses[alloy::ResourceAccess::AccelerationStructureWrite])
             flags |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
-        if(accesses[alloy::ResourceAccess::SHADING_RATE_SOURCE])
-            flags |= D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE;
-        //if(stages[alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO]){  }
-        //if(stages[alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE]){  }
-        //if(stages[alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE]){  }
+        if(accesses[alloy::ResourceAccess::Present])
+            flags |= D3D12_BARRIER_ACCESS_COMMON;
         return flags;
     };
 
     template<typename T>
-    static void _PopulateBarrierAccess(const alloy::MemoryBarrierDescription& desc,
-                                              T& barrier
+    static void _PopulateBarrierAccess(const ResourceAccessMask& from,
+                                       const ResourceAccessMask& to,
+                                       T& barrier
     ) {
-        barrier.AccessAfter = _GetAccessFlags(desc.accessAfter);
-        barrier.AccessBefore = _GetAccessFlags(desc.accessBefore);
+        barrier.AccessAfter = _GetAccessFlags(to);
+        barrier.AccessBefore = _GetAccessFlags(from);
     }
 
     static void _EnnhancedToLegacyBarrier(
@@ -1908,56 +1611,69 @@ namespace alloy::dxc
         barrier.Transition.StateAfter= _EnnhancedToLegacyBarrierFlags(data.SyncAfter, data.AccessAfter);
     }
 
-    void DXCCommandList::Barrier(const std::vector<alloy::BarrierDescription>& descs) {
+    void DXCCommandList::Barrier(std::span<const alloy::BarrierOp> descs) {
 
         std::vector<D3D12_RESOURCE_BARRIER> barriers{};
 
         for(auto& desc : descs) {
-            auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
-            auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
-
             D3D12_RESOURCE_BARRIER barrier { };
             bool isBarrierNecessary = true;
 
-            if (!syncAfter || !syncBefore) {
-                isBarrierNecessary = false;
-            }else if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
-                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-                barrier.UAV.pResource = nullptr;
+            if (std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
+
+                auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
+
+                auto range = barrierDesc.buffer;
+                auto buffer = range->GetBufferObject();
+                auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
+                _devRes.insert(range);
+
+                auto syncAfter = _GetSyncStages(barrierDesc.to.stages, false);
+                auto syncBefore = _GetSyncStages(barrierDesc.from.stages, true);
+
+                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                dxcBarrierFlags.SyncAfter = syncAfter;
+                dxcBarrierFlags.SyncBefore = syncBefore;
+                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, dxcBarrierFlags);
+                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                barrier.Transition.pResource = dxcBuffer->GetHandle();
+                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             }
             else {
-                if (std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
+                auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
 
-                    auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
-                    _devRes.insert(barrierDesc.resource);
-                    auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
+                auto view = texDesc.texture;
+                auto texture = view->GetTextureObject();
+                auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
+                _devRes.insert(view);
 
-                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                    dxcBarrierFlags.SyncAfter = syncAfter;
-                    dxcBarrierFlags.SyncBefore = syncBefore;
-                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                    barrier.Transition.pResource = dxcBuffer->GetHandle();
+                auto syncAfter = _GetSyncStages(texDesc.to.stages, false);
+                auto syncBefore = _GetSyncStages(texDesc.from.stages, true);
+
+                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
+                dxcBarrierFlags.SyncAfter = syncAfter;
+                dxcBarrierFlags.SyncBefore = syncBefore;
+                _PopulateBarrierAccess(texDesc.from.access, texDesc.to.access, dxcBarrierFlags);
+                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
+                barrier.Transition.pResource = dxcTex->GetHandle();
+
+                
+                const auto& viewDesc = view->GetDesc();
+                if( (viewDesc.arrayLayers == 1 && viewDesc.mipLevels == 1) &&
+                    (viewDesc.aspect != ITextureView::Aspect::DepthStencil)
+                ) {
+                    const auto& texDesc = texture->GetDesc();
+                    auto dxcTexView = PtrCast<DXCTextureView>(view.get());
+
+                    barrier.Transition.Subresource = dxcTexView->ComputeSubresource(0,0);
+                } else {
                     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
                 }
-                else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+                
+            }
 
-                    auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
-                    _devRes.insert(texDesc.resource);
-                    auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
-
-                    D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                    dxcBarrierFlags.SyncAfter = syncAfter;
-                    dxcBarrierFlags.SyncBefore = syncBefore;
-                    _PopulateBarrierAccess(desc.memBarrier, dxcBarrierFlags);
-                    _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                    barrier.Transition.pResource = dxcTex->GetHandle();
-                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-                }
-
-                if (barrier.Transition.StateBefore == barrier.Transition.StateAfter) {
-                    isBarrierNecessary = false;
-                }
+            if (barrier.Transition.StateBefore == barrier.Transition.StateAfter) {
+                isBarrierNecessary = false;
             }
 
             if (isBarrierNecessary) {
@@ -1968,22 +1684,6 @@ namespace alloy::dxc
 
         if(!barriers.empty())
             _cmdList->ResourceBarrier(barriers.size(), barriers.data());
-
-    }
-
-    void DXCCommandList::TransitionTextureToDefaultLayout(
-        const std::vector<common::sp<ITexture>>& textures
-    ) {
-        //CHK_RENDERPASS_ENDED();
-
-        auto dummyPass = new DXCCmdEncBase(_dev.get(), this);
-        _passes.emplace_back(dummyPass);
-
-        for(auto& t : textures) {
-            auto dxcTex = PtrCast<DXCTexture>(t.get());
-            dummyPass->resources.insert(t);
-            dummyPass->RegisterTexUsage(dxcTex, D3D12_RESOURCE_STATE_COMMON);
-        }
 
     }
 
@@ -2006,40 +1706,37 @@ namespace alloy::dxc
 
 #pragma endregion CmdList
 
-    static void _PopulateTextureBarrier(const alloy::TextureBarrierResource& desc,
+    static void _PopulateTextureBarrier(const alloy::TextureBarrierOp& desc,
                                               D3D12_TEXTURE_BARRIER& barrier
     ) {
 
         auto _GetTexLayout = [](const alloy::TextureLayout& layout) -> D3D12_BARRIER_LAYOUT {
             switch(layout) {
-                case alloy::TextureLayout::UNDEFINED: return D3D12_BARRIER_LAYOUT_UNDEFINED;
-                case alloy::TextureLayout::COMMON_READ: return D3D12_BARRIER_LAYOUT_GENERIC_READ;
-                case alloy::TextureLayout::RENDER_TARGET: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-                case alloy::TextureLayout::UNORDERED_ACCESS: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
-                case alloy::TextureLayout::DEPTH_STENCIL_WRITE: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
-                case alloy::TextureLayout::DEPTH_STENCIL_READ: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
-                case alloy::TextureLayout::SHADER_RESOURCE: return D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
-                case alloy::TextureLayout::COPY_SOURCE: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
-                case alloy::TextureLayout::COPY_DEST: return D3D12_BARRIER_LAYOUT_COPY_DEST;
-                case alloy::TextureLayout::RESOLVE_SOURCE: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
-                case alloy::TextureLayout::RESOLVE_DEST: return D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
-                case alloy::TextureLayout::SHADING_RATE_SOURCE: return D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE;
+                case alloy::TextureLayout::Undefined: return D3D12_BARRIER_LAYOUT_UNDEFINED;
+                case alloy::TextureLayout::General: return D3D12_BARRIER_LAYOUT_COMMON;
+                case alloy::TextureLayout::ShaderReadOnly: return D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
+                case alloy::TextureLayout::Storage: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+                case alloy::TextureLayout::ColorAttachment: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+                case alloy::TextureLayout::DepthStencilReadOnly: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
+                case alloy::TextureLayout::DepthStencilWrite: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+                case alloy::TextureLayout::CopySource: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+                case alloy::TextureLayout::CopyDest: return D3D12_BARRIER_LAYOUT_COPY_DEST;
+                case alloy::TextureLayout::ResolveSource: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+                case alloy::TextureLayout::ResolveDest: return D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+                case alloy::TextureLayout::Present: return D3D12_BARRIER_LAYOUT_PRESENT;
 
                 default: return D3D12_BARRIER_LAYOUT_COMMON;
             }
         };
 
-        barrier.LayoutAfter = _GetTexLayout(desc.toLayout);
-        barrier.LayoutBefore = _GetTexLayout(desc.fromLayout);
-        barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
-        barrier.Subresources.NumMipLevels = 0;
-        barrier.Subresources.FirstArraySlice = 0;
-        barrier.Subresources.NumArraySlices = 0;
-        barrier.Subresources.FirstPlane = 0;
-        barrier.Subresources.NumPlanes = 0;
+        barrier.LayoutAfter = _GetTexLayout(desc.to.layout);
+        barrier.LayoutBefore = _GetTexLayout(desc.from.layout);
     }
 
-    IRenderCommandEncoder& DXCCommandList6::BeginRenderPass(const RenderPassAction& actions) {
+    IRenderCommandEncoder& DXCCommandList6::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
         ////Record render pass
@@ -2056,46 +1753,73 @@ namespace alloy::dxc
         return *pNewEnc;
     }
 
-    void DXCCommandList7::Barrier(const std::vector<alloy::BarrierDescription>& descs) {
+    void DXCCommandList7::Barrier(std::span<const alloy::BarrierOp> descs) {
 
         std::vector<D3D12_GLOBAL_BARRIER> memBarriers;
         std::vector<D3D12_BUFFER_BARRIER> bufBarriers;
         std::vector<D3D12_TEXTURE_BARRIER> texBarrier;
 
         for(auto& desc : descs) {
-            auto syncAfter = _GetSyncStages(desc.memBarrier.stagesAfter, false);
-            auto syncBefore = _GetSyncStages(desc.memBarrier.stagesBefore, true);
-
-            if(std::holds_alternative<alloy::MemoryBarrierResource>(desc.resourceInfo)) {
-                memBarriers.emplace_back();
-                auto& barrier = memBarriers.back();
-                barrier.SyncAfter = syncAfter;
-                barrier.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(desc.memBarrier, barrier);
-            }
-            else if(std::holds_alternative<alloy::BufferBarrierResource>(desc.resourceInfo)) {
+            if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
                 bufBarriers.emplace_back();
                 auto& barrier = bufBarriers.back();
-                barrier.SyncAfter = syncAfter;
-                barrier.SyncBefore = syncBefore;
-                auto& barrierDesc = std::get<alloy::BufferBarrierResource>(desc.resourceInfo);
-                _devRes.insert(barrierDesc.resource);
-                auto dxcBuffer = PtrCast<DXCBuffer>(barrierDesc.resource.get());
-                _PopulateBarrierAccess(desc.memBarrier, barrier);
+                auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
+
+                auto range = barrierDesc.buffer;
+                auto buffer = range->GetBufferObject();
+                auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
+                _devRes.insert(range);
+
+                barrier.SyncAfter = _GetSyncStages(barrierDesc.to.stages, false);
+                barrier.SyncBefore = _GetSyncStages(barrierDesc.from.stages, true);
+
+                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
                 barrier.pResource = dxcBuffer->GetHandle();
+
+                const auto& rangeDesc = range->GetShape();
+                barrier.Offset = rangeDesc.GetOffsetInBytes();
+                barrier.Size = rangeDesc.GetSizeInBytes();
             }
-            else /*if(std::holds_alternative<alloy::TextureBarrierDescription>(desc))*/ {
+            else {
                 texBarrier.emplace_back();
                 auto& barrier = texBarrier.back();
-                barrier.SyncAfter = syncAfter;
-                barrier.SyncBefore = syncBefore;
-                auto& texDesc = std::get<alloy::TextureBarrierResource>(desc.resourceInfo);
-                _devRes.insert(texDesc.resource);
-                auto dxcTex = common::PtrCast<DXCTexture>(texDesc.resource.get());
+                auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
 
-                _PopulateBarrierAccess(desc.memBarrier, barrier);
+                auto view = texDesc.texture;
+                auto texture = view->GetTextureObject();
+                auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
+                _devRes.insert(view);
+                
+                barrier.SyncAfter = _GetSyncStages(texDesc.to.stages, false);
+                barrier.SyncBefore = _GetSyncStages(texDesc.from.stages, true);
+
+                _PopulateBarrierAccess(texDesc.from.access, texDesc.to.access, barrier);
                 _PopulateTextureBarrier(texDesc, barrier);
                 barrier.pResource = dxcTex->GetHandle();
+
+                const auto& viewDesc = view->GetDesc();
+                barrier.Subresources.IndexOrFirstMipLevel = viewDesc.baseMipLevel;
+                barrier.Subresources.NumMipLevels = viewDesc.mipLevels;
+                barrier.Subresources.FirstArraySlice = viewDesc.baseArrayLayer;
+                barrier.Subresources.NumArraySlices = viewDesc.arrayLayers;
+
+                switch (viewDesc.aspect) {
+                case ITextureView::Aspect::Stencil:
+                    barrier.Subresources.FirstPlane = 1;
+                    barrier.Subresources.NumPlanes = 1;
+                    break;
+                    
+                case ITextureView::Aspect::DepthStencil:
+                    barrier.Subresources.FirstPlane = 0;
+                    barrier.Subresources.NumPlanes = 2;
+                    break;
+
+                case ITextureView::Aspect::Color:
+                case ITextureView::Aspect::Depth:
+                default:
+                    barrier.Subresources.FirstPlane = 0;
+                    barrier.Subresources.NumPlanes = 1;
+                }
             }
         }
 
@@ -2125,6 +1849,211 @@ namespace alloy::dxc
         }
 
         GetCmdList()->Barrier(barrierGrps.size(), barrierGrps.data());
+    }
+
+    
+    
+    static void _FillInTransitionBarrierResEnhanced(
+        D3D12_TEXTURE_BARRIER& barrier,
+        const DXCTextureView* pView
+    ) {
+
+        auto view = pView;
+        auto texture = view->GetTextureObject();
+        auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
+        const auto& viewDesc = view->GetDesc();
+
+        barrier.pResource = dxcTex->GetHandle();
+        barrier.Subresources.IndexOrFirstMipLevel = viewDesc.baseMipLevel;
+        barrier.Subresources.NumMipLevels = viewDesc.mipLevels;
+        barrier.Subresources.FirstArraySlice = viewDesc.baseArrayLayer;
+        barrier.Subresources.NumArraySlices = viewDesc.arrayLayers;
+        barrier.Subresources.FirstPlane = 0;
+        barrier.Subresources.NumPlanes = 1;
+
+    };
+
+    void DXCCommandList7::_TransitionColorTargetsToMSAAResolveLayout(
+        std::span<const DXCTextureView*> resolveSrcs,
+        std::span<const DXCTextureView*> resolveDsts
+    ) {
+        
+        std::vector<D3D12_TEXTURE_BARRIER> barriers{};
+        
+        for(auto pSrcView : resolveSrcs) {
+            auto& barrier = barriers.emplace_back();
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                pSrcView);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RENDER_TARGET;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+        }
+
+        
+        for(auto pDstView : resolveDsts) {
+            auto& barrier = barriers.emplace_back();
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                pDstView);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RENDER_TARGET;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+        }
+
+        if(!barriers.empty()) {
+            D3D12_BARRIER_GROUP grp{};
+            grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            grp.NumBarriers = barriers.size();
+            grp.pTextureBarriers = barriers.data();
+
+            GetCmdList()->Barrier(1, &grp);
+        }
+    }
+
+    void DXCCommandList7::_TransitionColorTargetsFromMSAAResolveLayout(
+        std::span<const DXCTextureView*> resolveSrcs,
+        std::span<const DXCTextureView*> resolveDsts
+    ) {
+        
+        std::vector<D3D12_TEXTURE_BARRIER> barriers{};
+        
+        for(auto pSrcView : resolveSrcs) {
+            auto& barrier = barriers.emplace_back();
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                pSrcView);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+        }
+
+        
+        for(auto pDstView : resolveDsts) {
+            auto& barrier = barriers.emplace_back();
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                pDstView);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+        }
+
+        if(!barriers.empty()) {
+            D3D12_BARRIER_GROUP grp{};
+            grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            grp.NumBarriers = barriers.size();
+            grp.pTextureBarriers = barriers.data();
+
+            GetCmdList()->Barrier(1, &grp);
+        }
+    }
+    
+    void DXCCommandList7::_TransitionDSTargetsToMSAAResolveLayout(
+        DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+    ) {
+        
+        auto srcAccess = isSrcReadOnly ? D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ
+                          : D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+        auto srcLayout = isSrcReadOnly ? D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ
+                          : D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+        
+        D3D12_TEXTURE_BARRIER barriers[2]{};
+        {
+            auto& barrier = barriers[0];
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                src);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+            barrier.AccessBefore = srcAccess;
+            barrier.LayoutBefore = srcLayout;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+        }
+        {
+            auto& barrier = barriers[0];
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                src);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+            barrier.AccessBefore = srcAccess;
+            barrier.LayoutBefore = srcLayout;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+        }
+        {
+            D3D12_BARRIER_GROUP grp{};
+            grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            grp.NumBarriers = 2;
+            grp.pTextureBarriers = barriers;
+
+            GetCmdList()->Barrier(1, &grp);
+        }
+
+    }
+    void DXCCommandList7::_TransitionDSTargetsFromMSAAResolveLayout(
+        DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+    ) {
+        auto srcAccess = isSrcReadOnly ? D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ
+                          : D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+        auto srcLayout = isSrcReadOnly ? D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ
+                          : D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+        
+        D3D12_TEXTURE_BARRIER barriers[2]{};
+        {
+            auto& barrier = barriers[0];
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                src);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+            barrier.AccessAfter = srcAccess;
+            barrier.LayoutAfter = srcLayout;
+        }
+        {
+            auto& barrier = barriers[0];
+            _FillInTransitionBarrierResEnhanced(
+                barrier, 
+                src);
+            barrier.SyncBefore = D3D12_BARRIER_SYNC_RESOLVE;
+            barrier.AccessBefore = D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+            barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+            barrier.AccessAfter = srcAccess;
+            barrier.LayoutAfter = srcLayout;
+        }
+        {
+            D3D12_BARRIER_GROUP grp{};
+            grp.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            grp.NumBarriers = 2;
+            grp.pTextureBarriers = barriers;
+
+            GetCmdList()->Barrier(1, &grp);
+        }
     }
 
 

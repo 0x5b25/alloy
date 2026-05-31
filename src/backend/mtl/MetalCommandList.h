@@ -40,6 +40,7 @@ public:
 
     virtual void EndPass() {}
 
+    virtual id<MTLCommandEncoder> GetEnc() const = 0;
   //void RegisterObjInUse(const common::sp<common::RefCntBase> &obj);
   // void WaitForFence(const common::sp<IFence>& fence);
   // void UpdateFence(const common::sp<IFence>& fence);
@@ -118,6 +119,8 @@ public:
         _mtlEnc = nullptr;
     }
 
+    virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
+
     void SetPipelineBase(MetalGfxPipelineBase* mtlPipeline);
 
     virtual void SetPipeline(const common::sp<IGfxPipeline>&) override;
@@ -151,11 +154,17 @@ public:
         const common::sp<IResourceSet>& rs
         //const std::vector<std::uint32_t>& dynamicOffsets
         ) override;
+    virtual void SetGraphicsMutableResourceSet(
+        const common::sp<IMutableResourceSet>& rs) override;
+
+    virtual void SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
 
     virtual void SetPushConstants(
         std::uint32_t pushConstantIndex,
-        const std::span<uint32_t>& data,
+        std::span<const uint32_t> data,
         std::uint32_t destOffsetIn32BitValues) override;
 
     //Subsituted by BeginWithRenderEncoder and EndEncoding
@@ -180,7 +189,7 @@ public:
     // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
     // <param name="index">The color target index.</param>
     // <param name="viewport">The new <see cref="Viewport"/>.</param>
-    virtual void SetViewports(const std::span<Viewport>& viewport) override;
+    virtual void SetViewports(std::span<const Viewport> viewport) override;
     virtual void SetFullViewport() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
@@ -194,7 +203,7 @@ public:
     // <param name="y">The Y value of the scissor rectangle.</param>
     // <param name="width">The width of the scissor rectangle.</param>
     // <param name="height">The height of the scissor rectangle.</param>
-    virtual void SetScissorRects(const std::span<Rect>&  rects) override;
+    virtual void SetScissorRects(std::span<const Rect> rects) override;
     virtual void SetFullScissorRect() override;
     // This at least should be inside a renderpass, therefore a framebuffer exists,
     // then we can get fb sizes
@@ -260,10 +269,6 @@ public:
                               std::uint32_t groupCountY,
                               std::uint32_t groupCountZ) override;
 
-
-    virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override;
-    virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override;
-
 };
 
 
@@ -289,16 +294,24 @@ public:
 
         virtual void EndPass() override {}
 
+        virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
+
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
@@ -320,11 +333,6 @@ public:
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
-
-
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
-
     };
 
 
@@ -352,6 +360,8 @@ public:
             _mtlEnc = nullptr;
         }
 
+        virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
+
         /// <summary>
         /// Copies a region from the source <see cref="DeviceBuffer"/> to another region in the destination <see cref="DeviceBuffer"/>.
         /// </summary>
@@ -371,7 +381,7 @@ public:
             const common::sp<BufferRange>& source,
             std::uint32_t sourceBytesPerRow,
             std::uint32_t sourceBytesPerImage,
-            const common::sp<ITexture>& destination,
+            const common::sp<ITextureView>& destination,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -379,7 +389,7 @@ public:
         ) override;
 
         virtual void CopyTextureToBuffer(
-            const common::sp<ITexture>& source,
+            const common::sp<ITextureView>& source,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
@@ -406,11 +416,11 @@ public:
         /// <param name="depth">The depth in texels of the copy region.</param>
         /// <param name="layerCount">The number of array layers to copy.</param>
         virtual void CopyTexture(
-            const common::sp<ITexture>& source,
+            const common::sp<ITextureView>& source,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const common::sp<ITexture>& destination,
+            const common::sp<ITextureView>& destination,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -501,11 +511,6 @@ public:
         /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
         /// (<see cref="Texture.SampleCount"/> == 1).</param>
         //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-
-
-        virtual void WaitForFence(const common::sp<IFence>&) override {}
-        virtual void UpdateFence(const common::sp<IFence>&) override {}
-
     };
 
 
@@ -526,14 +531,12 @@ public:
 
     virtual ~MetalCommandList() override;
 
-
-    void RegisterObjInUse(const common::sp<common::RefCntBase>& obj) {_objsInUse.emplace(obj);}
-
     virtual void Begin() override {}
     virtual void End() override {}
 
-    virtual IRenderCommandEncoder&   BeginRenderPass(const RenderPassAction&) override;
-    virtual IComputeCommandEncoder&  BeginComputePass() override;
+    virtual IRenderCommandEncoder&   BeginRenderPass(const RenderPassAction&,
+                                                     const PassResourceUsage&) override;
+    virtual IComputeCommandEncoder&  BeginComputePass(const PassResourceUsage&) override;
     virtual ITransferCommandEncoder& BeginTransferPass() override;
     //virtual IBaseCommandEncoder*     BeginWithBasicEncoder() override;
 
@@ -547,32 +550,40 @@ public:
     //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
     //virtual void EndRenderPass() = 0;
 
-    virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override {}
-    virtual void TransitionTextureToDefaultLayout(
-        const std::vector<common::sp<ITexture>>& textures
-    ) override {}
+    virtual void Barrier(std::span<const alloy::BarrierOp> barriers) override {}
 
     // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
     // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order
     // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to
     // <see cref="PopDebugGroup"/>.
     // <param name="name">The name of the group. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void PushDebugGroup(const std::string& name,const Color4f& color) override {}
+    virtual void PushDebugGroup(const std::string& name,const Color4f& color) override {
+        @autoreleasepool {
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [_cmdBuf pushDebugGroup:nsSrc];
+        }
+    }
 
     // Pops the current debug group. This method must only be called after <see cref="PushDebugGroup(string)"/> has been
     // called on this instance.
-    virtual void PopDebugGroup() override {}
+    virtual void PopDebugGroup() override {
+        @autoreleasepool {
+            [_cmdBuf popDebugGroup];
+        }
+    }
 
     // Inserts a debug marker into the CommandList at the current position. This is used by graphics debuggers to identify
     // points of interest in a command stream.
     // <param name="name">The name of the marker. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override {}
+    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override;
 
     //virtual void EncodeWaitForEvent(const common::sp<IEvent>& event, uint64_t expectedValue) override;
     //virtual void EncodeSignalEvent(const common::sp<IEvent>& event, uint64_t value) override;
 
 
     //virtual void Present(const common::sp<RenderTarget>& ) override;
+
+    virtual void SetDebugName(const std::string& ) override;
 
     id<MTLCommandBuffer> GetHandle() const {return _cmdBuf;}
 };

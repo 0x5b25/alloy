@@ -76,15 +76,8 @@ namespace alloy
             bool isRawBuffer;
         };
           
-
-    protected:
-        IBuffer( const Description& desc ) : description(desc) { };
-
-    protected:
-        Description description;
-
     public:
-        const Description& GetDesc() {return description;}
+        virtual const Description& GetDesc() const = 0;
 
         virtual void* MapToCPU() = 0;
 
@@ -170,7 +163,7 @@ namespace alloy
 
         virtual ResourceKind GetResourceKind() const override { return _kind; }
 
-        IBuffer* GetBufferObject() const {return _buffer.get();}
+        const common::sp<IBuffer> GetBufferObject() const {return _buffer;}
         
         const Shape& GetShape() const {return _shape;}
 

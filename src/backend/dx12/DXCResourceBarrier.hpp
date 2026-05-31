@@ -1,10 +1,10 @@
 #pragma once
 
 #include "alloy/ResourceBarrier.hpp"
-#include "utils/ResourceStateTracker.hpp"
 
 #include <dxgi1_4.h> //Guaranteed by DX12
 #include <d3d12.h>
+#include <span>
 
 namespace alloy::dxc
 {
@@ -28,15 +28,15 @@ namespace alloy::dxc
         DXCDevice* dev,
         ID3D12GraphicsCommandList7* cmdBuf,
         const alloy::utils::BarrierActions& barriers);
-    
+
     void BindBarrier(
         DXCCommandList* cmdBuf,
-        const std::vector<alloy::BarrierDescription>& barriers);
+        std::span<const alloy::BarrierOp> barriers);
 
         
     void BindBarrierEnhanced(
         DXCCommandList7* cmdBuf,
-        const std::vector<alloy::BarrierDescription>& barriers);
+        std::span<const alloy::BarrierOp> barriers);
 
 } // namespace alloy
 

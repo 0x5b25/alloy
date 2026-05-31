@@ -9,9 +9,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "D3DDescriptorHeapMgr.hpp"
+#include "DXCPipeline.hpp"
 #include "DXCPipeline.hpp"
 #include "DXCBindableResource.hpp"
-#include "DXCFrameBuffer.hpp"
 
 
 //platform specific headers
@@ -31,35 +32,12 @@ namespace alloy::dxc
     class DXCDevice;
     class DXCBuffer;
     class DXCTexture;
+    class DXCTextureView;
     class DXCCmdEncBase;
 
     constexpr auto DXC_RESOURCE_STATE_ANY = (D3D12_RESOURCE_STATES)-1;
 
     class DXCCommandList: public ICommandList{
-
-    public:
-
-        struct ResourceStates {
-            struct StatePair {
-                D3D12_RESOURCE_STATES initial, final;
-            };
-
-            std::unordered_map<DXCBuffer*, StatePair> buffers;
-            std::unordered_map<DXCTexture*, StatePair> textures;
-
-            void SyncTo(const ResourceStates& other) {
-                for(auto& [k, v] : other.buffers)
-                    buffers.insert_or_assign(k, v);
-                for(auto& [k, v] : other.textures)
-                    textures.insert_or_assign(k, v);
-            }
-
-            void Clear() {
-                buffers.clear();
-                textures.clear();
-            }
-        };
-
 
     protected:
         common::sp<DXCDevice> _dev;
@@ -84,7 +62,7 @@ namespace alloy::dxc
         //  4. Any resource implicitly promoted to a read-only state.
         //only the texture states need explicit request and update.
         //decltype(ResourceStates::textures) _requestedStates, _finalStates;
-        decltype(ResourceStates::textures) _statePairs;
+        //decltype(ResourceStates::textures) _statePairs;
 
         //sp<VulkanPipelineBase> _currentPipeline;
         //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
@@ -123,30 +101,46 @@ namespace alloy::dxc
         virtual void ClearDepthStencil(float depth, std::uint8_t stencil) override;
 #endif
 
+        virtual void _TransitionColorTargetsToMSAAResolveLayout(
+            std::span<const DXCTextureView*> resolveSrcs,
+            std::span<const DXCTextureView*> resolveDsts
+        );
+
+        virtual void _TransitionColorTargetsFromMSAAResolveLayout(
+            std::span<const DXCTextureView*> resolveSrcs,
+            std::span<const DXCTextureView*> resolveDsts
+        );
+        
+        virtual void _TransitionDSTargetsToMSAAResolveLayout(
+            DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+        );
+        virtual void _TransitionDSTargetsFromMSAAResolveLayout(
+            DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+        );
 
         ///#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& ) override;
+        virtual IComputeCommandEncoder& BeginComputePass( const PassResourceUsage& ) override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+        
+        virtual void SetDebugName(const std::string& debugName) override {
+            _cmdList->SetPrivateData( WKPDID_D3DDebugObjectName, debugName.size(), debugName.data() );
+        }
 
         virtual void EndPass() override;
 
 
-        virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
+        virtual void Barrier(std::span<const alloy::BarrierOp>) override;
 
-        virtual void TransitionTextureToDefaultLayout(
-            const std::vector<common::sp<ITexture>>& textures
-        ) override;
 
         virtual void PushDebugGroup(const std::string& name, const Color4f&) override;
 
         virtual void PopDebugGroup() override;
 
         virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
-
-        //const auto& GetRequestedResourceStates() const { return _requestedStates; }
-        const auto& GetResourceStates() const { return _statePairs; }
     };
 
 
@@ -168,8 +162,7 @@ namespace alloy::dxc
         //    3. During replay, resource states will be populated with current
         //        states within command list to enable explicit resource transition
         //        during command playback, namely Get(Buffer|Tex)State
-        DXCCommandList::ResourceStates resStates;
-        std::vector<std::function<void()>> recordedCmds;
+        //DXCCommandList::ResourceStates resStates;
 
         DXCCmdEncBase(DXCDevice* dev,
                       DXCCommandList* cmdList)
@@ -180,47 +173,13 @@ namespace alloy::dxc
 
         virtual ~DXCCmdEncBase() {}
 
-        //End commandpass will write commands into command list
-        virtual void EndPass();
+        virtual void EndPass() {}
 
         ID3D12GraphicsCommandList1* GetCmdList() const;
         //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() {
         //    assert(false);
         //    return nullptr;
         //}
-
-        //Claim expected resource states
-        void RegisterBufferUsage(
-            DXCBuffer* buffer,
-            D3D12_RESOURCE_STATES state
-        );
-
-        void RegisterTexUsage(
-            DXCTexture* tex,
-            D3D12_RESOURCE_STATES state
-        );
-
-        //Update current resource states.
-        // Indicates explicit state transition
-        // is performed by this operation
-        void RegisterBufferStateChange(
-            DXCBuffer* buffer,
-            D3D12_RESOURCE_STATES state
-        );
-
-        void RegisterTexStateChange(
-            DXCTexture* tex,
-            D3D12_RESOURCE_STATES state
-        );
-
-        void RegisterResourceSet(DXCResourceSet* d3drs);
-
-        D3D12_RESOURCE_STATES GetBufferState(DXCBuffer* tex) const;
-        D3D12_RESOURCE_STATES GetTexState(DXCTexture* tex) const;
-
-        //return old states
-        D3D12_RESOURCE_STATES SetBufferState(DXCBuffer* tex, D3D12_RESOURCE_STATES newState);
-        D3D12_RESOURCE_STATES SetTexState(DXCTexture* tex, D3D12_RESOURCE_STATES newState);
 
         //Color from high to low is a(ignored),r,g,b
         void PushDebugGroup(const std::string& name, uint32_t color);
@@ -232,6 +191,9 @@ namespace alloy::dxc
     };
 
     struct DXCRenderCmdEnc : public IRenderCommandEncoder, public DXCCmdEncBase {
+
+        std::vector<_Descriptor> _rtvHandles;
+        _Descriptor _dsvHandle;
 
         DXCGraphicsPipeline* GetPipeline() {
             return static_cast<DXCGraphicsPipeline*>(currentPipeline);
@@ -245,7 +207,7 @@ namespace alloy::dxc
             const RenderPassAction &act
         );
 
-        virtual ~DXCRenderCmdEnc() {}
+        virtual ~DXCRenderCmdEnc() override;
 
         //virtual DXCResourceLayout* GetResourceLayoutForCurrentPipeline() override;
 
@@ -261,16 +223,21 @@ namespace alloy::dxc
 
 
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
+        virtual void SetGraphicsMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
-        virtual void SetViewports(const std::span<Viewport>& viewport) override;
+        virtual void SetViewports( std::span<const Viewport> viewport) override;
         virtual void SetFullViewport() override;
 
-        virtual void SetScissorRects(const std::span<Rect>& ) override;
+        virtual void SetScissorRects( std::span<const Rect> ) override;
         virtual void SetFullScissorRect() override;
 
 
@@ -301,10 +268,6 @@ namespace alloy::dxc
             assert(false);
         }
 
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
-
-
     };
 
     struct DXCComputeCmdEnc : public IComputeCommandEncoder, public DXCCmdEncBase {
@@ -324,10 +287,15 @@ namespace alloy::dxc
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
@@ -351,10 +319,6 @@ namespace alloy::dxc
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) override
 #endif
-
-
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     };
 
     struct DXCTransferCmdEnc : public ITransferCommandEncoder, public DXCCmdEncBase {
@@ -372,7 +336,7 @@ namespace alloy::dxc
             const common::sp<BufferRange>& src,
             std::uint32_t srcBytesPerRow,
             std::uint32_t srcBytesPerImage,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -380,7 +344,7 @@ namespace alloy::dxc
         ) override;
 
         virtual void CopyTextureToBuffer(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
@@ -391,11 +355,11 @@ namespace alloy::dxc
         ) override;
 
         virtual void CopyTexture(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -404,9 +368,6 @@ namespace alloy::dxc
         //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
 
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
-
-        virtual void WaitForFence(const common::sp<IFence>&) override {}
-        virtual void UpdateFence(const common::sp<IFence>&) override {}
     };
 
     class DXCCommandList6 : public DXCCommandList {
@@ -423,7 +384,8 @@ namespace alloy::dxc
 
 
         //Returns DXCRenderCmdEnc6 that supports mesh shader
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction& actions) override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction& actions,
+                                                        const PassResourceUsage& usage ) override;
 
     };
 
@@ -462,7 +424,25 @@ namespace alloy::dxc
 
         ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }
 
-        virtual void Barrier(const std::vector<alloy::BarrierDescription>&) override;
+        virtual void Barrier(std::span<const alloy::BarrierOp>) override;
+
+        virtual void _TransitionColorTargetsToMSAAResolveLayout(
+            std::span<const DXCTextureView*> resolveSrcs,
+            std::span<const DXCTextureView*> resolveDsts
+        ) override;
+
+        virtual void _TransitionColorTargetsFromMSAAResolveLayout(
+            std::span<const DXCTextureView*> resolveSrcs,
+            std::span<const DXCTextureView*> resolveDsts
+        ) override;
+        
+        virtual void _TransitionDSTargetsToMSAAResolveLayout(
+            DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+        ) override;
+        virtual void _TransitionDSTargetsFromMSAAResolveLayout(
+            DXCTextureView* src, DXCTextureView* dst, bool isSrcReadOnly
+        ) override;
+
     };
 
 

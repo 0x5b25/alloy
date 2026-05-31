@@ -1,6 +1,7 @@
 #include "DXCTexture.hpp"
 
 #include "alloy/common/Common.hpp"
+#include "alloy/Helpers.hpp"
 
 #include "DXCDevice.hpp"
 #include "D3DTypeCvt.hpp"
@@ -11,9 +12,15 @@
 
 namespace alloy::dxc {
 
-    uint32_t DXCTexture::ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer)
-    {
-        return ((arrayLayer * mipLevelCount) + mipLevel);
+    uint32_t DXCTexture::ComputeSubresource(uint32_t mipLevel, 
+                                           uint32_t mipLevelCount, 
+                                           uint32_t arrayLayer, 
+                                           uint32_t arrayLayerCount, 
+                                           uint32_t plane
+    ) {
+        return (plane * arrayLayerCount * mipLevelCount) +       
+               (arrayLayer * mipLevelCount) + 
+               mipLevel;
     };
 
     void DXCTexture::SetResource(ID3D12Resource* res) {
@@ -22,8 +29,6 @@ namespace alloy::dxc {
     }
 
     DXCTexture::~DXCTexture() {
-        for(auto& timeline : timelines)
-            timeline->RemoveResource(this);
         if(_allocation) {
             //Resource is managed by D3D12MA allocation
             //We don't need ot manually release it, the
@@ -239,7 +244,9 @@ namespace alloy::dxc {
         uint32_t srcRowPitch,
         uint32_t srcDepthPitch
     ) {
-        auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
+        
+        // #TODO: deprecate or replace with correct value
+        auto subResIdx = ComputeSubresource(mipLevel, _desc.mipLevels, arrayLayer,0,0);
 
         D3D12_BOX dstBox {
             .left = dstOrigin.x,
@@ -268,7 +275,9 @@ namespace alloy::dxc {
         Point3D srcOrigin,
         Size3D readSize
     ) {
-        auto subResIdx = ComputeSubresource(mipLevel, description.mipLevels, arrayLayer);
+        
+        // #TODO: deprecate or replace with correct value
+        auto subResIdx = ComputeSubresource(mipLevel, _desc.mipLevels, arrayLayer,0,0);
 
         D3D12_BOX srcBox {
             .left = srcOrigin.x,
@@ -300,7 +309,8 @@ namespace alloy::dxc {
         ID3D12Device* pDevice;
         _res->GetDevice(IID_PPV_ARGS(&pDevice));
 
-        auto subresIdx = ComputeSubresource(mipLevel, desc.MipLevels, arrayLayer);
+        // #TODO: deprecate or replace with correct value
+        auto subresIdx = ComputeSubresource(mipLevel, desc.MipLevels, arrayLayer, 0, 0);
 
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
 
@@ -344,30 +354,44 @@ namespace alloy::dxc {
 
         return ret;
     }
-
-    common::sp<DXCTextureView> DXCTextureView::Make (
-        const common::sp<DXCTexture>& tex,
-        const ITextureView::Description& desc
-    ) {
-        return common::sp(new DXCTextureView(tex, desc));
-    }
-
     
     void DXCTexture::SetDebugName(const std::string& name) {
         GetHandle()->SetPrivateData( WKPDID_D3DDebugObjectName, name.size(), name.data() );
     }
 
-    void DXCTexture::NotifyUsageOn(IDXCTimeline* timeline) {
-        //Resource is used on timeline, clear stale data on other
-        //timelines
-        for(auto t : timelines) {
-            if(t == timeline) {
-                continue;
-            }
-            t->RemoveResource(this);
+    DXCTextureView::DXCTextureView(
+        common::sp<DXCTexture> target,
+        const ITextureView::Description& desc
+    ) 
+        : _desc(desc)
+        , _target(std::move(target))
+    {
+        if(_desc.aspect == Aspect::Auto) {
+            auto format = _target->GetDesc().format;
+            _desc.aspect = FormatHelpers::GetAspectFromPixelFormat(format);
+        }
+    }
+
+    
+    uint32_t DXCTextureView::ComputeSubresource(uint32_t mipLvl, uint32_t arrayLayer) const {
+        uint32_t planeSlice;
+        switch(_desc.aspect) {
+            case Aspect::Stencil:
+                planeSlice = 1; break;
+            case Aspect::Color: 
+            case Aspect::Depth: 
+            case Aspect::DepthStencil:
+            default: 
+                planeSlice = 0; break;
         }
 
-        timelines = {timeline};
+        const auto& texDesc = _target->GetDesc();
+        return DXCTexture::ComputeSubresource(
+            _desc.baseMipLevel + mipLvl, 
+            texDesc.mipLevels, 
+            _desc.baseArrayLayer + arrayLayer,
+            texDesc.arrayLayers,
+            planeSlice
+        );
     }
-    
 }

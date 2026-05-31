@@ -22,14 +22,24 @@ set(VLD_MISC_SRCS
     "src/common/Waitable.cpp"
     "src/utils/Allocators.cpp"
     "src/utils/Allocators.hpp"
-    #"src/utils/ResourceStateTracker.cpp"
-    #"src/utils/ResourceStateTracker.hpp"
+    
+    "src/layers/AutoResourceUsageTracking/TrackedResource.cpp"
+    "src/layers/AutoResourceUsageTracking/TrackedResource.hpp"
+    "src/layers/AutoResourceUsageTracking/TrackingCommandList.cpp"
+    "src/layers/AutoResourceUsageTracking/TrackingCommandList.hpp"
+    "src/layers/AutoResourceUsageTracking/TrackingDevice.cpp"
+    "src/layers/AutoResourceUsageTracking/TrackingDevice.hpp"
+    "src/layers/AutoResourceUsageTracking/TrackingResourceFactory.cpp"
+    "src/layers/AutoResourceUsageTracking/TrackingResourceFactory.hpp"
+    "src/layers/AutoResourceUsageTracking/TrackingTimeline.cpp"
+    "src/layers/AutoResourceUsageTracking/TrackingTimeline.hpp"
 )
 
 
 set(VLD_IFACE_HEADERS
     "include/alloy/alloy.hpp"
     "include/alloy/Context.hpp"
+    "include/alloy/DescriptorHeap.hpp"
     "include/alloy/RenderPass.hpp"
     "include/alloy/CommandQueue.hpp"
     "include/alloy/Buffer.hpp"
@@ -38,7 +48,6 @@ set(VLD_IFACE_HEADERS
     "include/alloy/BindableResource.hpp"
     "include/alloy/SyncObjects.hpp"
     "include/alloy/FixedFunctions.hpp"
-    "include/alloy/FrameBuffer.hpp"
     "include/alloy/GraphicsDevice.hpp"
     "include/alloy/Helpers.hpp"
     "include/alloy/Pipeline.hpp"
@@ -229,4 +238,4 @@ install(TARGETS Veldrid
 alloy_install_runtime_deps(
     COMPONENT alloy
     RUNTIME_DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    APPLE_XCFRAMEWORK_DESTINATION "${CMAKE_INSTALL_LIBDIR}/xcframeworks")
+    APPLE_FRAMEWORK_DESTINATION "${CMAKE_INSTALL_LIBDIR}/xcframeworks")

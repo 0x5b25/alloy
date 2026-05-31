@@ -12,66 +12,46 @@ namespace alloy::dxc {
             return D3D12_RESOURCE_STATE_COMMON;
         }
 
-        //if(sync & D3D12_BARRIER_SYNC_RESOLVE) { 
-            if(access == ResourceAccess::RESOLVE_SOURCE)
-                return D3D12_RESOURCE_STATE_RESOLVE_SOURCE; 
-            if(access == ResourceAccess::RESOLVE_DEST)
-                return D3D12_RESOURCE_STATE_RESOLVE_DEST; 
-        //}
+        if(access == ResourceAccess::CopySource)
+            return D3D12_RESOURCE_STATE_COPY_SOURCE;
+        if(access == ResourceAccess::CopyDest)
+            return D3D12_RESOURCE_STATE_COPY_DEST;
 
-        //if(sync & D3D12_BARRIER_SYNC_COPY) { 
-            if(access == ResourceAccess::COPY_SOURCE)
-                return D3D12_RESOURCE_STATE_COPY_SOURCE; 
-            if(access == ResourceAccess::COPY_DEST)
-                return D3D12_RESOURCE_STATE_COPY_DEST; 
-        //}
+        if(access == ResourceAccess::AccelerationStructureRead ||
+           access == ResourceAccess::AccelerationStructureWrite)
+            return D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 
-        //if(sync & D3D12_BARRIER_SYNC_RAYTRACING) {
-            if(access == ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_READ ||
-               access == ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_WRITE)
-                return D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-        //}
-
-        //if(sync & D3D12_BARRIER_SYNC_EXECUTE_INDIRECT) {
-        if(access == ResourceAccess::INDIRECT_ARGUMENT)
+        if(access == ResourceAccess::IndirectArgumentRead)
             return D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-        //}
 
-        //if(sync & D3D12_BARRIER_SYNC_RENDER_TARGET) {
-        if(access == ResourceAccess::RENDER_TARGET)
+        if(access == ResourceAccess::RenderTarget)
             return D3D12_RESOURCE_STATE_RENDER_TARGET;
-        //}
 
-        //if(sync & D3D12_BARRIER_SYNC_DEPTH_STENCIL) {
-            if(access == ResourceAccess::DepthStencilWritable)
-                return D3D12_RESOURCE_STATE_DEPTH_WRITE;   
-            if(access == ResourceAccess::DepthStencilReadOnly)
-                return D3D12_RESOURCE_STATE_DEPTH_READ;
-        //}
+        if(access == ResourceAccess::DepthStencilWrite)
+            return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        if(access == ResourceAccess::DepthStencilRead)
+            return D3D12_RESOURCE_STATE_DEPTH_READ;
 
-        //Infer from access flags
-        if(access == ResourceAccess::UNORDERED_ACCESS) {
+        if(access == ResourceAccess::UnorderedAccess) {
             return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
 
-        if(access == ResourceAccess::SHADER_RESOURCE) {
+        if(access == ResourceAccess::ShaderResourceRead) {
             return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-            //if(sync & D3D12_BARRIER_SYNC_PIXEL_SHADING) {
                 | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            //}
         }
 
-        if(access == ResourceAccess::INDEX_BUFFER) {
+        if(access == ResourceAccess::IndexBufferRead) {
             return D3D12_RESOURCE_STATE_INDEX_BUFFER;
         }
 
-        if(access == ResourceAccess::VERTEX_BUFFER ||
-           access == ResourceAccess::CONSTANT_BUFFER) {
+        if(access == ResourceAccess::VertexBufferRead ||
+           access == ResourceAccess::ConstantBufferRead) {
             return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
         }
 
-        if(access == ResourceAccess::STREAM_OUTPUT) {
-            return D3D12_RESOURCE_STATE_STREAM_OUT;
+        if(access == ResourceAccess::Present) {
+            return D3D12_RESOURCE_STATE_COMMON;
         }
 
         return {};
@@ -79,18 +59,18 @@ namespace alloy::dxc {
 
     D3D12_BARRIER_LAYOUT AlToD3DTexLayoutEnhanced (const alloy::TextureLayout& layout) {
         switch(layout) {
-            case alloy::TextureLayout::UNDEFINED: return D3D12_BARRIER_LAYOUT_UNDEFINED;
-            case alloy::TextureLayout::COMMON_READ: return D3D12_BARRIER_LAYOUT_GENERIC_READ;
-            case alloy::TextureLayout::RENDER_TARGET: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
-            case alloy::TextureLayout::UNORDERED_ACCESS: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
-            case alloy::TextureLayout::DEPTH_STENCIL_WRITE: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
-            case alloy::TextureLayout::DEPTH_STENCIL_READ: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
-            case alloy::TextureLayout::SHADER_RESOURCE: return D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
-            case alloy::TextureLayout::COPY_SOURCE: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
-            case alloy::TextureLayout::COPY_DEST: return D3D12_BARRIER_LAYOUT_COPY_DEST;
-            case alloy::TextureLayout::RESOLVE_SOURCE: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
-            case alloy::TextureLayout::RESOLVE_DEST: return D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
-            case alloy::TextureLayout::SHADING_RATE_SOURCE: return D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE;
+            case alloy::TextureLayout::Undefined: return D3D12_BARRIER_LAYOUT_UNDEFINED;
+            case alloy::TextureLayout::General: return D3D12_BARRIER_LAYOUT_COMMON;
+            case alloy::TextureLayout::ShaderReadOnly: return D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
+            case alloy::TextureLayout::Storage: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+            case alloy::TextureLayout::ColorAttachment: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+            case alloy::TextureLayout::DepthStencilReadOnly: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
+            case alloy::TextureLayout::DepthStencilWrite: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+            case alloy::TextureLayout::CopySource: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+            case alloy::TextureLayout::CopyDest: return D3D12_BARRIER_LAYOUT_COPY_DEST;
+            case alloy::TextureLayout::ResolveSource: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+            case alloy::TextureLayout::ResolveDest: return D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+            case alloy::TextureLayout::Present: return D3D12_BARRIER_LAYOUT_PRESENT;
 
             default: return D3D12_BARRIER_LAYOUT_COMMON;
         }
@@ -98,53 +78,36 @@ namespace alloy::dxc {
 
     D3D12_BARRIER_SYNC AlToD3DPipelineStageEnhanced(PipelineStage stage) {
 
-        if(stage == alloy::PipelineStage::All)
+        if(stage == alloy::PipelineStage::AllCommands)
             return D3D12_BARRIER_SYNC_ALL;
 
-        //if(stage == alloy::PipelineStage::TopOfPipe){
-        //    if(isStagesBefore)
-        //        return D3D12_BARRIER_SYNC_NONE;
-        //    else
-        //        return D3D12_BARRIER_SYNC_ALL;
-        //}
-        //if(stage == alloy::PipelineStage::BottomOfPipe) {
-        //    if(isStagesBefore)
-        //        return D3D12_BARRIER_SYNC_ALL;
-        //    else
-        //        return D3D12_BARRIER_SYNC_NONE;
-        //}
-
-        if(stage == alloy::PipelineStage::Draw)
+        if(stage == alloy::PipelineStage::AllGraphics)
             return D3D12_BARRIER_SYNC_DRAW;
-        if(stage == alloy::PipelineStage::NonPixelShading)
-            return D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
-        if(stage == alloy::PipelineStage::AllShading)
+        if(stage == alloy::PipelineStage::AllShaders)
             return D3D12_BARRIER_SYNC_ALL_SHADING;
 
-
-        if(stage == alloy::PipelineStage::INPUT_ASSEMBLER)
-            return D3D12_BARRIER_SYNC_INDEX_INPUT;
-        if(stage == alloy::PipelineStage::VERTEX_SHADING)
-            return D3D12_BARRIER_SYNC_VERTEX_SHADING;
-        if(stage == alloy::PipelineStage::PIXEL_SHADING)
-            return D3D12_BARRIER_SYNC_PIXEL_SHADING;
-        if(stage == alloy::PipelineStage::DEPTH_STENCIL)
-            return D3D12_BARRIER_SYNC_DEPTH_STENCIL;
-        if(stage == alloy::PipelineStage::RENDER_TARGET)
-            return D3D12_BARRIER_SYNC_RENDER_TARGET;
-        if(stage == alloy::PipelineStage::COMPUTE_SHADING)
-            return D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-        if(stage == alloy::PipelineStage::RAYTRACING)
-            return D3D12_BARRIER_SYNC_RAYTRACING;
-        if(stage == alloy::PipelineStage::COPY)
-            return D3D12_BARRIER_SYNC_COPY;
-        if(stage == alloy::PipelineStage::RESOLVE)
-            return D3D12_BARRIER_SYNC_RESOLVE;
-        if(stage == alloy::PipelineStage::EXECUTE_INDIRECT)
+        if(stage == alloy::PipelineStage::DrawIndirect)
             return D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
-        //if(stage == alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO){  }
-        //if(stage == alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE){  }
-        //if(stage == alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE){  }
+        if(stage == alloy::PipelineStage::VertexInput)
+            return D3D12_BARRIER_SYNC_INDEX_INPUT;
+        if(stage == alloy::PipelineStage::VertexShader)
+            return D3D12_BARRIER_SYNC_VERTEX_SHADING;
+        if(stage == alloy::PipelineStage::MeshShader)
+            return D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
+        if(stage == alloy::PipelineStage::FragmentShader)
+            return D3D12_BARRIER_SYNC_PIXEL_SHADING;
+        if(stage == alloy::PipelineStage::DepthStencil)
+            return D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+        if(stage == alloy::PipelineStage::ColorOutput)
+            return D3D12_BARRIER_SYNC_RENDER_TARGET;
+        if(stage == alloy::PipelineStage::ComputeShader)
+            return D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+        if(stage == alloy::PipelineStage::RayTracing)
+            return D3D12_BARRIER_SYNC_RAYTRACING;
+        if(stage == alloy::PipelineStage::Copy)
+            return D3D12_BARRIER_SYNC_COPY;
+        if(stage == alloy::PipelineStage::BuildAS)
+            return D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
         return D3D12_BARRIER_SYNC_NONE;
     }
 
@@ -152,50 +115,36 @@ namespace alloy::dxc {
         if(access == ResourceAccess::None)
             return D3D12_BARRIER_ACCESS_NO_ACCESS;
         
-        if(access == alloy::ResourceAccess::COMMON)
-           return D3D12_BARRIER_ACCESS_COMMON;
-        if(access == alloy::ResourceAccess::VERTEX_BUFFER)
-           return D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
-        if(access == alloy::ResourceAccess::CONSTANT_BUFFER)
-           return D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
-        if(access == alloy::ResourceAccess::INDEX_BUFFER)
-           return D3D12_BARRIER_ACCESS_INDEX_BUFFER;
-        if(access == alloy::ResourceAccess::RENDER_TARGET)
-           return D3D12_BARRIER_ACCESS_RENDER_TARGET;
-        if(access == alloy::ResourceAccess::UNORDERED_ACCESS)
-           return D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-        if(access == alloy::ResourceAccess::DepthStencilWritable)
-           return D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
-        if(access == alloy::ResourceAccess::DepthStencilReadOnly)
-           return D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
-        if(access == alloy::ResourceAccess::SHADER_RESOURCE)
-           return D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
-        if(access == alloy::ResourceAccess::STREAM_OUTPUT)
-           return D3D12_BARRIER_ACCESS_STREAM_OUTPUT;
-        if(access == alloy::ResourceAccess::INDIRECT_ARGUMENT)
+        if(access == alloy::ResourceAccess::IndirectArgumentRead)
            return D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
-        if(access == alloy::ResourceAccess::PREDICATION)
-           return D3D12_BARRIER_ACCESS_PREDICATION;
-        if(access == alloy::ResourceAccess::COPY_DEST)
-           return D3D12_BARRIER_ACCESS_COPY_DEST;
-        if(access == alloy::ResourceAccess::COPY_SOURCE)
+        if(access == alloy::ResourceAccess::VertexBufferRead)
+           return D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+        if(access == alloy::ResourceAccess::IndexBufferRead)
+           return D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+        if(access == alloy::ResourceAccess::ConstantBufferRead)
+           return D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+        if(access == alloy::ResourceAccess::ShaderResourceRead)
+           return D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+        if(access == alloy::ResourceAccess::UnorderedAccess)
+           return D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+        if(access == alloy::ResourceAccess::RenderTarget)
+           return D3D12_BARRIER_ACCESS_RENDER_TARGET;
+        if(access == alloy::ResourceAccess::DepthStencilRead)
+           return D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+        if(access == alloy::ResourceAccess::DepthStencilWrite)
+           return D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+        if(access == alloy::ResourceAccess::CopySource)
            return D3D12_BARRIER_ACCESS_COPY_SOURCE;
-        if(access == alloy::ResourceAccess::RESOLVE_DEST)
-           return D3D12_BARRIER_ACCESS_RESOLVE_DEST;
-        if(access == alloy::ResourceAccess::RESOLVE_SOURCE)
-           return D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
-        if(access == alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_READ)
+        if(access == alloy::ResourceAccess::CopyDest)
+           return D3D12_BARRIER_ACCESS_COPY_DEST;
+        if(access == alloy::ResourceAccess::AccelerationStructureRead)
            return D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ;
-        if(access == alloy::ResourceAccess::RAYTRACING_ACCELERATION_STRUCTURE_WRITE)
+        if(access == alloy::ResourceAccess::AccelerationStructureWrite)
            return D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
-        if(access == alloy::ResourceAccess::SHADING_RATE_SOURCE)
-           return D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE;
-        //if(stage == alloy::PipelineStage::EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO){  }
-        //if(stage == alloy::PipelineStage::BUILD_RAYTRACING_ACCELERATION_STRUCTURE){  }
-        //if(stage == alloy::PipelineStage::COPY_RAYTRACING_ACCELERATION_STRUCTURE){  }
+        if(access == alloy::ResourceAccess::Present)
+           return D3D12_BARRIER_ACCESS_COMMON;
         return {};
     }
-
 
     void InsertBarrier(
         DXCDevice* dev,

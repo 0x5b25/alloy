@@ -12,7 +12,6 @@
 namespace alloy::vk
 {
     class VulkanDevice;
-    class IVkTimeline;
     
     class VulkanTexture : public ITexture{
 
@@ -20,18 +19,14 @@ namespace alloy::vk
         VkImage _img;
         VmaAllocation _allocation;
 
-        //std::vector<VkImageLayout> _imageLayouts;
-
-        //Layout tracking
-        std::unordered_set<IVkTimeline*> timelines;
-
         std::string _debugName;
 
+        Description _desc;
 
         VulkanTexture(
             const common::sp<VulkanDevice>& dev,
             const ITexture::Description& desc
-        ) : ITexture(desc)
+        ) : _desc(desc)
           , _dev(dev)
         { }
 
@@ -58,6 +53,8 @@ namespace alloy::vk
             VkPipelineStageFlags pipelineFlag,
             void* nativeHandle
         );
+
+        virtual const Description& GetDesc() const override {return _desc;}
 
         virtual void WriteSubresource(
             uint32_t mipLevel,
@@ -86,26 +83,6 @@ namespace alloy::vk
 
             
         virtual void SetDebugName(const std::string& name) override;
-
-    public:
-        void TransitionImageLayout(
-            VkCommandBuffer cb,
-            //std::uint32_t baseMipLevel,
-            //std::uint32_t levelCount,
-            //std::uint32_t baseArrayLayer,
-            //std::uint32_t layerCount,
-            VkImageLayout layout,
-            VkAccessFlags accessFlag,
-            VkPipelineStageFlags pipelineFlag
-        );
-
-        void RegisterTimeline(IVkTimeline* timeline) { 
-            timelines.insert(timeline); 
-        }
-
-        
-        void NotifyUsageOn(IVkTimeline* timeline);
-
     };
 
 
@@ -113,24 +90,53 @@ namespace alloy::vk
     
     VkImageType VdToVkTextureType(const ITexture::Description::Type& type);
 
-    
+    class VulkanTextureViewBase : public ITextureView {        
 
-    class VulkanTextureView : public ITextureView {
+    protected:
+        Description desc;
 
-        VkImageView _view;
+        common::sp<VulkanTexture> target;
+        VkImageView view;
 
-        VulkanTextureView(
-            const common::sp<VulkanTexture>& target,
+    public:
+        VulkanTextureViewBase(
+            common::sp<VulkanTexture> target,
+            VkImageView view,
             const ITextureView::Description& desc
-        ) :
-            ITextureView(target,desc)
-        {}
+        )
+            : desc(desc)
+            , target(std::move(target))
+            , view(view)
+        { }
+
+        virtual ~VulkanTextureViewBase() override { }
+
+        VkImageView GetHandle() const { return view; }
+
+        
+        virtual const Description& GetDesc() const override { return desc; }
+        virtual common::sp<ITexture> GetTextureObject() const override { return target; }
+
+
+        static VkImageView MakeVkView(const VulkanDevice& dev, 
+                                      VulkanTexture* target,
+                                      const ITextureView::Description& desc );
+
+    };
+
+    class VulkanTextureView : public VulkanTextureViewBase {        
+        
+        VulkanTextureView(
+            common::sp<VulkanTexture> target,
+            VkImageView view,
+            const ITextureView::Description& desc
+        )
+            : VulkanTextureViewBase(std::move(target), view, desc)
+        { }
 
     public:
 
-        ~VulkanTextureView();
-
-        const VkImageView& GetHandle() const { return _view; }
+        virtual ~VulkanTextureView() override;
 
         static common::sp<VulkanTextureView> Make(
             const common::sp<VulkanTexture>& target,
@@ -144,6 +150,7 @@ namespace alloy::vk
         VkSampler _sampler;
 
         common::sp<VulkanDevice> _dev;
+        std::string _debugName;
 
         VulkanSampler(
             const common::sp<VulkanDevice>& dev,
@@ -162,6 +169,10 @@ namespace alloy::vk
             const common::sp<VulkanDevice>& dev,
             const ISampler::Description& desc
         );
+
+        
+        
+        virtual void SetDebugName(const std::string& name) override;
 
     };
 

@@ -326,9 +326,10 @@ namespace alloy::mtl
         info.capabilities.supportMeshShader = feat.IsMeshShaderSupported();
         info.capabilities.isUMA = feat.IsUMA();
 
-        // Argument buffer is universally supported on 
-        // metal shader converter target hardware 
-        info.capabilities.supportBindless = true;
+        // Metal Shader Converter's dynamic resource heaps require Tier 2
+        // argument buffers. M1+ devices meet this.
+        info.capabilities.supportNonUniformResourceIndexing = true;
+        info.resourceBindingModel = ResourceBindingModel::T2;
 
         //#TODO: raytracing shaders default support in metal shader converter,
         // HW raytracing on apple M2+ devices
@@ -690,8 +691,8 @@ void MetalCmdQ::WaitForIdle() {
 MetalBuffer::MetalBuffer( const common::sp<MetalDevice>& dev,
             const IBuffer::Description& desc,
             id<MTLBuffer> buffer )
-    : IBuffer(desc)
-    , _dev(dev)
+    : _dev(dev)
+    , _desc(desc)
     , _mtlBuffer(buffer)
 {}
 
@@ -733,7 +734,7 @@ MetalBuffer::~MetalBuffer() {
             //[buffer retain];
 
             auto alBuf = new MetalBuffer(dev, desc, buffer);
-            alBuf->description.sizeInBytes = alignedSize;
+            alBuf->_desc.sizeInBytes = alignedSize;
             return common::sp(alBuf);
         }
     }

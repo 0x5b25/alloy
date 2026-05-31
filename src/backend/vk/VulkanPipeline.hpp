@@ -15,12 +15,6 @@ namespace alloy::vk
 {
     class VulkanDevice;
 
-    VkRenderPass CreateFakeRenderPassForCompat(
-        VulkanDevice* dev,
-        const OutputDescription& outputDesc,
-        VkSampleCountFlagBits sampleCnt
-    );
-
     class VulkanPipelineBase {
 
     protected:

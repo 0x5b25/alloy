@@ -34,25 +34,41 @@ namespace alloy::vk
         VkPhysicalDeviceVulkan13Features features13;
         VkPhysicalDeviceVulkan14Features features14;
 
+        // Guaranteed by VK1.1
+        VkPhysicalDeviceMaintenance3Properties maintenance3Props;
+
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
+        //bool hasDescriptorBufferExt;
+        bool hasMutableDescriptorTypeExt;
+        VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures;
+        VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProperties;
+        VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutableDescriptorTypeFeatures;
 
-        enum class ResourceBindingModel {
-            //Pre-vk1.2 binding mode
-            Legacy,
+        bool supportMutableDescriptorType;
+        bool supportDescriptorBuffer;
 
-            // Legacy + partially bound descriptor sets. Enables
-            // shader ABI and fallback bindless mode.
-            DescriptorIndexing,
-            
-            // Modern binding mode, no descriptor pool needed,
-            // acts like D3D12 descriptor heaps.
-            DescriptorBuffer
-        } resourceBindingModel;
+        bool supportsDescriptorIndexing;
+
+        ResourceBindingModel resourceBindingModel;
 
         bool SupportScalarBlockLayout() const { return features12.scalarBlockLayout; }
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
-        bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::Legacy; }
+        bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::T0; }
+        
+        
+        bool HasMutableDescriptorTypeExtension() const { return hasMutableDescriptorTypeExt; }
+        
+        bool supportsDescriptorBuffer;
+        
+        bool SupportNonUniformResourceIndexing() const {
+            return features12.shaderUniformBufferArrayNonUniformIndexing &&
+                   features12.shaderSampledImageArrayNonUniformIndexing &&
+                   features12.shaderStorageBufferArrayNonUniformIndexing &&
+                   features12.shaderStorageImageArrayNonUniformIndexing &&
+                   features12.shaderUniformTexelBufferArrayNonUniformIndexing &&
+                   features12.shaderStorageTexelBufferArrayNonUniformIndexing;
+        }
         
         bool supportRayTracing;
 

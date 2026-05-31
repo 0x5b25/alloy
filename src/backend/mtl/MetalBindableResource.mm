@@ -4,9 +4,25 @@
 #include "MetalTexture.h"
 #include "MtlTypeCvt.h"
 
+#include <cstring>
 #include <metal_irconverter_runtime/metal_irconverter_runtime.h>
+#include <stdexcept>
+#include <cassert>
 
 namespace alloy::mtl {
+
+    namespace {
+        constexpr uint32_t kIRRootSignatureFlagCBVSRVUAVHeapDirectlyIndexed = 0x400;
+        constexpr uint32_t kIRRootSignatureFlagSamplerHeapDirectlyIndexed = 0x800;
+
+        IRRootSignatureFlags T2RootSignatureFlags() {
+            return (IRRootSignatureFlags)(
+                IRRootSignatureFlagAllowInputAssemblerInputLayout
+                | IRRootSignatureFlagAllowStreamOutput
+                | kIRRootSignatureFlagCBVSRVUAVHeapDirectlyIndexed
+                | kIRRootSignatureFlagSamplerHeapDirectlyIndexed);
+        }
+    }
 
 #if 0
     void CreateRootSignature(){
@@ -119,8 +135,57 @@ namespace alloy::mtl {
 #endif
 
 
+    MetalResourceLayout::MetalResourceLayout(
+        _T2BindlessCtorTag,
+        const common::sp<MetalDevice>& dev,
+        const IResourceLayout::Description& desc
+    )
+        : IResourceLayout(desc)
+        , _dev(dev)
+        , _rootSig {}
+    {
+        assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+               == ResourceBindingModel::DescriptorHeap);
+        assert(desc.shaderResources.empty());
+
+        std::vector<IRRootParameter1> rootParams;
+        _rootSigSizeInBytes = 0;
+        _descHeapCount = 0;
+
+        uint32_t rootConstantRequested = 0;
+        for(auto& rootConsts : desc.pushConstants) {
+            auto& rootParam = rootParams.emplace_back();
+            rootParam.ParameterType = IRRootParameterType32BitConstants;
+            rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
+            rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
+            rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
+            rootParam.ShaderVisibility = IRShaderVisibilityAll;
+
+            auto& pcInfo = _pushConstants.emplace_back();
+            pcInfo.sizeInDwords = rootConsts.sizeInDwords;
+            pcInfo.bindingSlot = rootConsts.bindingSlot;
+            pcInfo.bindingSpace = rootConsts.bindingSpace;
+            pcInfo.offsetInDwords = rootConstantRequested;
+
+            rootConstantRequested += rootConsts.sizeInDwords;
+            _rootSigSizeInBytes += rootConsts.sizeInDwords * 4;
+        }
+
+        IRVersionedRootSignatureDescriptor rsDesc {};
+        rsDesc.version = IRRootSignatureVersion_1_1;
+        rsDesc.desc_1_1.NumParameters = rootParams.size();
+        rsDesc.desc_1_1.pParameters = rootParams.data();
+        rsDesc.desc_1_1.Flags = T2RootSignatureFlags();
+
+        IRError* pRootSigError = nullptr;
+        _rootSig = IRRootSignatureCreateFromDescriptor(&rsDesc, &pRootSigError);
+        assert(_rootSig != nullptr);
+        return;
+    }
+
 
     MetalResourceLayout::MetalResourceLayout(
+        _FixedSizeCtorTag,
         const common::sp<MetalDevice>& dev,
         const IResourceLayout::Description& desc
     )
@@ -130,6 +195,7 @@ namespace alloy::mtl {
     {
         //auto pDev = dev->GetHandle();
 
+
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
 
@@ -137,10 +203,25 @@ namespace alloy::mtl {
         std::vector<IRDescriptorRange1> combinedShaderResDescTableRanges;
         std::vector<IRDescriptorRange1> samplerDescTableRanges;
 
+        bool hasCombinedDescriptorTable = false;
+        for(auto& elem : desc.shaderResources) {
+            hasCombinedDescriptorTable |=
+                elem.kind != IBindableResource::ResourceKind::Sampler;
+        }
+
+        const uint32_t samplerHeapIndex = hasCombinedDescriptorTable ? 1 : 0;
+        uint32_t combinedDescriptorOffset = 0;
+        uint32_t samplerDescriptorOffset = 0;
+        uint32_t linearResourceOffset = 0;
+        std::vector<MetalResourceLayout::SlotLocation> slotLocations(
+            desc.shaderResources.size());
+
         for(unsigned i = 0; i < desc.shaderResources.size(); i++) {
 
             auto& elem = desc.shaderResources[i];
             IRDescriptorRange1* pDescRange = nullptr;
+            const bool isSampler =
+                elem.kind == IBindableResource::ResourceKind::Sampler;
 
             switch (elem.kind)
             {
@@ -173,6 +254,19 @@ namespace alloy::mtl {
             pDescRange->NumDescriptors = elem.bindingCount;
             pDescRange->OffsetInDescriptorsFromTableStart = IRDescriptorRangeOffsetAppend;// this appends the range to the end of the root signature descriptor tables
 
+            auto& location = slotLocations[i];
+            location.valid = true;
+            location.linearResourceOffset = linearResourceOffset;
+            if(isSampler) {
+                location.heapIndex = samplerHeapIndex;
+                location.startingDescriptorIndex = samplerDescriptorOffset;
+                samplerDescriptorOffset += elem.bindingCount;
+            } else {
+                location.heapIndex = 0;
+                location.startingDescriptorIndex = combinedDescriptorOffset;
+                combinedDescriptorOffset += elem.bindingCount;
+            }
+            linearResourceOffset += elem.bindingCount;
         }
 
 
@@ -247,12 +341,7 @@ namespace alloy::mtl {
 
         IRError* pRootSigError = nullptr;
         _rootSig = IRRootSignatureCreateFromDescriptor( &rsDesc, &pRootSigError );
-        if ( !_rootSig )
-        {
-            // handle and release error
-            throw std::runtime_error("Root signature creation failed!");
-        }
-
+        _slotLocations = std::move(slotLocations);
     }
 
 
@@ -262,160 +351,238 @@ namespace alloy::mtl {
     }
 
 
-    MetalResourceSet::MetalResourceSet(const IResourceSet::Description& desc)
-        : IResourceSet(desc)
-        , _argBuf(nil)
-    {
-        auto layout = common::PtrCast<MetalResourceLayout>(desc.layout.get());
-        auto dev = layout->_dev;
-        auto& layoutDesc = layout->GetDesc();
-
-        //Calculate total buffer sizes
-        std::uint32_t combinedResCnt = 0, samplerCnt = 0;
-        for(auto& elemDesc : layoutDesc.shaderResources) {
-            switch (elemDesc.kind)
-            {
-            case IBindableResource::ResourceKind::UniformBuffer :
-            case IBindableResource::ResourceKind::StorageBuffer :
-            case IBindableResource::ResourceKind::Texture : {
-                combinedResCnt += elemDesc.bindingCount;
-            }break;
-            case IBindableResource::ResourceKind::Sampler : {
-                samplerCnt += elemDesc.bindingCount;
-            }break;
+    namespace {
+        uint32_t GetRequiredBoundResourceCount(
+            const IResourceLayout::Description& layoutDesc
+        ) {
+            uint32_t count = 0;
+            for(auto& slotDesc : layoutDesc.shaderResources) {
+                count += slotDesc.bindingCount;
             }
+            return count;
         }
 
-        auto combinedResHeapSize = combinedResCnt * sizeof(IRDescriptorTableEntry);
-        auto samplerHeapSize = samplerCnt * sizeof(IRDescriptorTableEntry);
+        void CountArgumentTableEntries(
+            const IResourceLayout::Description& layoutDesc,
+            uint32_t& combinedDescriptorCount,
+            uint32_t& samplerDescriptorCount
+        ) {
+            combinedDescriptorCount = 0;
+            samplerDescriptorCount = 0;
 
-        uint64_t argBufferSize = combinedResHeapSize + samplerHeapSize;
-
-        @autoreleasepool {
-
-            MTLResourceOptions mtlDesc{};
-
-            mtlDesc |= MTLResourceStorageModeShared;
-            //| MTLResourceCPUCacheModeDefaultCache;
-
-
-            //mtlDesc |= MTLResourceHazardTrackingModeTracked;
-
-            _argBuf = [dev->GetHandle() newBufferWithLength:argBufferSize options:mtlDesc];
-            [_argBuf setLabel:@"_ResHeaps"];
-
-            auto baseAddr = [_argBuf gpuAddress];
-
-            auto heapArgAddr = (uint64_t*)[_argBuf contents];
-            auto heapAddr = (uint64_t)baseAddr;
-
-            if(combinedResHeapSize > 0) {
-                _shaderResHeapGPUVA = heapAddr;
-            } else {
-                _shaderResHeapGPUVA = 0;
-            }
-
-            if(samplerHeapSize > 0) {
-                _samplerHeapGPUVA = heapAddr + combinedResHeapSize;
-            } else {
-                _samplerHeapGPUVA = 0;
-            }
-
-            //MTL::Buffer* pTextureTable = _pScratch->newBuffer(sizeof(IRDescriptorTableEntry), MTL::ResourceStorageModeShared)->autorelease();
-            //auto* pEntry               = (IRDescriptorTableEntry*)pTextureTable->contents();
-            //IRDescriptorTableSetTexture(pEntry, _pTexture, 0, 0);
-            //
-            //MTL::Buffer* pSamplerTable = _pScratch->newBuffer(sizeof(IRDescriptorTableEntry), MTL::ResourceStorageModeShared)->autorelease();
-            //pEntry                     = (IRDescriptorTableEntry*)pSamplerTable->contents();
-            //IRDescriptorTableSetSampler(pEntry, _pSampler, 0);
-            auto entryStartCpuAddr = ((uint64_t)[_argBuf contents]);
-            auto* pCombinedResEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr);
-            auto* pSamplerEntry = (IRDescriptorTableEntry*)(entryStartCpuAddr + combinedResHeapSize);
-
-
-            for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
-
-                auto& elemDesc = layoutDesc.shaderResources[i];
-                for(auto arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
-                    auto& elem = desc.boundResources[resIdx++];
-
-                    switch (elemDesc.kind)
-                    {
-                        case IBindableResource::ResourceKind::UniformBuffer :
-                        case IBindableResource::ResourceKind::StorageBuffer : {
-
-                            auto* range = PtrCast<BufferRange>(elem.get());
-                            auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
-
-                            auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
-                            auto byteCnt = range->GetShape().GetSizeInBytes();
-
-                            //DX12 requires CBVs have minimal alignment of 256Bytes
-                            assert(elemDesc.kind != IBindableResource::ResourceKind::UniformBuffer || byteCnt % 256 == 0);
-
-                            IRDescriptorTableSetBuffer(pCombinedResEntry,
-                                                       baseGPUAddr + range->GetShape().offsetInElements,
-                                                       0);
-                            pCombinedResEntry++;
-                        }break;
-                        case IBindableResource::ResourceKind::Texture : {
-                            auto* texView = PtrCast<ITextureView>(elem.get());
-                            auto* mtlTex = PtrCast<MetalTexture>(texView->GetTextureObject().get());
-                            auto& texDesc = mtlTex->GetDesc();
-                            auto& viewDesc = texView->GetDesc();
-                            auto format = AlToMtlPixelFormat(texDesc.format);
-
-                            IRDescriptorTableSetTexture(pCombinedResEntry, mtlTex->GetHandle(), 0, 0);
-                            pCombinedResEntry++;
-                        }break;
-
-                        case IBindableResource::ResourceKind::Sampler : {
-
-                            auto* sampler = PtrCast<MetalSampler>(elem.get());
-                            auto& desc = sampler->GetDesc();
-
-                            IRDescriptorTableSetSampler(pSamplerEntry, sampler->GetHandle(), 0);
-                            pSamplerEntry++;
-
-                        }break;
-                    }
+            for(auto& slotDesc : layoutDesc.shaderResources) {
+                if(slotDesc.kind == IBindableResource::ResourceKind::Sampler) {
+                    samplerDescriptorCount += slotDesc.bindingCount;
+                } else {
+                    combinedDescriptorCount += slotDesc.bindingCount;
                 }
             }
         }
+
+        std::vector<IMutableResourceSet::WriteBinding> MakeWritesFromBoundResources(
+            const IResourceSet::Description& desc
+        ) {
+            std::vector<IMutableResourceSet::WriteBinding> writes;
+            if(desc.boundResources.empty()) {
+                return writes;
+            }
+
+            auto& layoutDesc = desc.layout->GetDesc();
+            writes.reserve(layoutDesc.shaderResources.size());
+
+            uint32_t resIdx = 0;
+            for(uint32_t layoutSlot = 0; layoutSlot < layoutDesc.shaderResources.size(); ++layoutSlot) {
+                auto& slotDesc = layoutDesc.shaderResources[layoutSlot];
+
+                auto& write = writes.emplace_back();
+                write.layoutSlot = layoutSlot;
+                write.firstArrayElement = 0;
+                write.resources.reserve(slotDesc.bindingCount);
+                for(uint32_t i = 0; i < slotDesc.bindingCount; ++i) {
+                    write.resources.push_back(desc.boundResources[resIdx++]);
+                }
+            }
+
+            return writes;
+        }
+
+        IRDescriptorTableEntry* OffsetDescriptorTableEntry(
+            id<MTLBuffer> argBuf,
+            uint64_t heapBaseOffset,
+            uint32_t descriptorIndex
+        ) {
+            auto entryStartCpuAddr = (std::uintptr_t)[argBuf contents];
+            return (IRDescriptorTableEntry*)(
+                entryStartCpuAddr
+                + heapBaseOffset
+                + descriptorIndex * sizeof(IRDescriptorTableEntry));
+        }
     }
 
-    MetalResourceSet::~MetalResourceSet() {
+    MetalResourceSetBase::MetalResourceSetBase(
+        const common::sp<MetalDevice>& dev,
+        const common::sp<MetalResourceLayout>& layout
+    )
+        : _dev(dev)
+        , _layout(layout)
+        , _argBuf(nil)
+        , _shaderResHeapGPUVA(0)
+        , _samplerHeapGPUVA(0)
+        , _combinedResHeapSize(0)
+        , _samplerHeapSize(0)
+        , _boundResources(GetRequiredBoundResourceCount(_layout->GetDesc()))
+    {
+    }
+
+    MetalResourceSetBase::~MetalResourceSetBase() {
         @autoreleasepool {
             [_argBuf release];
         }
     }
 
+    void MetalResourceSetBase::AllocateArgumentBuffer() {
+        auto& layoutDesc = _layout->GetDesc();
 
-    std::vector<id<MTLResource>> MetalResourceSet::GetUseResources() const {
+        std::uint32_t combinedResCnt = 0, samplerCnt = 0;
+        CountArgumentTableEntries(layoutDesc, combinedResCnt, samplerCnt);
 
-        std::vector<id<MTLResource>> useRes {_argBuf};
+        _combinedResHeapSize = combinedResCnt * sizeof(IRDescriptorTableEntry);
+        _samplerHeapSize = samplerCnt * sizeof(IRDescriptorTableEntry);
 
-        auto layout = common::PtrCast<MetalResourceLayout>(description.layout.get());
-        auto dev = layout->_dev;
-        auto& layoutDesc = layout->GetDesc();
+        uint64_t argBufferSize = _combinedResHeapSize + _samplerHeapSize;
 
-        for(unsigned i = 0; i < layoutDesc.shaderResources.size(); i++) {
+        @autoreleasepool {
+            if(argBufferSize == 0) {
+                return;
+            }
+
+            MTLResourceOptions mtlDesc{};
+
+            mtlDesc |= MTLResourceStorageModeShared;
+
+            _argBuf = [_dev->GetHandle() newBufferWithLength:argBufferSize options:mtlDesc];
+            [_argBuf setLabel:@"_ResHeaps"];
+
+            auto entryStartCpuAddr = [_argBuf contents];
+            std::memset(entryStartCpuAddr, 0, argBufferSize);
+
+            auto baseAddr = [_argBuf gpuAddress];
+            auto heapAddr = (uint64_t)baseAddr;
+
+            if(_combinedResHeapSize > 0) {
+                _shaderResHeapGPUVA = heapAddr;
+            }
+
+            if(_samplerHeapSize > 0) {
+                _samplerHeapGPUVA = heapAddr + _combinedResHeapSize;
+            }
+        }
+    }
+
+    void MetalResourceSetBase::UpdateInternal(
+        const std::span<const IMutableResourceSet::WriteBinding>& writes
+    ) {
+        const auto& slotDescs = _layout->GetDesc().shaderResources;
+
+        assert(_boundResources.size() == GetRequiredBoundResourceCount(_layout->GetDesc()));
+
+        for(auto& write : writes) {
+            auto& slotDesc = slotDescs[write.layoutSlot];
+            if(write.resources.empty()) {
+                continue;
+            }
+
+            auto location = _layout->GetSlotLocation(write.layoutSlot);
+            const uint64_t heapBaseOffset =
+                slotDesc.kind == IBindableResource::ResourceKind::Sampler
+                    ? _combinedResHeapSize
+                    : 0;
+
+            auto descriptor = OffsetDescriptorTableEntry(
+                _argBuf,
+                heapBaseOffset,
+                location.startingDescriptorIndex + write.firstArrayElement);
+
+            for(uint32_t i = 0; i < write.resources.size(); ++i) {
+                auto* dst = descriptor + i;
+                auto& elem = write.resources[i];
+
+                if(elem != nullptr) {
+                    switch (slotDesc.kind)
+                    {
+                    case IBindableResource::ResourceKind::UniformBuffer :
+                    case IBindableResource::ResourceKind::StorageBuffer : {
+                        auto* range = common::PtrCast<BufferRange>(elem.get());
+                        auto* rangedMtlBuffer =
+                            PtrCast<MetalBuffer>(range->GetBufferObject().get());
+
+                        auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
+                        auto byteCnt = range->GetShape().GetSizeInBytes();
+
+                        // DX12/MetalShaderConverter CBVs require 256-byte size alignment.
+                        assert(slotDesc.kind != IBindableResource::ResourceKind::UniformBuffer
+                               || byteCnt % 256 == 0);
+
+                        IRDescriptorTableSetBuffer(
+                            dst,
+                            baseGPUAddr + range->GetShape().GetOffsetInBytes(),
+                            0);
+                    }break;
+
+                    case IBindableResource::ResourceKind::Texture : {
+                        auto* texView = common::PtrCast<ITextureView>(elem.get());
+                        auto* mtlTex =
+                            common::PtrCast<MetalTexture>(texView->GetTextureObject().get());
+
+                        IRDescriptorTableSetTexture(dst, mtlTex->GetHandle(), 0, 0);
+                    }break;
+
+                    case IBindableResource::ResourceKind::Sampler : {
+                        auto* sampler = common::PtrCast<MetalSampler>(elem.get());
+                        IRDescriptorTableSetSampler(dst, sampler->GetHandle(), 0);
+                    }break;
+                    }
+                } else {
+                    std::memset(dst, 0, sizeof(IRDescriptorTableEntry));
+                }
+
+                _boundResources[location.linearResourceOffset
+                                + write.firstArrayElement
+                                + i] = elem;
+            }
+        }
+    }
+
+    std::vector<id<MTLResource>> MetalResourceSetBase::GetUseResources() const {
+
+        std::vector<id<MTLResource>> useRes {};
+        if(_argBuf) {
+            useRes.push_back(_argBuf);
+        }
+
+        auto& layoutDesc = _layout->GetDesc();
+
+        for(unsigned i = 0, resIdx = 0; i < layoutDesc.shaderResources.size(); i++) {
 
             auto& elemDesc = layoutDesc.shaderResources[i];
-            auto& elem = description.boundResources[i];
+            for(uint32_t arrIdx = 0; arrIdx < elemDesc.bindingCount; ++arrIdx) {
+                auto& elem = _boundResources[resIdx++];
+                if(elem == nullptr) {
+                    continue;
+                }
 
-            switch (elemDesc.kind)
-            {
+                switch (elemDesc.kind)
+                {
                 case IBindableResource::ResourceKind::UniformBuffer :
                 case IBindableResource::ResourceKind::StorageBuffer : {
 
-                    auto* range = PtrCast<BufferRange>(elem.get());
-                    auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
+                    const auto* range = common::PtrCast<BufferRange>(elem.get());
+                    const auto* rangedMtlBuffer = PtrCast<MetalBuffer>(range->GetBufferObject().get());
                     useRes.push_back(rangedMtlBuffer->GetHandle());
                 }break;
                 case IBindableResource::ResourceKind::Texture : {
-                    auto* texView = PtrCast<ITextureView>(elem.get());
-                    auto* mtlTex = PtrCast<MetalTexture>(texView->GetTextureObject().get());
+                    const auto* texView = common::PtrCast<ITextureView>(elem.get());
+                    const auto* mtlTex = common::PtrCast<MetalTexture>(texView->GetTextureObject().get());
                     useRes.push_back(mtlTex->GetHandle());
                 }break;
 
@@ -424,8 +591,71 @@ namespace alloy::mtl {
                     //auto* sampler = PtrCast<MetalSampler>(elem.get());
                     //useRes.push_back(sampler->GetHandle());
                 }break;
+                }
             }
         }
         return useRes;
+    }
+
+    MetalResourceSet::MetalResourceSet(
+        const common::sp<MetalDevice>& dev,
+        const IResourceSet::Description& desc
+    )
+        : IResourceSet()
+        , MetalResourceSetBase(dev, common::SPCast<MetalResourceLayout>(desc.layout))
+    {
+    }
+
+    MetalResourceSet::~MetalResourceSet() {
+    }
+
+    common::sp<MetalResourceSet> MetalResourceSet::Make(
+        const common::sp<MetalDevice>& dev,
+        const IResourceSet::Description& desc
+    ) {
+        auto requiredBoundResourceCount =
+            GetRequiredBoundResourceCount(desc.layout->GetDesc());
+
+        auto resourceSet = common::sp(new MetalResourceSet(dev, desc));
+        resourceSet->AllocateArgumentBuffer();
+
+        if(!desc.boundResources.empty()) {
+            auto writes = MakeWritesFromBoundResources(desc);
+            resourceSet->UpdateInternal(writes);
+        }
+
+        return resourceSet;
+    }
+
+    MetalMutableResourceSet::MetalMutableResourceSet(
+        const common::sp<MetalDevice>& dev,
+        const IMutableResourceSet::Description& desc
+    )
+        : IMutableResourceSet()
+        , MetalResourceSetBase(dev, common::SPCast<MetalResourceLayout>(desc.layout))
+    {
+    }
+
+    MetalMutableResourceSet::~MetalMutableResourceSet() {
+    }
+
+    common::sp<IMutableResourceSet> MetalMutableResourceSet::Make(
+        const common::sp<MetalDevice>& dev,
+        const IMutableResourceSet::Description& desc
+    ) {
+        auto resourceSet = common::sp(new MetalMutableResourceSet(dev, desc));
+        resourceSet->AllocateArgumentBuffer();
+
+        if(!desc.initialWrites.empty()) {
+            resourceSet->UpdateInternal(desc.initialWrites);
+        }
+
+        return resourceSet;
+    }
+
+    void MetalMutableResourceSet::Update(
+        const std::span<const IMutableResourceSet::WriteBinding>& writes
+    ) {
+        UpdateInternal(writes);
     }
 }

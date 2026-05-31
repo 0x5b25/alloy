@@ -6,13 +6,13 @@
 #include "alloy/common/RefCnt.hpp"
 #include "alloy/Shader.hpp"
 #include "alloy/Texture.hpp"
-#include "alloy/FrameBuffer.hpp"
 #include "alloy/Sampler.hpp"
 #include "alloy/Buffer.hpp"
 #include "alloy/Pipeline.hpp"
 #include "alloy/Shader.hpp"
 #include "alloy/CommandList.hpp"
 #include "alloy/BindableResource.hpp"
+#include "alloy/DescriptorHeap.hpp"
 #include "alloy/SyncObjects.hpp"
 #include "alloy/SwapChain.hpp"
 
@@ -23,12 +23,14 @@ namespace alloy
             const I##ResType ::Description& description) = 0;
     
     #define VLD_RF_FOR_EACH_RES(V) \
-        V(FrameBuffer)\
         V(Texture)\
         V(Buffer)\
         V(Sampler)\
         /*V(Shader)*/\
         V(ResourceSet)\
+        V(MutableResourceSet)\
+        V(ResourceDescriptorHeap)\
+        V(SamplerDescriptorHeap)\
         V(ResourceLayout)\
         V(SwapChain)
 
@@ -73,10 +75,6 @@ namespace alloy
         virtual common::sp<ITextureView> CreateTextureView(
             const common::sp<ITexture>& texture,
             const ITextureView::Description& description) = 0;
-
-        virtual common::sp<IRenderTarget> CreateRenderTarget(
-            const common::sp<ITextureView>& texView) = 0;
-        //virtual sp<CommandList> CreateCommandList() = 0;
 
         virtual common::sp<IEvent> CreateSyncEvent() = 0;
         //Why don't call CreateSemaphore? because there is a WinBase #define 

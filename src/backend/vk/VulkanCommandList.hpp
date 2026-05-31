@@ -12,7 +12,6 @@
 
 #include "VulkanPipeline.hpp"
 #include "VulkanBindableResource.hpp"
-#include "VulkanFramebuffer.hpp"
 
 //TODO: a system to track image layouts inside a command buffer and
 //insert image layout transition commands when necessary. also each
@@ -82,15 +81,7 @@ namespace alloy::vk
         //Resources used
         std::unordered_set<common::sp<RefCntBase>> _devRes;
 
-        //_DevResRegistry _resReg;
-        //std::unordered_set<sp<DeviceResource>> _miscResReg;
-
-        //sp<VulkanPipelineBase> _currentPipeline;
-        //std::vector<sp<VulkanResourceSet>> _currentResourceSets;
-
-        //renderpasses
-        //std::set<sp<VulkanFramebuffer>> _currRenderPassFBs;
-        ResourceStates _requestedStates, _finalStates;
+        std::string _debugName;
 
         void _EndCurrentActivePass();
         void _BeginDummyPassIfNoActivePass();
@@ -111,10 +102,14 @@ namespace alloy::vk
         virtual void Begin() override;
         virtual void End() override;
 
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& ) override;
+        virtual IComputeCommandEncoder& BeginComputePass(const PassResourceUsage&) override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+        
+        virtual void SetDebugName(const std::string& debugName) override;
 
         virtual void EndPass() override;
 
@@ -126,86 +121,9 @@ namespace alloy::vk
         virtual void InsertDebugMarker(const std::string& name, const Color4f&) override;
 
 
-        virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) override;
-        void TransitionTextureToDefaultLayout(
-            const std::vector<common::sp<ITexture>>& textures
-        ) override;
-        const ResourceStates& GetRequestedResourceStates() const {
-            return _requestedStates;
-        }
-        const ResourceStates& GetFinalResourceStates() const {
-            return _finalStates;
-        }
-
+        virtual void Barrier(std::span<const alloy::BarrierOp> barriers) override;
 
     };
-
-#if 0
-    //Register data access and insert pipeline where necessary
-    class _DevResRegistry {
-
-        //VkMemoryBarrier{};
-        //VkBufferMemoryBarrier{};
-        //VkImageMemoryBarrier{};
-
-        struct BufRef {
-            VkPipelineStageFlags stage;
-            VkAccessFlags access;
-        };
-
-        struct TexRef {
-            VkPipelineStageFlags stage;
-            VkAccessFlags access;
-            VkImageLayout layout;
-        };
-
-
-        std::unordered_set<common::sp<common::RefCntBase>> _res;
-        std::unordered_map<VulkanBuffer*, BufRef> _bufRefs;
-        std::unordered_map<VulkanTexture*, TexRef> _texRefs;
-
-        struct BufSyncInfo{
-            VulkanBuffer* resource;
-            BufRef prevUsage, currUsage;
-        };
-
-        struct TexSyncInfo {
-            VulkanTexture* resource;
-            TexRef prevUsage, currUsage;
-        };
-
-        std::vector<BufSyncInfo> _bufSyncs;
-        std::vector<TexSyncInfo> _texSyncs;
-
-    public:
-
-        void RegisterBufferUsage(
-            const sp<Buffer>& buffer,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        void RegisterTexUsage(
-            const sp<Texture>& tex,
-            VkImageLayout requiredLayout,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        void ModifyTexUsage(
-            const sp<Texture>& tex,
-            VkImageLayout layout,
-            VkPipelineStageFlags stage,
-            VkAccessFlags access
-        );
-
-        bool InsertPipelineBarrierIfNecessary(
-            VkCommandBuffer cb
-        );
-
-    };
-#endif
-    //class VulkanPipeline;
 
     struct VkCmdEncBase {
 
@@ -221,10 +139,6 @@ namespace alloy::vk
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
 
-        VulkanCommandList::ResourceStates firstState, lastState;
-
-        std::vector<std::function<void(VkCommandBuffer)>> recordedCmds;
-
         VkCmdEncBase(VulkanDevice* dev,
                      VkCommandBuffer cmdList)
             : dev(dev)
@@ -233,28 +147,7 @@ namespace alloy::vk
 
         virtual ~VkCmdEncBase() {}
 
-        virtual void EndPass() {
-            for(auto& cmd: recordedCmds) {
-                cmd(cmdList);
-            }
-        }
-
-        void RegisterBufferUsage(
-            VulkanBuffer* buffer,
-            const VulkanCommandList::BufferState& state
-        );
-
-        void RegisterTexUsage(
-            VulkanTexture* tex,
-            const VulkanCommandList::TextureState& state
-        );
-
-        void RegisterTexUsageAllAspecs(
-            VulkanTexture* tex,
-            VulkanCommandList::TextureState::AspectState state
-        );
-
-        void RegisterResourceSet(VulkanResourceSet* rs);
+        virtual void EndPass() {}
 
         void PushDebugGroup(const std::string& name, const Color4f&);
         void PopDebugGroup();
@@ -281,16 +174,22 @@ namespace alloy::vk
 
 
         virtual void SetGraphicsResourceSet(const common::sp<IResourceSet>& rs) override;
+        virtual void SetGraphicsMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
-        virtual void SetViewports(const std::span<Viewport>& viewport) override;
+        virtual void SetViewports(std::span<const Viewport> viewport) override;
         virtual void SetFullViewport() override;
 
-        virtual void SetScissorRects(const std::span<Rect>& ) override;
+        virtual void SetScissorRects(std::span<const Rect> ) override;
         virtual void SetFullScissorRect() override;
 
 
@@ -311,9 +210,6 @@ namespace alloy::vk
             const common::sp<IBuffer>& indirectBuffer,
             std::uint32_t offset, std::uint32_t drawCount, std::uint32_t stride) override;
 #endif
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
-
         virtual void SetPipeline(const common::sp<IMeshShaderPipeline>&) override;
         virtual void DispatchMesh(std::uint32_t, std::uint32_t, std::uint32_t ) override;
 
@@ -334,10 +230,16 @@ namespace alloy::vk
         virtual void SetComputeResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) override;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) override;
 
         /// <summary>
@@ -363,8 +265,6 @@ namespace alloy::vk
 #endif
 
 
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
     };
 
     struct VkTransferCmdEnc : public ITransferCommandEncoder, public VkCmdEncBase {
@@ -385,7 +285,7 @@ namespace alloy::vk
             const common::sp<BufferRange>& src,
             std::uint32_t srcBytesPerRow,
             std::uint32_t srcBytesPerImage,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -393,7 +293,7 @@ namespace alloy::vk
         ) override;
 
         virtual void CopyTextureToBuffer(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
@@ -404,20 +304,17 @@ namespace alloy::vk
         ) override;
 
         virtual void CopyTexture(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
             const Size3D& copySize) override;
 
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) override;
-
-        virtual void WaitForFence(const common::sp<IFence>&) override {}
-        virtual void UpdateFence(const common::sp<IFence>&) override {}
     };
 
     template<typename T>

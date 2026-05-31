@@ -36,6 +36,10 @@ namespace alloy::vk
             return availableExtNames.contains(extName);
         };
 
+        const bool hasDescriptorBufferExt = IsExtSupported(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
+        hasMutableDescriptorTypeExt =
+            IsExtSupported(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
+
         VkPhysicalDeviceProperties devProps { };
         fnTable.vkGetPhysicalDeviceProperties(adp, &devProps);
 
@@ -64,6 +68,11 @@ namespace alloy::vk
 
             properties11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
             devProps2.pNext = &properties11;
+
+            maintenance3Props.sType 
+                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES;
+            maintenance3Props.pNext = devProps2.pNext;
+            devProps2.pNext = &maintenance3Props;
 
             features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
             features2.pNext = &features11;
@@ -103,6 +112,25 @@ namespace alloy::vk
                 meshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
                 meshShaderFeatures.pNext = features2.pNext;
                 features2.pNext = &meshShaderFeatures;
+            }
+
+            if(hasDescriptorBufferExt) {
+                descriptorBufferFeatures.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
+                descriptorBufferFeatures.pNext = features2.pNext;
+                features2.pNext = &descriptorBufferFeatures;
+
+                descriptorBufferProperties.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT;
+                descriptorBufferProperties.pNext = devProps2.pNext;
+                devProps2.pNext = &descriptorBufferProperties;
+            }
+
+            if(hasMutableDescriptorTypeExt) {
+                mutableDescriptorTypeFeatures.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT;
+                mutableDescriptorTypeFeatures.pNext = features2.pNext;
+                features2.pNext = &mutableDescriptorTypeFeatures;
             }
 
             fnTable.vkGetPhysicalDeviceProperties2(adp, &devProps2);
@@ -145,19 +173,45 @@ namespace alloy::vk
         }
 
         
-        if(IsExtSupported(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME)) {
-            resourceBindingModel = ResourceBindingModel::DescriptorBuffer;
-        } else if( devProps.apiVersion >= VK_VERSION_1_2 ||
-                   IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        supportsDescriptorBuffer = hasDescriptorBufferExt &&
+                                   descriptorBufferFeatures.descriptorBuffer &&
+                                   features12.bufferDeviceAddress;
+
+        
+        if(devProps.apiVersion >= VK_VERSION_1_2 ||
+            IsExtSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         ) {
-            resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+            supportsDescriptorIndexing = features12.descriptorIndexing &&
+                   features12.descriptorBindingPartiallyBound &&
+                   features12.descriptorBindingUpdateUnusedWhilePending &&
+                   features12.descriptorBindingUniformBufferUpdateAfterBind &&
+                   features12.descriptorBindingSampledImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageImageUpdateAfterBind &&
+                   features12.descriptorBindingStorageBufferUpdateAfterBind &&
+                   features12.runtimeDescriptorArray &&
+                   features.shaderUniformBufferArrayDynamicIndexing &&
+                   features.shaderSampledImageArrayDynamicIndexing &&
+                   features.shaderStorageBufferArrayDynamicIndexing &&
+                   features.shaderStorageImageArrayDynamicIndexing &&
+                   features12.shaderUniformTexelBufferArrayDynamicIndexing &&
+                   features12.shaderStorageTexelBufferArrayDynamicIndexing;
+        }
+
+        if(IsExtSupported(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME)) {
+            supportMutableDescriptorType = true;
+        }
+
+        if(supportsDescriptorIndexing) {
+            if(supportMutableDescriptorType &&
+               features12.descriptorBindingVariableDescriptorCount
+            )
+                resourceBindingModel = ResourceBindingModel::T2;
+            else
+                resourceBindingModel = ResourceBindingModel::T1;
         } else {
-            resourceBindingModel = ResourceBindingModel::Legacy;
+            resourceBindingModel = ResourceBindingModel::T0;
         }
     }
-
-
-
 
     uint32_t VulkanContext::VolkCtx::_refCnt = 0;
     std::mutex VulkanContext::VolkCtx::_m;
@@ -272,7 +326,9 @@ namespace alloy::vk
         adp->info.capabilities.supportResizableBar = adp->_caps.isResizableBARSupported;
         adp->info.capabilities.supportMeshShader = adp->_caps.SupportMeshShader();
         adp->info.capabilities.supportRayTracing = adp->_caps.supportRayTracing;
-        adp->info.capabilities.supportBindless = adp->_caps.SupportBindless();
+        adp->info.capabilities.supportNonUniformResourceIndexing =
+            adp->_caps.SupportNonUniformResourceIndexing();
+        adp->info.resourceBindingModel = adp->_caps.resourceBindingModel;
 
         {
             //Try find dedicated compute queue

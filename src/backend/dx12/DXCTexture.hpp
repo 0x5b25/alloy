@@ -12,23 +12,25 @@
 namespace alloy::dxc
 {
     class DXCDevice;
-    class IDXCTimeline;
-    
     class DXCTexture : public ITexture{
     public:
-        static uint32_t ComputeSubresource(uint32_t mipLevel, uint32_t mipLevelCount, uint32_t arrayLayer);
+        static uint32_t ComputeSubresource(uint32_t mipLevel, 
+                                           uint32_t mipLevelCount, 
+                                           uint32_t arrayLayer, 
+                                           uint32_t arrayLayerCount, 
+                                           uint32_t plane);
     private:
         common::sp<DXCDevice> dev;
         D3D12MA::Allocation* _allocation;
         ID3D12Resource* _res;
 
-        std::unordered_set<IDXCTimeline*> timelines;
+        Description _desc;
 
         DXCTexture(
             const common::sp<DXCDevice>& dev,
             const ITexture::Description& desc
         ) 
-            : ITexture( desc) 
+            : _desc( desc) 
             , dev(dev)
         { }
 
@@ -57,6 +59,8 @@ namespace alloy::dxc
             ID3D12Resource* nativeRes
         );
 
+
+        virtual const Description& GetDesc() const override {return _desc;}
         
         virtual void WriteSubresource(
             uint32_t mipLevel,
@@ -84,61 +88,32 @@ namespace alloy::dxc
             SubresourceAspect aspect) override;
 
         virtual void SetDebugName(const std::string& name) override;
-
-    public:
-        //void TransitionImageLayout(
-        //    VkCommandBuffer cb,
-        //    //std::uint32_t baseMipLevel,
-        //    //std::uint32_t levelCount,
-        //    //std::uint32_t baseArrayLayer,
-        //    //std::uint32_t layerCount,
-        //    VkImageLayout layout,
-        //    VkAccessFlags accessFlag,
-        //    VkPipelineStageFlags pipelineFlag
-        //);
-        //
-        //const VkImageLayout& GetLayout() const { return _layout; }
-        //void SetLayout(VkImageLayout newLayout) { _layout = newLayout; }
-        
-        void RegisterTimeline(IDXCTimeline* timeline) { 
-            timelines.insert(timeline); 
-        }
-
-        void NotifyUsageOn(IDXCTimeline* timeline);
-
     };
-
-
-    //VkImageUsageFlags VdToVkTextureUsage(const Texture::Description::Usage& vdUsage);
-    
-    //VkImageType VdToVkTextureType(const Texture::Description::Type& type);
-
-    
 
     class DXCTextureView : public ITextureView {
     
-    
+        Description _desc;
+        common::sp<DXCTexture> _target;
     public:
         DXCTextureView(
-            common::sp<ITexture>&& target,
+            common::sp<DXCTexture> target,
             const ITextureView::Description& desc
-        ) :
-            ITextureView(std::move(target),desc)
-        {}
+        );
     
     
         ~DXCTextureView() {}
 
-        static common::sp<DXCTextureView> Make (
-            const common::sp<DXCTexture>& tex,
-            const ITextureView::Description& desc
-        );
-        
+        virtual const Description& GetDesc() const override { return _desc; }
+        virtual common::sp<ITexture> GetTextureObject() const override { return _target; }      
+        ID3D12Resource* GetTextureHandle() const { return _target->GetHandle(); }
+
+        uint32_t ComputeSubresource(uint32_t mipLvl, uint32_t arrayLayer) const;
     };
 
     class DXCSampler : public ISampler{
     
         common::sp<DXCDevice> _dev;
+        std::string _debugName;
     
         DXCSampler(
             const common::sp<DXCDevice>& dev,
@@ -158,6 +133,12 @@ namespace alloy::dxc
             const ISampler::Description& desc
         ) {
             return common::sp(new DXCSampler(dev, desc));
+        }
+
+        
+        virtual void SetDebugName(const std::string& name) override {
+            // We don't really have a sampler object in dx12
+            _debugName = name;
         }
     
     };

@@ -136,7 +136,6 @@ int AppRunner::Run(IApp* pUserApp) {
         /* Poll for and process events */
         glfwPollEvents();
 
-        ResizeSwapChainIfNecessary();
 
         //auto frameIdx = WaitForNextFrameResourceAvailable();
         //auto& frameRes = _perFrameResources[frameIdx];
@@ -150,6 +149,7 @@ int AppRunner::Run(IApp* pUserApp) {
             _submission = nullptr;
         }
 
+        ResizeSwapChainIfNecessary();
         BeginFrame();
         pUserApp->OnFrameBegin(_fenceVal);
 
@@ -175,9 +175,8 @@ int AppRunner::Run(IApp* pUserApp) {
         //Begin render
 
 
-        auto& tgt = _msaaTarget;
-        auto fb = _swapChain->GetBackBuffer();
-        auto fbDesc = fb->GetDesc();
+        auto& tgt = _perFrameResource;
+        auto backBufferView = _swapChain->GetBackBuffer();
 
         auto cmdQ = _dev->GetGfxCommandQueue();
         auto commandList = cmdQ->CreateCommandList();
@@ -186,38 +185,86 @@ int AppRunner::Run(IApp* pUserApp) {
             bool msaaEnabled = _msaaSampleCnt > alloy::SampleCount::x1;
             commandList->Begin();
 
+            std::vector<alloy::BarrierOp> barriers;
+
             alloy::RenderPassAction passAction{};
             auto& ctAct = passAction.colorTargetActions.emplace_back();
             ctAct.loadAction = alloy::LoadAction::Clear;
             ctAct.storeAction = alloy::StoreAction::Store;
             ctAct.clearColor = {0.9, 0.1, 0.3, 1};
             if(msaaEnabled) {
-                ctAct.target = tgt.color;
-                ctAct.msaaResolveTarget = fbDesc.colorAttachments.front();
+                ctAct.target = tgt.msaaColorRT;
+                ctAct.msaaResolveTarget = backBufferView;
             } else {
-                ctAct.target = fbDesc.colorAttachments.front();
+                ctAct.target = backBufferView;
+            }
+
+            // Color attachment transition
+            barriers.emplace_back(alloy::TextureBarrierOp{
+                .texture = ctAct.target,
+                .from = {
+                    .stages = alloy::PipelineStage::AllCommands,
+                    .access = {},
+                    .layout = alloy::TextureLayout::Undefined,
+                },
+                .to = {
+                    .stages = alloy::PipelineStage::ColorOutput,
+                    .access = alloy::ResourceAccess::RenderTarget,
+                    .layout = alloy::TextureLayout::ColorAttachment,
+                },
+            });
+
+            //Resolve target transition
+            if(ctAct.msaaResolveTarget) {
+                barriers.emplace_back(alloy::TextureBarrierOp{
+                    .texture = ctAct.msaaResolveTarget,
+                    .from = {
+                        .stages = alloy::PipelineStage::AllCommands,
+                        .access = {},
+                        .layout = alloy::TextureLayout::Undefined,
+                    },
+                    .to = {
+                        .stages = alloy::PipelineStage::ColorOutput,
+                        .access = alloy::ResourceAccess::RenderTarget,
+                        .layout = alloy::TextureLayout::ColorAttachment,
+                    },
+                });
             }
 
             auto& dtAct = passAction.depthTargetAction.emplace();
             dtAct.loadAction = alloy::LoadAction::Clear;
-            dtAct.storeAction = alloy::StoreAction::Store;
+            dtAct.storeAction = alloy::StoreAction::DontCare;
             dtAct.clearDepth = 1.f;
-            if(msaaEnabled) {
-                dtAct.target = tgt.depthStencil;
-                dtAct.msaaResolveTarget = fbDesc.depthAttachment;
-                dtAct.msaaResolveMode = alloy::MSAADepthResolveMode::Min;
-            } else {
-                dtAct.target = fbDesc.depthAttachment;
-            }
+            dtAct.target = tgt.depthStencilRT;
+
 
             auto& stAct = passAction.stencilTargetAction.emplace();
             stAct.loadAction = alloy::LoadAction::Clear;
-            stAct.storeAction = alloy::StoreAction::Store;
-            stAct.target = tgt.depthStencil;
+            stAct.storeAction = alloy::StoreAction::DontCare;
+            stAct.target = tgt.depthStencilRT;
             stAct.clearStencil = 0xA;
             //stAct.msaaResolveTarget = fbDesc.depthAttachment;
 
-            auto& pass = commandList->BeginRenderPass(passAction);
+            // DepthStencil attachment transition
+            barriers.emplace_back(alloy::TextureBarrierOp{
+                .texture = tgt.depthStencilRT,
+                .from = {
+                    .stages = alloy::PipelineStage::AllCommands,
+                    .access = {},
+                    .layout = alloy::TextureLayout::Undefined,
+                },
+                .to = {
+                    .stages = alloy::PipelineStage::DepthStencil,
+                    .access = alloy::ResourceAccess::DepthStencilWrite,
+                    .layout = alloy::TextureLayout::DepthStencilWrite,
+                },
+            });
+
+            commandList->Barrier(barriers);
+
+            auto bindlessAccesses = pUserApp->GetFrameBindlessResources();
+
+            auto& pass = commandList->BeginRenderPass(passAction, bindlessAccesses);
 
             commandList->PushDebugGroup("Draw scene", {0.5, 0.9, 0.4, 1.0});
 
@@ -230,6 +277,23 @@ int AppRunner::Run(IApp* pUserApp) {
             commandList->PopDebugGroup();
 
             commandList->EndPass();
+
+            //Transition backbuffer to presentable state
+            barriers = {alloy::TextureBarrierOp{
+                .texture = backBufferView,
+                .from = {
+                    .stages = alloy::PipelineStage::ColorOutput,
+                    .access = alloy::ResourceAccess::RenderTarget,
+                    .layout = alloy::TextureLayout::ColorAttachment,
+                },
+                .to = {
+                    .stages = alloy::PipelineStage::AllCommands,
+                    .access = alloy::ResourceAccess::Present,
+                    .layout = alloy::TextureLayout::Present,
+                },
+            }};
+            commandList->Barrier(barriers);
+
             commandList->End();
         }
 
@@ -261,7 +325,7 @@ void AppRunner::SetupAlloyEnv() {
 
 #ifdef VLD_PLATFORM_MACOS
     backend = alloy::Backend::Metal;
-#elif defined VLD_PLATFORM_WIN32
+#elif  defined VLD_PLATFORM_WIN32
     backend = alloy::Backend::DX12;
 #else
     backend = alloy::Backend::Vulkan;
@@ -324,7 +388,6 @@ void AppRunner::SetupAlloyEnv() {
     swapChainDesc.source = &scSrc;
     swapChainDesc.initialWidth = w;
     swapChainDesc.initialHeight = h;
-    swapChainDesc.depthFormat = _dsFormat;
     swapChainDesc.backBufferCnt = 2;
     _swapChain = factory.CreateSwapChain(swapChainDesc);
 
@@ -366,7 +429,7 @@ void AppRunner::TearDownAlloyEnv() {
 
 
 void AppRunner::ReleasePerFrameResources() {
-    _msaaTarget = {};
+    _perFrameResource = {};
     _submission = nullptr;
 }
 
@@ -381,8 +444,6 @@ void AppRunner::CreatePerFrameResources() {
     auto& factory = _dev->GetResourceFactory();
 
 
-    auto& tgt = _msaaTarget;
-
     alloy::ITexture::Description msaaTgtDesc {};
     msaaTgtDesc.type = alloy::ITexture::Description::Type::Texture2D;
     msaaTgtDesc.sampleCount = _msaaSampleCnt;
@@ -393,12 +454,12 @@ void AppRunner::CreatePerFrameResources() {
     msaaTgtDesc.arrayLayers = 1;
     msaaTgtDesc.format = alloy::PixelFormat::B8_G8_R8_A8_UNorm;
     msaaTgtDesc.usage.renderTarget = 1;
-    {
+    if(_msaaSampleCnt != alloy::SampleCount::x1){
         auto tex = factory.CreateTexture(msaaTgtDesc);
-        auto view = factory.CreateTextureView(tex);
-        tgt.color = factory.CreateRenderTarget(view);
-
         tex->SetDebugName(std::format("MSAAColorTgt_frame"));
+
+        auto view = factory.CreateTextureView(tex);
+        _perFrameResource.msaaColorRT = view;
     }
 
     msaaTgtDesc.format = alloy::PixelFormat::D32_Float_S8_UInt;
@@ -406,10 +467,9 @@ void AppRunner::CreatePerFrameResources() {
     msaaTgtDesc.usage.depthStencil = 1;
     {
         auto tex = factory.CreateTexture(msaaTgtDesc);
-        auto view = factory.CreateTextureView(tex);
-        tgt.depthStencil = factory.CreateRenderTarget(view);
-
         tex->SetDebugName(std::format("MSAADSTgt_frame"));
+        auto view = factory.CreateTextureView(tex);
+        _perFrameResource.depthStencilRT = view;
     }
 }
 

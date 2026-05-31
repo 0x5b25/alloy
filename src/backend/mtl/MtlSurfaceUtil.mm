@@ -20,14 +20,14 @@ static CAMetalLayer* _CreateMetalLayer() {
     auto _metalLayer = [CAMetalLayer layer];
     _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _metalLayer.framebufferOnly = true;
-    
+
     return _metalLayer;
 }
 
-CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
-    
+CAMetalLayer* CreateSurface(id<MTLDevice> gd, const alloy::SwapChainSource* src){
+
     CAMetalLayer* container = nullptr;
-    
+
     switch(src->tag){
         case alloy::SwapChainSource::Tag::Opaque: {
             auto opaqueSource = (alloy::OpaqueSwapChainSource*)src;
@@ -40,7 +40,7 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             auto nsWindowSource = (alloy::NSWindowSwapChainSource*)src;
             NSWindow* nsWindow = (NSWindow*)nsWindowSource->nsWindow;
             NSView* contentView = nsWindow.contentView;
-            
+
             //if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
                 auto _metalLayer = _CreateMetalLayer();
                 contentView.wantsLayer = true;
@@ -50,11 +50,11 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             //}
             container = (CAMetalLayer*)contentView.layer;
         }break;
-            
+
         case alloy::SwapChainSource::Tag::NSView:{
             auto nsViewSource = (alloy::NSViewSwapChainSource*)src;
             NSView* contentView = (NSView*)nsViewSource->nsView;
-            
+
             //if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
                 auto _metalLayer = _CreateMetalLayer();
                 contentView.wantsLayer = true;
@@ -65,14 +65,14 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
             //[contentView release];
             container = (CAMetalLayer*)contentView.layer;
         } break;
-#endif       
+#endif
 
 
 #if defined(VLD_PLATFORM_IOS) || defined(VLD_PLATFORM_IOS_SIM) || defined(VLD_PLATFORM_MACCATALYST)
         case alloy::SwapChainSource::Tag::UIView: {
             auto nsViewSource = (alloy::UIViewSwapChainSource*)src;
             UIView* contentView = (UIView*)nsViewSource->uiView;
-            
+
             //UIView can't replace its backing layers like those AppKit views
             //We need to insert the CAMetalLayer into UIView's sublayers
             if (![contentView.layer isKindOfClass:[CAMetalLayer class]]) {
@@ -89,9 +89,7 @@ CAMetalLayer* CreateSurface(id<MTLDevice> gd, alloy::SwapChainSource* src){
 #endif
         default: break;
     }
-    
+
     return container;
-    
+
 }
-
-

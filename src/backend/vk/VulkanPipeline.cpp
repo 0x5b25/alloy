@@ -14,16 +14,6 @@
 #include "VulkanBindableResource.hpp"
 
 
-template <>
-struct std::hash<alloy::VertexInputSemantic>
-{
-    std::size_t operator()(const alloy::VertexInputSemantic& k) const
-    {
-        return std::hash<uint32_t>()((uint32_t)k.name)
-             ^ (std::hash<uint32_t>()(k.slot) << 1);
-    }
-};
-
 namespace alloy::vk{
 class VkShaderRAII {
     VulkanDevice* _dev;
@@ -84,9 +74,10 @@ public:
         return false;
     }
 
+#if 0
     class PipelineRemapper : public alloy::vk::SPVRemapper {
     public:
-        using BindingRemapInfo = std::vector<VulkanResourceLayout::ResourceBindInfo>;
+        using BindingRemapInfo = std::vector<VulkanResourceLayout::ResourceSetInfo>;
         using PushConstantRemapInfo = std::vector<VulkanResourceLayout::PushConstantInfo>;
         using IAMappingInfo = std::unordered_map<VertexInputSemantic, uint32_t>;
 
@@ -95,27 +86,6 @@ public:
         const IAMappingInfo* _iaMappings;
         const PushConstantRemapInfo* _pushConstantRemappings;
 
-        bool FindVkBindingSet(
-            VulkanResourceLayout::BindType type,
-            uint32_t d3dRegSpace,
-            uint32_t& vkSetOut
-        ) {
-            if(!_bindingRemappings) return false;
-
-            for(auto& b: *_bindingRemappings) {
-                if(b.type == type) {
-                    for(auto& set : b.sets) {
-                        if(set.regSpaceDesignated == d3dRegSpace) {
-                            vkSetOut = set.setIndexAllocated;
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            assert(false && __FUNCTION__": Failed to find vulkan bindings");
-            return false;
-        }
 
     public:
 
@@ -132,14 +102,38 @@ public:
         bool RemapSRV( const dxil_spv_d3d_binding& binding,
                               dxil_spv_srv_vulkan_binding& vk_binding
         ) override {
+            
+            VkDescriptorType vkType;
+
+            switch(binding.kind) {
+            case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2DMS:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_3D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_MS_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE_ARRAY:
+                vkType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; break;
+    
+	        case DXIL_SPV_RESOURCE_KIND_TYPED_BUFFER:
+	        case DXIL_SPV_RESOURCE_KIND_RAW_BUFFER:
+	        case DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER:
+                vkType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; break;
+
+            default: return false;
+            }
+
             vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
             vk_binding.offset_binding = {};
-            uint32_t set;
-            if(FindVkBindingSet(VulkanResourceLayout::BindType::ShaderResourceReadOnly,
+            uint32_t slot, set;
+            if(FindVkBindingSet(vkType,
                                 binding.register_space,
-                                set)){
+                                binding.register_index,
+                                set, slot)){
 			    vk_binding.buffer_binding.set = set;
-			    vk_binding.buffer_binding.binding = binding.register_index;
+			    vk_binding.buffer_binding.binding = slot;
 			    //vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
                 if(    binding.kind == DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER
                     || binding.kind == DXIL_SPV_RESOURCE_KIND_RAW_BUFFER )
@@ -153,14 +147,15 @@ public:
         bool RemapSampler( const dxil_spv_d3d_binding& binding,
                                   dxil_spv_vulkan_binding& vk_binding
         ) override {
-            uint32_t set;
-            if(FindVkBindingSet(VulkanResourceLayout::BindType::Sampler,
+            uint32_t slot, set;
+            if(FindVkBindingSet(VK_DESCRIPTOR_TYPE_SAMPLER,
                                 binding.register_space,
-                                set))
+                                binding.register_index,
+                                set, slot))
             {
                 vk_binding.bindless.use_heap = DXIL_SPV_FALSE;
 		        vk_binding.set = set;
-		        vk_binding.binding = binding.register_index;
+		        vk_binding.binding = slot;
 			    return true;
             }
             return false;
@@ -169,14 +164,39 @@ public:
         bool RemapUAV ( const dxil_spv_uav_d3d_binding& binding,
                                dxil_spv_uav_vulkan_binding& vk_binding
         ) override {
-            uint32_t set;
-            if(FindVkBindingSet(VulkanResourceLayout::BindType::ShaderResourceReadWrite,
+
+            VkDescriptorType vkType;
+
+            switch(binding.d3d_binding.kind) {
+            case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2DMS:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_3D:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_MS_ARRAY:
+	        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE_ARRAY:
+                vkType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; break;
+    
+	        case DXIL_SPV_RESOURCE_KIND_TYPED_BUFFER:
+	        case DXIL_SPV_RESOURCE_KIND_RAW_BUFFER:
+	        case DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER:
+                vkType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; break;
+
+            default: return false;
+            }
+            
+            
+            uint32_t set, slot;
+            if(FindVkBindingSet(vkType,
                                 binding.d3d_binding.register_space,
-                                set))
+                                binding.d3d_binding.register_index,
+                                set, slot))
             {
                 vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
 		        vk_binding.buffer_binding.set = set;
-		        vk_binding.buffer_binding.binding = binding.d3d_binding.register_index;
+		        vk_binding.buffer_binding.binding = slot;
 			    return true;
             }
             return false;
@@ -205,13 +225,14 @@ public:
 
             vk_binding.push_constant = DXIL_SPV_FALSE;
 
-            uint32_t set;
-            if(FindVkBindingSet(VulkanResourceLayout::BindType::UniformBuffer,
+            uint32_t set, slot;
+            if(FindVkBindingSet(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                 binding.register_space,
-                                set))
+                                binding.register_index,
+                                set, slot))
             {
                 vk_binding.vulkan.uniform_binding.set = set;
-                vk_binding.vulkan.uniform_binding.binding = binding.register_index;
+                vk_binding.vulkan.uniform_binding.binding = slot;
                 return true;
             }
             return false;
@@ -243,100 +264,9 @@ public:
             return true;
         }
     };
-
-
-
-#if 0
-    VkRenderPass CreateFakeRenderPassForCompat(
-        VulkanDevice* dev,
-        const OutputDescription& outputDesc,
-        VkSampleCountFlagBits sampleCnt
-    ){
-
-        bool hasColorAttachment = !outputDesc.colorAttachment.empty();
-        bool hasDepthAttachment = outputDesc.depthAttachment.has_value();
-
-        VkRenderPassCreateInfo renderPassCI{};
-        renderPassCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-
-        std::vector<VkAttachmentDescription> attachments{};
-        unsigned colorAttachmentCount = outputDesc.colorAttachment.size();
-
-
-        std::vector<VkAttachmentReference> colorAttachmentRefs{colorAttachmentCount};
-
-        for (unsigned i = 0; i < outputDesc.colorAttachment.size(); i++)
-        {
-            VkAttachmentDescription colorAttachmentDesc{};
-            colorAttachmentDesc.format = VdToVkPixelFormat(outputDesc.colorAttachment[i].format);
-            colorAttachmentDesc.samples = sampleCnt;
-            colorAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            colorAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
-            colorAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            colorAttachmentDesc.stencilStoreOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            colorAttachmentDesc.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-            colorAttachmentDesc.finalLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            attachments.push_back(colorAttachmentDesc);
-
-            colorAttachmentRefs[i].attachment = i;
-            colorAttachmentRefs[i].layout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        }
-
-        VkAttachmentReference depthAttachmentRef{};
-        if (hasDepthAttachment)
-        {
-            VkAttachmentDescription depthAttachmentDesc{};
-            PixelFormat depthFormat = outputDesc.depthAttachment.value().format;
-            bool hasStencil = FormatHelpers::IsStencilFormat(depthFormat);
-            depthAttachmentDesc.format = VdToVkPixelFormat(depthFormat, true);
-            depthAttachmentDesc.samples = sampleCnt;
-            depthAttachmentDesc.loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            depthAttachmentDesc.storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE;
-            depthAttachmentDesc.stencilLoadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            depthAttachmentDesc.stencilStoreOp = hasStencil
-                ? VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE
-                : VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            depthAttachmentDesc.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-            depthAttachmentDesc.finalLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            attachments.push_back(depthAttachmentDesc);
-
-            depthAttachmentRef.attachment = colorAttachmentCount;
-            depthAttachmentRef.layout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        }
-
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS;
-        if(hasColorAttachment){
-            subpass.colorAttachmentCount = colorAttachmentCount;
-            subpass.pColorAttachments = colorAttachmentRefs.data();
-        }
-
-        if (hasDepthAttachment)
-        {
-            subpass.pDepthStencilAttachment = &depthAttachmentRef;
-        }
-
-        VkSubpassDependency subpassDependency{};
-        subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        subpassDependency.srcStageMask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        subpassDependency.dstStageMask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        subpassDependency.dstAccessMask
-            = VkAccessFlagBits::VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
-            | VkAccessFlagBits::VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-        renderPassCI.attachmentCount = attachments.size();
-        renderPassCI.pAttachments = attachments.data();
-        renderPassCI.subpassCount = 1;
-        renderPassCI.pSubpasses = &subpass;
-        renderPassCI.dependencyCount = 1;
-        renderPassCI.pDependencies = &subpassDependency;
-
-        VkRenderPass renderPass;
-        VK_CHECK(vkCreateRenderPass(dev->LogicalDev(), &renderPassCI, nullptr, &renderPass));
-        return renderPass;
-    }
-
 #endif
+
+
     VulkanPipelineBase::~VulkanPipelineBase() {
         VK_DEV_CALL(dev, vkDestroyPipelineLayout(dev->LogicalDev(), _pipelineLayout, nullptr));
         VK_DEV_CALL(dev, vkDestroyPipeline(dev->LogicalDev(), _devicePipeline, nullptr));
@@ -349,146 +279,6 @@ public:
     VulkanGraphicsPipeline::~VulkanGraphicsPipeline(){
 
     }
-#if 0
-    void _CreateStandardPipeline(
-        VkDevice dev,
-        VkShaderModule vertShaderModule,
-        VkShaderModule fragShaderModule,
-        float width,
-        float height,
-        VkRenderPass compatRenderPass,
-
-        VkPipelineLayout& outLayout,
-        VkPipeline& outPipeline
-    ) {
-        //auto vertShaderCode = readFile("shaders/vert.spv");
-        //auto fragShaderCode = readFile("shaders/frag.spv");
-        //
-        //VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-        //VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-
-        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStageInfo.module = vertShaderModule;
-        vertShaderStageInfo.pName = "main";
-
-        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStageInfo.module = fragShaderModule;
-        fragShaderStageInfo.pName = "main";
-
-        VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
-
-        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 0;
-        vertexInputInfo.vertexAttributeDescriptionCount = 0;
-
-        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = width;
-        viewport.height = height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = {(unsigned)width, (unsigned)height};
-
-        VkPipelineViewportStateCreateInfo viewportState{};
-        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewportState.viewportCount = 1;
-        viewportState.pViewports = &viewport;
-        viewportState.scissorCount = 1;
-        viewportState.pScissors = &scissor;
-
-        // Dynamic State
-        VkPipelineDynamicStateCreateInfo dynamicStateCI{};
-        dynamicStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        VkDynamicState dynamicStates[2];
-        dynamicStates[0] = VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT;
-        dynamicStates[1] = VkDynamicState::VK_DYNAMIC_STATE_SCISSOR;
-        dynamicStateCI.dynamicStateCount = 2;
-        dynamicStateCI.pDynamicStates = dynamicStates;
-
-        //pipelineCI.pDynamicState = &dynamicStateCI;
-
-        VkPipelineRasterizationStateCreateInfo rasterizer{};
-        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterizer.depthClampEnable = VK_FALSE;
-        rasterizer.rasterizerDiscardEnable = VK_FALSE;
-        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-        rasterizer.lineWidth = 1.0f;
-        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-        rasterizer.depthBiasEnable = VK_FALSE;
-
-        VkPipelineMultisampleStateCreateInfo multisampling{};
-        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisampling.sampleShadingEnable = VK_FALSE;
-        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_FALSE;
-
-        VkPipelineColorBlendStateCreateInfo colorBlending{};
-        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlending.logicOpEnable = VK_FALSE;
-        colorBlending.logicOp = VK_LOGIC_OP_COPY;
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &colorBlendAttachment;
-        colorBlending.blendConstants[0] = 0.0f;
-        colorBlending.blendConstants[1] = 0.0f;
-        colorBlending.blendConstants[2] = 0.0f;
-        colorBlending.blendConstants[3] = 0.0f;
-
-        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
-
-
-        VkPipelineLayout pipelineLayout;
-        if (vkCreatePipelineLayout(dev, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create pipeline layout!");
-        }
-        outLayout = pipelineLayout;
-
-        VkGraphicsPipelineCreateInfo pipelineInfo{};
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = 2;
-        pipelineInfo.pStages = shaderStages;
-        pipelineInfo.pVertexInputState = &vertexInputInfo;
-        pipelineInfo.pInputAssemblyState = &inputAssembly;
-        pipelineInfo.pViewportState = &viewportState;
-        pipelineInfo.pDynamicState = &dynamicStateCI;
-        pipelineInfo.pRasterizationState = &rasterizer;
-        pipelineInfo.pMultisampleState = &multisampling;
-        pipelineInfo.pColorBlendState = &colorBlending;
-        pipelineInfo.layout = pipelineLayout;
-        pipelineInfo.renderPass = compatRenderPass;
-        pipelineInfo.subpass = 0;
-        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-        VkPipeline graphicsPipeline;
-        if (vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create graphics pipeline!");
-        }
-
-        outPipeline = graphicsPipeline;
-
-        return;
-    }
-#endif
 
     common::sp<IGfxPipeline> VulkanGraphicsPipeline::Make(
         const common::sp<VulkanDevice>& dev,
@@ -553,7 +343,7 @@ public:
 
         rsCI.depthClampEnable = false;
         VkPipelineRasterizationDepthClipStateCreateInfoEXT rsDepthClipCI{};
-        if(dev->GetVkFeatures().supportsDepthClip) {
+        if(dev->GetVkFeatures().flags.supportsDepthClip) {
 
             //If the pNext chain of VkPipelineRasterizationStateCreateInfo includes
             // a VkPipelineRasterizationDepthClipStateCreateInfoEXT structure, then
@@ -634,26 +424,22 @@ public:
         // Pipeline Layout
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
             //refCnts.push_back(desc.resourceLayout);
-            pBindInfo = &resourceLayout->GetBindings();
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
 
-            if(!pPushConstantRemapInfo->empty()) {
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_ALL_GRAPHICS,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-
-            for(auto& b : *pBindInfo) {
-                for(auto& s : b.sets) {
-                    dsls.push_back(s.layout);
-                }
+            for(auto& s : setInfo) {
+                dsls.push_back(s.layout);
             }
         }
 
@@ -758,10 +544,9 @@ public:
         //    specializationInfo.pMapEntries = mapEntries.data();
         //}
 
-        PipelineRemapper remapper {
-            pBindInfo,
-            &iaMappings,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            &iaMappings
         };
         //alloy::vk::SPVRemapper remapper{
         //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
@@ -959,23 +744,22 @@ public:
 
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
-            pBindInfo = &(resourceLayout->GetBindings());
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
-            if(!pPushConstantRemapInfo->empty()) {
+            //refCnts.push_back(desc.resourceLayout);
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
+
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_COMPUTE_BIT,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-            for(auto& b : *pBindInfo) {
-                for(auto& s : b.sets) {
-                    dsls.push_back(s.layout);
-                }
+            for(auto& s : setInfo) {
+                dsls.push_back(s.layout);
             }
         }
 
@@ -1024,10 +808,9 @@ public:
         //    specializationInfo.pMapEntries = mapEntries.data();
         //}
 
-        PipelineRemapper remapper {
-            pBindInfo,
-            nullptr,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            nullptr
         };
 
         VkShaderRAII cs{dev.get()};
@@ -1147,7 +930,7 @@ public:
 
         rsCI.depthClampEnable = false;
         VkPipelineRasterizationDepthClipStateCreateInfoEXT rsDepthClipCI{};
-        if(dev->GetVkFeatures().supportsDepthClip) {
+        if(dev->GetVkFeatures().flags.supportsDepthClip) {
 
             //If the pNext chain of VkPipelineRasterizationStateCreateInfo includes
             // a VkPipelineRasterizationDepthClipStateCreateInfoEXT structure, then
@@ -1228,26 +1011,22 @@ public:
         // Pipeline Layout
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pBindInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
             //refCnts.push_back(desc.resourceLayout);
-            pBindInfo = &resourceLayout->GetBindings();
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
 
-            if(!pPushConstantRemapInfo->empty()) {
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_ALL_GRAPHICS,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-
-            for(auto& b : *pBindInfo) {
-                for(auto& s : b.sets) {
-                    dsls.push_back(s.layout);
-                }
+            for(auto& s : setInfo) {
+                dsls.push_back(s.layout);
             }
         }
 
@@ -1354,29 +1133,10 @@ public:
         //
 
         //#TODO: revisit dxil-spv remapper for mesh shaders
-        PipelineRemapper remapper {
-            pBindInfo,
-            nullptr,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            nullptr
         };
-        //alloy::vk::SPVRemapper remapper{
-        //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
-        //        VertexInputSemantic d3dSemantic {};
-        //        VertexInputSemantic::Name d3dSemanticName;
-        //        if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
-        //            return false;
-        //
-        //        d3dSemantic.name = d3dSemanticName;
-        //        d3dSemantic.slot = d3dIn.semantic_index;
-        //
-        //        auto findRes = iaMappings.find(d3dSemantic);
-        //        if(findRes == iaMappings.end())
-        //            return false;
-        //        vkOut.location = findRes->second;
-        //
-        //        return true;
-        //    }
-        //};
 
         VkShaderRAII shaderMods[3] { {dev.get()}, {dev.get()}, {dev.get()}};
         pipelineCI.stageCount = 0;

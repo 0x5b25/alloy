@@ -5,7 +5,6 @@
 //#include "alloy/Pipeline.hpp"
 #include "alloy/Buffer.hpp"
 //#include "alloy/BindableResource.hpp"
-#include "alloy/FrameBuffer.hpp"
 #include "alloy/Types.hpp"
 #include "alloy/SyncObjects.hpp"
 #include "alloy/ResourceBarrier.hpp"
@@ -26,7 +25,18 @@ namespace alloy
     class IComputePipeline;
     class IResourceLayout;
     class IResourceSet;
+    class IMutableResourceSet;
+    class IResourceDescriptorHeap;
+    class ISamplerDescriptorHeap;
+    class IBindableResource;
 
+    struct PassResourceAccess {
+        common::sp<IBindableResource> resource;
+        PipelineStages stages;
+        ResourceAccesses access;
+    };
+
+    using PassResourceUsage = std::span<const PassResourceAccess>;
 
     class IRenderCommandEncoder {
     public:
@@ -47,7 +57,7 @@ namespace alloy
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) = 0;
 
         // Sets the active <see cref="ResourceSet"/> for the given index. This ResourceSet is only active for the graphics
@@ -64,6 +74,20 @@ namespace alloy
         virtual void SetGraphicsResourceSet(
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
+
+        virtual void SetGraphicsMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) = 0;
+
+        // The T2 bindless heap, reflects almost 1:1 to DX12.
+        // either can be null pointer, which will be clearing the bound heaps.
+        // Should be called **BEFORE** setting a T2 bindless pipeline. According to
+        // DX12 backend limit:
+        // >   SetDescriptorHeaps must be called to bind a CBV/SRV/UAV descriptor
+        // >   before setting a root signature with 
+        // >   D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED flag.
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) = 0;
 
         #if 0 //Subsituted by load actions of renderpass
         // Clears the color target at the given index of the active <see cref="Framebuffer"/>.
@@ -83,7 +107,7 @@ namespace alloy
         // The index given must be less than the number of color attachments in the active <see cref="Framebuffer"/>.
         // <param name="index">The color target index.</param>
         // <param name="viewport">The new <see cref="Viewport"/>.</param>
-        virtual void SetViewports(const std::span<Viewport>& viewport) = 0;
+        virtual void SetViewports(std::span<const Viewport> viewport) = 0;
         
         // All targets in a render pass should have the same
         // size, We grab the first target available and use its size.
@@ -97,7 +121,7 @@ namespace alloy
         // <param name="y">The Y value of the scissor rectangle.</param>
         // <param name="width">The width of the scissor rectangle.</param>
         // <param name="height">The height of the scissor rectangle.</param>
-        virtual void SetScissorRects(const std::span<Rect>& ) = 0;
+        virtual void SetScissorRects( std::span<const Rect> ) = 0;
         
         // All targets in a render pass should have the same
         // size, We grab the first target available and use its size.
@@ -162,8 +186,6 @@ namespace alloy
                                   std::uint32_t groupCountY,
                                   std::uint32_t groupCountZ) = 0;
 
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
     };
 
     
@@ -176,9 +198,16 @@ namespace alloy
             const common::sp<IResourceSet>& rs
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) = 0;
 
+        virtual void SetComputeMutableResourceSet(
+            const common::sp<IMutableResourceSet>& rs) = 0;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) = 0;
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
-            const std::span<uint32_t>& data,
+            std::span<const uint32_t> data,
             std::uint32_t destOffsetIn32BitValues) = 0;
 
         /// <summary>
@@ -200,11 +229,6 @@ namespace alloy
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
-
-        
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) = 0;
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) = 0;
-
     };
 
     class ITransferCommandEncoder {
@@ -228,7 +252,7 @@ namespace alloy
             const common::sp<BufferRange>& src,
             std::uint32_t srcBytesPerRow,
             std::uint32_t srcBytesPerImage,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -236,7 +260,7 @@ namespace alloy
         ) = 0;
 
         virtual void CopyTextureToBuffer(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
@@ -245,29 +269,13 @@ namespace alloy
             std::uint32_t srcBytesPerImage,
             const Size3D& copySize
         ) = 0;
-        /// Copies a region from one <see cref="Texture"/> into another.
-        /// <param name="source">The source <see cref="Texture"/> from which data is copied.</param>
-        /// <param name="srcX">The X coordinate of the source copy region.</param>
-        /// <param name="srcY">The Y coordinate of the source copy region.</param>
-        /// <param name="srcZ">The Z coordinate of the source copy region.</param>
-        /// <param name="srcMipLevel">The mip level to copy from the source Texture.</param>
-        /// <param name="srcBaseArrayLayer">The starting array layer to copy from the source Texture.</param>
-        /// <param name="destination">The destination <see cref="Texture"/> into which data is copied.</param>
-        /// <param name="dstX">The X coordinate of the destination copy region.</param>
-        /// <param name="dstY">The Y coordinate of the destination copy region.</param>
-        /// <param name="dstZ">The Z coordinate of the destination copy region.</param>
-        /// <param name="dstMipLevel">The mip level to copy the data into.</param>
-        /// <param name="dstBaseArrayLayer">The starting array layer to copy data into.</param>
-        /// <param name="width">The width in texels of the copy region.</param>
-        /// <param name="height">The height in texels of the copy region.</param>
-        /// <param name="depth">The depth in texels of the copy region.</param>
-        /// <param name="layerCount">The number of array layers to copy.</param>
+        // Copies a region from one <see cref="Texture"/> into another. Once per subresource
         virtual void CopyTexture(
-            const common::sp<ITexture>& src,
+            const common::sp<ITextureView>& src,
             const Point3D& srcOrigin,
             std::uint32_t srcMipLevel,
             std::uint32_t srcBaseArrayLayer,
-            const common::sp<ITexture>& dst,
+            const common::sp<ITextureView>& dst,
             const Point3D& dstOrigin,
             std::uint32_t dstMipLevel,
             std::uint32_t dstBaseArrayLayer,
@@ -351,10 +359,6 @@ namespace alloy
         // <param name="texture">The <see cref="Texture"/> to generate mipmaps for. This Texture must have been created with
         // <see cref="TextureUsage"/>.<see cref="TextureUsage.GenerateMipmaps"/>.</param>
         virtual void GenerateMipmaps(const common::sp<ITexture>& texture) = 0;
-
-        virtual void WaitForFence(const common::sp<IFence>&) = 0;
-        virtual void UpdateFence(const common::sp<IFence>&) = 0;
-
     };
 
     class ICommandList : public common::RefCntBase{
@@ -368,21 +372,20 @@ namespace alloy
         virtual void End() = 0;
 
         /////#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) = 0;
-        virtual IComputeCommandEncoder& BeginComputePass() = 0;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& usage = {} ) = 0;
+        virtual IComputeCommandEncoder& BeginComputePass( const PassResourceUsage& usage = {} ) = 0;
         virtual ITransferCommandEncoder& BeginTransferPass() = 0;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
+
+        virtual void SetDebugName(const std::string& ) = 0;
 
         virtual void EndPass() = 0;
 
         //virtual void BeginRenderPass(const sp<Framebuffer>& fb) = 0;
         //virtual void EndRenderPass() = 0;
 
-        virtual void Barrier(const std::vector<alloy::BarrierDescription>& barriers) = 0;
-
-        virtual void TransitionTextureToDefaultLayout(
-            const std::vector<common::sp<ITexture>>& textures
-        ) = 0;
+        virtual void Barrier(std::span<const alloy::BarrierOp> barriers) = 0;
 
         // Pushes a debug group at the current position in the <see cref="CommandList"/>. This allows subsequent commands to be
         // categorized and filtered when viewed in external debugging tools. This method can be called multiple times in order

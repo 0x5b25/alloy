@@ -1,14 +1,15 @@
 #include "DXCResourceFactory.hpp"
 
 #include <cassert>
+#include <stdexcept>
 
 #include "DXCPipeline.hpp"
 #include "DXCCommandList.hpp"
 #include "DXCTexture.hpp"
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
+#include "DXCResourceHeap.hpp"
 #include "DXCSwapChain.hpp"
-#include "DXCFrameBuffer.hpp"
 #include "DXCDevice.hpp"
 
 namespace alloy::dxc
@@ -24,12 +25,14 @@ namespace alloy::dxc
     }
 
 #define DXC_RF_FOR_EACH_RES(V) \
-    /*V(Framebuffer)*/\
     V(Texture)\
     V(Buffer)\
     V(Sampler)\
     /*V(Shader)*/\
     V(ResourceSet)\
+    V(MutableResourceSet)\
+    V(ResourceDescriptorHeap)\
+    V(SamplerDescriptorHeap)\
     V(ResourceLayout)\
     V(SwapChain)
 
@@ -40,15 +43,15 @@ namespace alloy::dxc
         return common::sp<DXCDevice>(dev);
     }
 
-    common::sp<IFrameBuffer> DXCResourceFactory::CreateFrameBuffer (
-        const IFrameBuffer ::Description& description
-    ){
-        return nullptr;
-    }
-
     //DXC_IMPL_RF_CREATE_WITH_DESC(Texture)
 
     DXC_RF_FOR_EACH_RES(DXC_IMPL_RF_CREATE_WITH_DESC)
+
+    //common::sp<IMutableResourceSet> DXCResourceFactory::CreateMutableResourceSet(
+    //    const IMutableResourceSet::Description& description
+    //) {
+    //    return DXCMutableResourceSet::Make(_CreateNewDevHandle(), description);
+    //}
 
     common::sp<IShader> DXCResourceFactory::CreateShader(
         const IShader::Description& desc,
@@ -93,18 +96,15 @@ namespace alloy::dxc
         const common::sp<ITexture>& texture,
         const ITextureView::Description& description
     ){
-        return common::sp(new DXCTextureView(RefRawPtr(texture.get()), description));
+        return common::make_sp<DXCTextureView>(
+            SPCast<DXCTexture>(texture),
+            description
+        );
         // auto vkTex = PtrCast<VulkanTexture>(texture.get());
         //return VulkanTextureView::Make(_CreateNewDevHandle(), RefRawPtr(vkTex), description);
     }
 
     
-    common::sp<IRenderTarget> DXCResourceFactory::CreateRenderTarget(
-        const common::sp<ITextureView>& texView
-    ) {
-        return DXCRenderTarget::Make(common::SPCast<DXCTextureView>(texView));
-    } 
-
     common::sp<IEvent> DXCResourceFactory::CreateSyncEvent() {
        return common::sp(new DXCFence(GetBase()));
     }

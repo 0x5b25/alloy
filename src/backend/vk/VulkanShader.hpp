@@ -11,9 +11,23 @@
 #include <span>
 #include <functional>
 
+#include "alloy/Pipeline.hpp"
+
+// For IAMappingInfo 
+template <>
+struct std::hash<alloy::VertexInputSemantic>
+{
+    std::size_t operator()(const alloy::VertexInputSemantic& k) const
+    {
+        return std::hash<uint32_t>()((uint32_t)k.name)
+             ^ (std::hash<uint32_t>()(k.slot) << 1);
+    }
+};
+
 namespace alloy::vk {
 
     class VulkanDevice;
+    class VulkanResourceLayout;
 
     enum ShaderConverterResult {
         Success,
@@ -70,26 +84,8 @@ namespace alloy::vk {
     };
 
     class SPVRemapper {
-
-    public:
-        //using VertexInputRemapFn = std::function<bool(const dxil_spv_d3d_vertex_input&,
-        //                                                    dxil_spv_vulkan_vertex_input&)>;
-        //using SRVRemapFn = std::function<bool(const dxil_spv_d3d_binding&,
-        //                                            dxil_spv_srv_vulkan_binding&)>;
-        //using SamplerRemapFn = std::function<bool( const dxil_spv_d3d_binding& binding,
-        //                                                 dxil_spv_vulkan_binding& vk_binding)>;
-        //using UAVRemapFn = std::function<bool( const dxil_spv_uav_d3d_binding& binding,
-        //                                             dxil_spv_uav_vulkan_binding& vk_binding )>;
-        //using CBVRemapFn = std::function< bool( const dxil_spv_d3d_binding& binding,
-        //                                              dxil_spv_cbv_vulkan_binding& vk_binding)>;
-        //
-        //struct RemapFn {
-        //    VertexInputRemapFn vertexRemapFn;
-        //    SRVRemapFn         srvRemapFn;
-        //    SamplerRemapFn     samplerRemapFn;
-        //    UAVRemapFn         uavRemapFn;
-        //    CBVRemapFn         cbvRemapFn;
-        //};
+    public:         
+        using IAMappingInfo = std::unordered_map<VertexInputSemantic, uint32_t>;
 
     protected:
 
@@ -105,12 +101,25 @@ namespace alloy::vk {
 
         std::unordered_map<std::string, ShaderStageIOInfo> shaderStageIoMap;
 
+
+        const VulkanResourceLayout* layout;
+        const IAMappingInfo* iaMappings;
         //RemapFn _remapFn;
 
+
+        bool FindVkBindingSet(
+            VkDescriptorType type,
+            uint32_t d3dRegSpace,
+            uint32_t d3dRegIdx,
+            uint32_t& vkSetOut,
+            uint32_t& vkSlotOut
+        );
+
     public:
-
-
-        SPVRemapper() { }
+        SPVRemapper(
+            const VulkanResourceLayout* layout,
+            const IAMappingInfo* iaMappings
+        );
 
         virtual ~SPVRemapper() { }
 

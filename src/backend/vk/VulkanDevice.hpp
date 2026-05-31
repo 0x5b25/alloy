@@ -74,88 +74,14 @@ namespace alloy::vk
         void FreeBuffer(VkCommandBuffer buf);
     };
 
-    class IVkTimeline {
-    public:
-        struct BufferState{
-            VkPipelineStageFlags stage;
-            VkAccessFlags2 access;
-
-            bool operator==(const BufferState& other) const {
-                return stage == other.stage && access == other.access;
-            }
-        };
-
-        struct TextureState {
-            //VkPipelineStageFlags stage;
-            //VkAccessFlags2 access;
-            //VkImageLayout layout;
-            //
-            //bool operator==(const TextureState& other) const {
-            //    return stage == other.stage &&
-            //           access == other.access &&
-            //           layout == other.layout;
-            //}
-
-            VkImageAspectFlags aspects;
-
-            struct AspectState {
-                VkImageLayout layout;
-            } color, depth, stencil;
-
-        };
-
-        struct ResourceStates {
-            std::unordered_map<VulkanTexture*, TextureState> textures;
-
-            void SyncTo(const ResourceStates& other) {
-                for(auto& [k, v] : other.textures)
-                    textures.insert_or_assign(k, v);
-            }
-
-            void Clear() {
-                textures.clear();
-            }
-        };
-
-        virtual void RemoveResource(VulkanBuffer* buffer) = 0;
-        virtual void RemoveResource(VulkanTexture* texture) = 0;
-
-        virtual ResourceStates& GetCurrentState() = 0;
-
-        //Notify that all resources are synced
-        // DX12 will sync all resources at submission end
-        // Vulkan will sync all resources at semaphore signal
-        //virtual void NotifySyncResources() = 0;
-    };
-
-    class VulkanCommandQueue : public ICommandQueue, public IVkTimeline {
+    class VulkanCommandQueue : public ICommandQueue {
 
 
         VulkanDevice* _dev;
         _CmdPoolMgr _cmdPoolMgr;
         VkQueue _q;
 
-        IVkTimeline::ResourceStates _currentState;
-
-        VkSemaphore  _submissionFence, _presentFence;
-        uint64_t _lastSubmittedFence = 0;
-        struct TransitionCmdBuf{
-            common::sp<_CmdPoolContainer> cmdPool;
-            VkCommandBuffer cmdBuf;
-            uint64_t completionFenceValue;
-        };
-        std::deque<TransitionCmdBuf> _transitionCmdBufs;
-
-        void _RecycleTransitionCmdBufs();
-
-        //void _InsertBarriers(
-        //    const alloy::utils::BarrierActions& barriers);
-
-        void _TransitResourceStatesBeforeSubmit(
-            const VulkanCommandList& cmdList);
-
-        void _MarkResourceStatesAfterSubmit(
-            const VulkanCommandList& cmdList);
+        VkSemaphore _presentFence;
 
     public:
 
@@ -186,65 +112,48 @@ namespace alloy::vk
 
         virtual void* GetNativeHandle() const override {return _q;}
 
-        /*IVkTimeline implementations*/
-        virtual void RemoveResource(VulkanBuffer* buffer) override {
-            //_CleanupSyncPoints();
-            //_currentState.buffers.erase(buffer);
-            //for(auto& pt : _syncPoints) {
-            //    pt.states.buffers.erase(buffer);
-            //}
-        }
-
-        virtual void RemoveResource(VulkanTexture* texture) override {
-            //_CleanupSyncPoints();
-            _currentState.textures.erase(texture);
-            //for(auto& pt : _syncPoints) {
-            //    pt.states.textures.erase(texture);
-            //}
-        }
-
-        ResourceStates& GetCurrentState() override { return _currentState; }
-
-        //Transition texture to present layout if necessary.
-        //Will always signal the semaphore for present sync
-        VkSemaphore PrepareTextureForPresent(VulkanTexture* tex);
+        // Signal the semaphore for present sync. Make sure present is 
+        // in sync with queue execution.
+        VkSemaphore PrepareForPresent();
 
     };
 
     class VulkanDevice : public IGraphicsDevice
                        , public VulkanResourceFactory
-                       , public IVkTimeline
     {
 
     public:
-        union Features {
-            struct {
-                std::uint32_t hasComputeCap : 1;
-                std::uint32_t hasUniqueCpyQueue : 1;
-                std::uint32_t hasUniqueComputeQueue : 1;
+        struct Features {
 
-                std::uint32_t supportsDebug : 1;
-                std::uint32_t supportsPresent : 1;
-                std::uint32_t supportsGetMemReq2 : 1;
-                std::uint32_t supportsDedicatedAlloc : 1;
+            union {
+                struct {
+                    std::uint32_t hasComputeCap : 1;
+                    std::uint32_t hasUniqueCpyQueue : 1;
+                    std::uint32_t hasUniqueComputeQueue : 1;
 
-                std::uint32_t supportsMaintenance1 : 1;
-                std::uint32_t supportsDrvPropQuery : 1;
+                    std::uint32_t supportsDebug : 1;
+                    std::uint32_t supportsPresent : 1;
+                    std::uint32_t supportsGetMemReq2 : 1;
+                    std::uint32_t supportsDedicatedAlloc : 1;
 
-                std::uint32_t supportsDepthClip : 1;
+                    std::uint32_t supportsMaintenance1 : 1;
+                    std::uint32_t supportsDrvPropQuery : 1;
 
-                // VK_KHR_load_store_op_none is promoted into vk1.4
-                // validate extension support on actual hardware
-                std::uint32_t supportReadOnlyAttachment : 1;
+                    std::uint32_t supportsDepthClip : 1;
 
-            };
-            std::uint32_t value;
+                    // VK_KHR_load_store_op_none is promoted into vk1.4
+                    // validate extension support on actual hardware
+                    std::uint32_t supportReadOnlyAttachment : 1;
+
+                };
+                std::uint32_t value;
+            } flags;
+
+            uint32_t maxVariableCntDescriptorsPerSetMutableType;
+            uint32_t maxVariableCntDescriptorsPerSetSampler;
         };
 
     private:
-
-        ResourceStates _currentState;
-
         common::sp<VulkanAdapter> _adp;
 
         VolkDeviceTable _fnTable;
@@ -253,7 +162,15 @@ namespace alloy::vk
         VkDevice _dev;
         VmaAllocator _allocator;
         //_CmdPoolMgr _cmdPoolMgr;
-        _DescriptorPoolMgr _descPoolMgr;
+        std::unordered_map<VkDescriptorType, _DescriptorPoolMgr> _descPoolMgrs;
+
+        // Universal T2 (DescriptorHeap) descriptor-set-layouts, built once at device
+        // creation when mutable descriptor type is supported. Variable descriptor count,
+        // sized to device maxima. Referenced (non-owning) by VulkanResourceLayout's T2
+        // set 0/1 and used by descriptor heaps to allocate their backing sets.
+        VkDescriptorSetLayout _t2ResourceHeapDsl = VK_NULL_HANDLE;
+        VkDescriptorSetLayout _t2SamplerHeapDsl = VK_NULL_HANDLE;
+        VkDescriptorSetLayout _t2OffsetUBODSL = VK_NULL_HANDLE;
 
         VulkanCommandQueue* _gfxQ;
         VulkanCommandQueue* _copyQ;
@@ -269,6 +186,20 @@ namespace alloy::vk
         IGraphicsDevice::Features _commonFeat;
 
         VulkanDevice();
+
+        // Query the combined heap size for following VkDescriptorType:
+        //   VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        //   VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+        //   VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+        //   VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        //
+        // For samplers use VkPhysicalDeviceLimits::maxDescriptorSetSamplers
+        uint32_t _QueryMaxSupportedMutDescPerSet();
+        uint32_t _QueryMaxSupportedSamplerDescPerSet();
+
+        // Build the universal T2 heap DSLs (_t2ResourceHeapDsl / _t2SamplerHeapDsl).
+        // Called once during Make() when mutable descriptor type is supported.
+        void _CreateT2DSLs();
 
     public:
 
@@ -293,8 +224,10 @@ namespace alloy::vk
         virtual ResourceFactory& GetResourceFactory() override { return *this; };
 
         //const PhyDevInfo& GetPhyDevInfo() const {return _phyDev;}
-        const VkDevice& LogicalDev() const {return _dev;}
-        //const VkPhysicalDevice& PhysicalDev() const {return _phyDev.handle;}
+        const VkDevice LogicalDev() const {return _dev;}
+        const VkPhysicalDevice PhysicalDev() const {
+            return _adp->GetHandle();
+        }
 
         //const VkInstance& GetInstance() const;
         const VolkDeviceTable& GetFnTable() const {return _fnTable;}
@@ -308,21 +241,26 @@ namespace alloy::vk
         const VmaAllocator& Allocator() const {return _allocator;}
 
         //TODO: temporary querier
-        bool SupportsFlippedYDirection() const {return _features.supportsMaintenance1;}
+        bool SupportsFlippedYDirection() const {return _features.flags.supportsMaintenance1;}
 
         const Features& GetVkFeatures() const {return _features; }
 
-    public:
-        ResourceStates& GetCurrentState() override { return _currentState; }
-
-        void RegisterTextureState(const VkImageLayout& request, VulkanTexture* texture);
-
-        void RemoveResource(VulkanBuffer* buffer) override {  }
-        void RemoveResource(VulkanTexture* texture) override { _currentState.textures.erase(texture); }
+        // Universal T2 descriptor heap layouts. VK_NULL_HANDLE if mutable descriptor
+        // type is unsupported (T2 unavailable).
+        VkDescriptorSetLayout GetT2ResourceHeapDSL() const { return _t2ResourceHeapDsl; }
+        VkDescriptorSetLayout GetT2SamplerHeapDSL() const { return _t2SamplerHeapDsl; }
+        VkDescriptorSetLayout GetT2OffsetUBOHDSL() const { return _t2OffsetUBODSL; }
 
     public:
         //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
-        _DescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
+        _DescriptorSet AllocateDescriptorSet(
+            VkDescriptorSetLayout layout,
+            VkDescriptorType type,
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
+                                //   VkDescriptorSetLayout.
+            bool isVariableCnt, // Enables variable count
+            bool isMutableSet   // Implies partially bound and update after use.
+        );
     //Interface
     public:
 
@@ -349,11 +287,13 @@ namespace alloy::vk
         //VkBufferUsageFlags _usages;
         //VmaMemoryUsage _allocationType;
 
+        Description _desc;
+
         VulkanBuffer(
             const common::sp<VulkanDevice>& dev,
             const IBuffer::Description& desc
         )
-            : IBuffer(desc)
+            : _desc(desc)
             , _dev(dev)
         { }
 
@@ -369,6 +309,8 @@ namespace alloy::vk
             const common::sp<VulkanDevice>& dev,
             const IBuffer::Description& desc
         );
+
+        virtual const Description& GetDesc() const override { return _desc; }
 
         const VkBuffer& GetHandle() const {return _buffer;}
 
@@ -404,9 +346,6 @@ namespace alloy::vk
         common::sp<VulkanDevice> _dev;
         VkSemaphore  _timelineSem;
 
-        //map for each timeline : last signaled value
-        std::unordered_map<IVkTimeline*, uint64_t> _signalingTimelines;
-
         VulkanFence(const common::sp<VulkanDevice>& dev) : _dev(dev) {}
 
     public:
@@ -425,10 +364,6 @@ namespace alloy::vk
         bool WaitFromCPU(uint64_t expectedValue) {
             return WaitFromCPU(expectedValue, (std::numeric_limits<std::uint32_t>::max)());
         }
-
-        void RegisterSyncPoint(IVkTimeline* timeline, uint64_t syncValue);
-        void SyncTimelineToThis(IVkTimeline* timeline, uint64_t syncValue);
-
     };
 
 } // namespace alloy

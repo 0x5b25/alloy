@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <span>
 
 namespace alloy
 {
@@ -70,49 +71,26 @@ namespace alloy
             alloy::common::BitFlags<IShader::Stage> stages;
             struct Options {
                 std::uint32_t writable : 1;
-            } options;
+            } options {};
         };
 
         struct Description{
-#if 0
-            struct ElementDescription{
-                uint32_t  bindingSlot;
-                uint32_t  bindingSpace;
-                std::string name;
-                IBindableResource::ResourceKind kind;
-
-                alloy::common::BitFlags<IShader::Stage> stages;
-
-                union Options
-                {
-                    struct {
-                        /// <summary>
-                        /// No special options.
-                        /// </summary>
-                        //None,
-                        /// <summary>
-                        /// Can be applied to a buffer type resource (<see cref="ResourceKind.StructuredBufferReadOnly"/>,
-                        /// <see cref="ResourceKind.StructuredBufferReadWrite"/>, or <see cref="ResourceKind.UniformBuffer"/>), allowing it to be
-                        /// bound with a dynamic offset using <see cref="CommandList.SetGraphicsResourceSet(uint, ResourceSet, uint[])"/>.
-                        /// Offsets specified this way must be a multiple of <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
-                        /// <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>.
-                        /// </summary>
-                        //std::uint8_t dynamicBinding : 1;
-                        
-                        //Resource is writable by shader
-                        // can only applied to storage buffers, texture storages
-                        std::uint8_t writable : 1;
-                    };
-                    std::uint8_t value;
-                } options;
-
-
-            };
-
-            std::vector<ElementDescription> elements;
-#endif
             std::vector<PushConstantDescription> pushConstants;
             std::vector<ShaderResourceDescription> shaderResources;
+
+            // Create a T2 bindless layout. Check resourceBindingModel first.
+            //
+            // If this is set, shaderResources is ignored. We only support
+            // full bindless mode.
+            bool useGlobalHeaps = false;
+        };
+
+        struct HeapRangeLocation {
+            enum {
+                ResourceHeap, SamplerHeap
+            } heapType;
+
+            uint32_t offsetFromRangeBase;
         };
 
     protected:
@@ -124,7 +102,7 @@ namespace alloy
         : description(desc){}
 
     public:
-        const Description& GetDesc() const {return description;}
+        virtual const Description& GetDesc() const {return description;}
 
         
         virtual void* GetNativeHandle() const {return nullptr; }
@@ -145,17 +123,62 @@ namespace alloy
             std::vector<common::sp<IBindableResource>> boundResources;
         };
 
-    protected:
-        Description description;
-
-        IResourceSet(
-            const Description& desc
-        ) 
-            : description(desc)
-        {}
+    //protected:
+    //    Description description;
+    //
+    //    IResourceSet(
+    //        const Description& desc
+    //    ) 
+    //        : description(desc)
+    //    {}
 
     public:
-        const Description& GetDesc() const {return description;}
+        virtual const IResourceLayout& GetLayout() const = 0;
+
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) = 0;
+
+        virtual void* GetNativeHandle() const {return nullptr; }
+    };
+
+    class IMutableResourceSet : public common::RefCntBase {
+
+    public:
+        struct WriteBinding {
+            uint32_t layoutSlot;
+            uint32_t firstArrayElement;
+            std::vector<common::sp<IBindableResource>> resources;
+        };
+
+        struct Description {
+            // The <see cref="ResourceLayout"/> describing the fixed resource capacity.
+            common::sp<IResourceLayout> layout;
+
+            // Sparse, slot-addressed writes applied during creation.
+            // layoutSlot indexes IResourceLayout::Description::shaderResources.
+            std::vector<WriteBinding> initialWrites;
+        };
+
+    //protected:
+    //
+    //    IMutableResourceSet(
+    //        const Description& desc
+    //    )
+    //        : description(desc)
+    //    {}
+
+    public:
+        //const Description& GetDesc() const {return description;}
+        virtual const IResourceLayout& GetLayout() const = 0;
+
+        virtual IBindableResource* GetBoundResource(
+            uint32_t layoutSlot,
+            uint32_t firstArrayElement
+        ) = 0;
+
+        virtual void Update(const std::span<const WriteBinding>& writes) = 0;
 
         virtual void* GetNativeHandle() const {return nullptr; }
     };
