@@ -10,6 +10,7 @@
 #include "DXCTexture.hpp"
 #include "DXCPipeline.hpp"
 #include "DXCBindableResource.hpp"
+#include "DXCResourceHeap.hpp"
 #include "d3d12.h"
 
 #include "D3DPixEventEncoder.hpp"
@@ -577,6 +578,28 @@ namespace alloy::dxc
         }
     }
 
+    void DXCRenderCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        ID3D12DescriptorHeap* heaps[2]{};
+        UINT heapCount = 0;
+
+        if(resourceHeap) {
+            resources.insert(resourceHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCResourceDescriptorHeap>(resourceHeap.get())->GetHandle();
+        }
+
+        if(samplerHeap) {
+            resources.insert(samplerHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCSamplerDescriptorHeap>(samplerHeap.get())->GetHandle();
+        }
+
+        GetCmdList()->SetDescriptorHeaps(heapCount, heaps);
+    }
+
 
     void DXCRenderCmdEnc::SetPushConstants(
         std::uint32_t pushConstantIndex,
@@ -906,6 +929,28 @@ namespace alloy::dxc
         for(uint32_t i = 0; i < heaps.size(); i++) {
             GetCmdList()->SetComputeRootDescriptorTable(i, heaps[i]->GetGPUDescriptorHandleForHeapStart());
         }
+    }
+
+    void DXCComputeCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        ID3D12DescriptorHeap* heaps[2]{};
+        UINT heapCount = 0;
+
+        if(resourceHeap) {
+            resources.insert(resourceHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCResourceDescriptorHeap>(resourceHeap.get())->GetHandle();
+        }
+
+        if(samplerHeap) {
+            resources.insert(samplerHeap);
+            heaps[heapCount++] =
+                PtrCast<DXCSamplerDescriptorHeap>(samplerHeap.get())->GetHandle();
+        }
+
+        GetCmdList()->SetDescriptorHeaps(heapCount, heaps);
     }
 
 

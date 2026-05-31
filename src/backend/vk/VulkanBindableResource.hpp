@@ -62,10 +62,16 @@ namespace alloy::vk{
             uint32_t linearResourceOffset; // which one in the resource set boundResources
         };
 
+        // Fixed T2 (DescriptorHeap) pipeline-layout set ABI. See road_to_bindless.md.
+        enum T2SetIndex : uint32_t {
+            T2Set_ResourceHeap     = 0, // device universal mutable heap DSL (non-owning)
+            T2Set_SamplerHeap      = 1, // device universal sampler heap DSL (non-owning)
+            T2Set_Count
+        };
 
     private:
         common::sp<VulkanDevice> _dev;
-        
+
         std::vector<ResourceSetInfo> _sets;
         std::vector<SlotLocation> _slotLocations;
         //std::uint32_t _dynamicBufferCount;

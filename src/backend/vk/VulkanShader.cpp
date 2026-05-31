@@ -2,173 +2,431 @@
 
 #include "VulkanDevice.hpp"
 #include "VkCommon.hpp"
+#include "VulkanBindableResource.hpp"
 
 #include <format>
 
-
 namespace alloy::vk
 {
+    static VkDescriptorType DXILResKind2VkDescType(dxil_spv_resource_kind kind, bool writable) {
+        
+        VkDescriptorType vkType = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+        switch(kind) {
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2DMS:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_3D:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_1D_ARRAY:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_ARRAY:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_2D_MS_ARRAY:
+        case DXIL_SPV_RESOURCE_KIND_TEXTURE_CUBE_ARRAY:
+            vkType = writable? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                             : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; 
+            break;
     
-    
-        bool SPVRemapper::RemapSRV( const dxil_spv_d3d_binding& binding,
-                              dxil_spv_srv_vulkan_binding& vk_binding
-        ) {
-            vk_binding.buffer_binding.bindless.use_heap = false;
-			vk_binding.buffer_binding.set = binding.register_space;
-			vk_binding.buffer_binding.binding = binding.register_index;
-			//vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
-			vk_binding.offset_binding = {};
-			return true;
+        case DXIL_SPV_RESOURCE_KIND_TYPED_BUFFER:
+        case DXIL_SPV_RESOURCE_KIND_RAW_BUFFER:
+        case DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER:
+            vkType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; break;
+
+        default: 
+            assert(false && "Unlikely alloy shader resource type");
         }
 
-        bool SPVRemapper::RemapSampler( const dxil_spv_d3d_binding& binding,
-                                  dxil_spv_vulkan_binding& vk_binding
-        ) {
-            vk_binding.bindless.use_heap = DXIL_SPV_FALSE;
-		    vk_binding.set = binding.register_space;
-		    vk_binding.binding = binding.register_index;
-			return true;
+        return vkType;
+    }
+
+    static bool Str2Semantic(const char* str, VertexInputSemantic::Name& semantic){
+
+        static const struct {
+            const char* str;
+            VertexInputSemantic::Name enumVal;
+        } lut[] {
+            {"BINORMAL",     VertexInputSemantic::Name::Binormal},
+            {"BLENDINDICES", VertexInputSemantic::Name::BlendIndices},
+            {"BLENDWEIGHT",  VertexInputSemantic::Name::BlendWeight},
+            {"COLOR",        VertexInputSemantic::Name::Color},
+            {"NORMAL",       VertexInputSemantic::Name::Normal},
+            {"POSITION",     VertexInputSemantic::Name::Position},
+            {"PSIZE",        VertexInputSemantic::Name::PointSize},
+            {"TANGENT",      VertexInputSemantic::Name::Tangent},
+            {"TEXCOORD",     VertexInputSemantic::Name::TextureCoordinate},
+        };
+
+        for(auto& entry : lut) {
+            if(std::strcmp(entry.str, str) == 0) {
+                semantic = entry.enumVal;
+                return true;
+            }
         }
 
-        bool SPVRemapper::RemapUAV ( const dxil_spv_uav_d3d_binding& binding,
-                               dxil_spv_uav_vulkan_binding& vk_binding
-        ) {
+        return false;
+    }
+    
+    SPVRemapper::SPVRemapper(
+        const VulkanResourceLayout* layout,
+        const IAMappingInfo* iaMappings
+    )
+        : layout(layout)
+        , iaMappings(iaMappings)
+    { }
+    
+    bool SPVRemapper::FindVkBindingSet(
+        VkDescriptorType type,
+        uint32_t d3dRegSpace,
+        uint32_t d3dRegIdx,
+        uint32_t& vkSetOut,
+        uint32_t& vkSlotOut
+    ) {
+        const auto& bindingRemappings = layout->GetResSetInfo();
+
+        for(const auto& s : bindingRemappings) {
+            if(s.type == type) {
+                for(auto& b : s.bindings) {
+                    if(b.regSpaceDesignated == d3dRegSpace &&
+                        b.regIdxDesignated == d3dRegIdx) {
+                        vkSetOut = b.bindSetAllocated;
+                        vkSlotOut = b.bindSlotAllocated;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Send to global heap if useGlobalHeaps == true;
+        // otherwise this should result in error
+        assert(layout->GetDesc().useGlobalHeaps
+            && __FUNCTION__": Failed to find vulkan bindings");
+        return false;
+    }
+    
+    bool SPVRemapper::RemapSRV( 
+        const dxil_spv_d3d_binding& binding,
+        dxil_spv_srv_vulkan_binding& vk_binding
+    ) {
+        
+        if(!layout) {
+            assert(false && "Can't remap a shader using pipelines that have no resource layout");
+            return false;
+        }
+            
+        VkDescriptorType vkType = DXILResKind2VkDescType(binding.kind, false);
+        if(vkType == VK_DESCRIPTOR_TYPE_MAX_ENUM)
+            return false;
+
+        if(vkType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+            vk_binding.buffer_binding.descriptor_type 
+                = DXIL_SPV_VULKAN_DESCRIPTOR_TYPE_SSBO;
+
+        // T2 bindless
+        if(layout->GetDesc().useGlobalHeaps) {
+            vk_binding.buffer_binding.set = 0;
+            vk_binding.buffer_binding.binding = 0;
+            vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_TRUE;
+            vk_binding.buffer_binding.bindless.heap_root_offset = 0;
+
+            vk_binding.offset_binding = { };
+
+            return true;
+        }
+        // Legacy bindful
+        else {
             vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
-		    vk_binding.buffer_binding.set = binding.d3d_binding.register_space;
-		    vk_binding.buffer_binding.binding = binding.d3d_binding.register_index;
-			return true;
+            vk_binding.offset_binding = {};
+            uint32_t slot, set;
+            if(FindVkBindingSet(vkType,
+                                binding.register_space,
+                                binding.register_index,
+                                set, slot)){
+                vk_binding.buffer_binding.set = set;
+                vk_binding.buffer_binding.binding = slot;
+                //vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
+                
+
+                return true;
+            }
+            return false;
+        }
+    }
+    
+    bool SPVRemapper::RemapUAV( 
+        const dxil_spv_uav_d3d_binding& binding,
+        dxil_spv_uav_vulkan_binding& vk_binding
+    ) {
+        if(!layout) {
+            assert(false && "Can't remap a shader using pipelines that have no resource layout");
+            return false;
+        }
+            
+        VkDescriptorType vkType = DXILResKind2VkDescType(binding.d3d_binding.kind, true);
+        if(vkType == VK_DESCRIPTOR_TYPE_MAX_ENUM)
+            return false;
+
+        if(vkType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+            vk_binding.buffer_binding.descriptor_type 
+                = DXIL_SPV_VULKAN_DESCRIPTOR_TYPE_SSBO;
+
+        // T2 bindless
+        if(layout->GetDesc().useGlobalHeaps) {
+            vk_binding.buffer_binding.set = 0;
+            vk_binding.buffer_binding.binding = 0;
+            vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_TRUE;
+            vk_binding.buffer_binding.bindless.heap_root_offset = 0;
+
+            vk_binding.offset_binding = { };
+
+            return true;
+        }
+        // Legacy bindful
+        else {
+            vk_binding.buffer_binding.bindless.use_heap = DXIL_SPV_FALSE;
+            vk_binding.offset_binding = {};
+            uint32_t slot, set;
+            if(FindVkBindingSet(vkType,
+                                binding.d3d_binding.register_space,
+                                binding.d3d_binding.register_index,
+                                set, slot)){
+                vk_binding.buffer_binding.set = set;
+                vk_binding.buffer_binding.binding = slot;
+                //vk_binding.buffer_binding.descriptor_type = VulkanDescriptorType::Identity;
+                
+
+                return true;
+            }
+            return false;
+        }
+    }
+
+    bool SPVRemapper::RemapSampler( const dxil_spv_d3d_binding& binding,
+                                dxil_spv_vulkan_binding& vk_binding
+    ) {
+        if(!layout) {
+            assert(false && "Can't remap a shader using pipelines that have no resource layout");
+            return false;
+        }
+        // T2 bindless
+        if(layout->GetDesc().useGlobalHeaps) {
+            vk_binding.set = 1;
+            vk_binding.binding = 0;
+            vk_binding.bindless.use_heap = DXIL_SPV_TRUE;
+            return true;
+        }
+        // Legacy bindful
+        else {
+            uint32_t slot, set;
+            if(FindVkBindingSet(VK_DESCRIPTOR_TYPE_SAMPLER,
+                                binding.register_space,
+                                binding.register_index,
+                                set, slot))
+            {
+                vk_binding.bindless.use_heap = DXIL_SPV_FALSE;
+                vk_binding.set = set;
+                vk_binding.binding = slot;
+                return true;
+            }
+            return false;
+        }
+    }
+
+
+    bool SPVRemapper::RemapCBV( const dxil_spv_d3d_binding& binding,
+                            dxil_spv_cbv_vulkan_binding& vk_binding
+    ) {
+        // shouldn't trigger remapping when no layout provided
+        if(!layout) {
+            assert(false && "Can't remap a shader using pipelines that have no resource layout");
+            return false;
         }
 
-        bool SPVRemapper::RemapCBV( const dxil_spv_d3d_binding& binding,
-                              dxil_spv_cbv_vulkan_binding& vk_binding
-        ) {
+        // should only contain values
+        assert(binding.kind == DXIL_SPV_RESOURCE_KIND_CONSTANT_BUFFER);
+        // Lookup push constants first
+        const auto& pushConstantRemappings = layout->GetPushConstants();
+
+        /* Try to map to root constant -> push constant. */
+        for (auto& push : pushConstantRemappings)
+        {
+            if (push.bindingSpace == binding.register_space &&
+                push.bindingSlot == binding.register_index
+                ///#TODO: Shader visibility
+                //&& dxil_match_shader_visibility(push.shaderVisibility, binding.stage)
+            ) {
+                vk_binding = {};
+                vk_binding.push_constant = DXIL_SPV_TRUE;
+                vk_binding.vulkan.push_constant.offset_in_words = push.offsetInDwords;
+                return DXIL_SPV_TRUE;
+            }
+        }
+
+        vk_binding.push_constant = DXIL_SPV_FALSE;
+
+        // T2 bindless
+        if(layout->GetDesc().useGlobalHeaps) {
+            vk_binding.vulkan.uniform_binding.set = 0;
+            vk_binding.vulkan.uniform_binding.binding = 0;
+            vk_binding.vulkan.uniform_binding.bindless.use_heap = DXIL_SPV_TRUE;
+
+            return true;
+        }
+        // legacy bindful
+        else {
             vk_binding.vulkan.uniform_binding.bindless.use_heap = DXIL_SPV_FALSE;
-            vk_binding.vulkan.uniform_binding.set = binding.register_space;
-            vk_binding.vulkan.uniform_binding.binding = binding.register_index;
-            return true;
-        }
-        
-        bool SPVRemapper::RemapVertexInput( const dxil_spv_d3d_vertex_input& d3d_input,
-                                      dxil_spv_vulkan_vertex_input& vk_input
-        ) {
 
-            vk_input.location = d3d_input.start_row;
-            return true;
-        }
-
-        
-        bool SPVRemapper::RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
-                                        dxil_spv_vulkan_shader_stage_io& vulkan_variable
-        ) {
-            if(currentStage == IShader::Stage::Vertex) return true;
-            //auto io_map = (const vkd3d_shader_stage_io_map *)userdata;
-            //const vkd3d_shader_stage_io_entry *e;
-
-            //if (!(e = io_map->Find(d3d_input->semantic, d3d_input->semantic_index)))
-
-            
-            std::string semanticName = d3d_input.semantic;
-            
-            auto key = std::format("{}_{}", semanticName, d3d_input.semantic_index);
-            auto iter = shaderStageIoMap.find(key);
-            
-            if(iter == shaderStageIoMap.end())
+            uint32_t set, slot;
+            if(FindVkBindingSet(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                binding.register_space,
+                                binding.register_index,
+                                set, slot))
             {
-                //ERR("Undefined semantic %s (%u).\n", d3d_input->semantic, d3d_input->semantic_index);
-                assert(false);
-                return false;
+                vk_binding.vulkan.uniform_binding.set = set;
+                vk_binding.vulkan.uniform_binding.binding = slot;
+                return true;
             }
-
-            vulkan_variable.location = iter->second.vk_location;
-            vulkan_variable.component = iter->second.vk_component;
-            vulkan_variable.flags = iter->second.vk_flags;
-            return true;
+            return false;
         }
+    }
 
-        bool SPVRemapper::CaptureShaderStageOutput( const dxil_spv_d3d_shader_stage_io& d3d_input,
-                                        dxil_spv_vulkan_shader_stage_io& vulkan_variable
-        ) {
-            //auto io_map = (struct vkd3d_shader_stage_io_map *)userdata;
-            //struct vkd3d_shader_stage_io_entry *e;
-
-            std::string semanticName = d3d_input.semantic;
-
-            auto key = std::format("{}_{}", semanticName, d3d_input.semantic_index);
-
-            if(shaderStageIoMap.find(key) != shaderStageIoMap.end())
-            //if (!(e = io_map->Append(d3d_input.semantic, d3d_input.semantic_index)))
-            {
-                //ERR("Duplicate semantic %s (%u).\n", d3d_input.semantic, d3d_input.semantic_index);
-
-                assert(false);
-                return false;
-            }
-
-            ShaderStageIOInfo e{
-                .semanticName  = semanticName,
-                .semanticIndex = d3d_input.semantic_index,
-                .vk_location   = vulkan_variable.location,
-                .vk_component  = vulkan_variable.component,
-                .vk_flags      = vulkan_variable.flags
-            };
-
-            shaderStageIoMap.insert({key, e});
-
-            return true;
+        
+    bool SPVRemapper::RemapVertexInput(
+        const dxil_spv_d3d_vertex_input& d3dIn,
+        dxil_spv_vulkan_vertex_input& vkOut
+    ) {
+        if(!iaMappings) {
+            assert(false && "IA input isn't supported by this pipeline type!");
+            return false;
         }
+        VertexInputSemantic d3dSemantic {};
+        VertexInputSemantic::Name d3dSemanticName;
+        if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
+            return false;
+
+        d3dSemantic.name = d3dSemanticName;
+        d3dSemantic.slot = d3dIn.semantic_index;
+
+        auto findRes = iaMappings->find(d3dSemantic);
+        if(findRes == iaMappings->end()) {
+            assert(false && "IA input element not found");
+            return false;
+        }
+        vkOut.location = findRes->second;
+
+        return true;
+    }
 
     
-        dxil_spv_bool SPVRemapper_RemapSRV(void *userdata, 
-                                       const dxil_spv_d3d_binding *binding,
-                                       dxil_spv_srv_vulkan_binding *vk_binding
-        ) {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapSRV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
-        }
+    bool SPVRemapper::RemapShaderStageInput( const dxil_spv_d3d_shader_stage_io& d3d_input,
+                                    dxil_spv_vulkan_shader_stage_io& vulkan_variable
+    ) {
+        if(currentStage == IShader::Stage::Vertex) return true;
+        //auto io_map = (const vkd3d_shader_stage_io_map *)userdata;
+        //const vkd3d_shader_stage_io_entry *e;
 
-        dxil_spv_bool SPVRemapper_RemapSampler(void *userdata,
-                                          const dxil_spv_d3d_binding *binding,
-                                          dxil_spv_vulkan_binding *vk_binding
-        ) {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapSampler(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
-        }
+        //if (!(e = io_map->Find(d3d_input->semantic, d3d_input->semantic_index)))
 
-        dxil_spv_bool SPVRemapper_RemapUAV (void *userdata,
-                                       const dxil_spv_uav_d3d_binding *binding,
-                                       dxil_spv_uav_vulkan_binding *vk_binding
-        ) {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapUAV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
-        }
-
-        dxil_spv_bool SPVRemapper_RemapCBV(void *userdata,
-                                      const dxil_spv_d3d_binding *binding,
-                                      dxil_spv_cbv_vulkan_binding *vk_binding
-        ) {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapCBV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
-        }
-
-        dxil_spv_bool SPVRemapper_RemapVertexInput(void *userdata, 
-                                              const dxil_spv_d3d_vertex_input *d3d_input,
-                                              dxil_spv_vulkan_vertex_input *vk_input
-        ) {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapVertexInput(*d3d_input, *vk_input) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
-        }
-        dxil_spv_bool SPVRemapper_RemapShaderStageInput(void *userdata, const dxil_spv_d3d_shader_stage_io *d3d_input,
-                                                              dxil_spv_vulkan_shader_stage_io *vulkan_variable)
+        
+        std::string semanticName = d3d_input.semantic;
+        
+        auto key = std::format("{}_{}", semanticName, d3d_input.semantic_index);
+        auto iter = shaderStageIoMap.find(key);
+        
+        if(iter == shaderStageIoMap.end())
         {
-            auto self = (SPVRemapper*)userdata;
-            return self->RemapShaderStageInput(*d3d_input, *vulkan_variable) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+            //ERR("Undefined semantic %s (%u).\n", d3d_input->semantic, d3d_input->semantic_index);
+            assert(false);
+            return false;
         }
-        dxil_spv_bool SPVRemapper_CaptureShaderStageOutput(void *userdata, const dxil_spv_d3d_shader_stage_io *d3d_input,
-                                                              dxil_spv_vulkan_shader_stage_io *vulkan_variable)
+
+        vulkan_variable.location = iter->second.vk_location;
+        vulkan_variable.component = iter->second.vk_component;
+        vulkan_variable.flags = iter->second.vk_flags;
+        return true;
+    }
+
+    bool SPVRemapper::CaptureShaderStageOutput( const dxil_spv_d3d_shader_stage_io& d3d_input,
+                                    dxil_spv_vulkan_shader_stage_io& vulkan_variable
+    ) {
+        //auto io_map = (struct vkd3d_shader_stage_io_map *)userdata;
+        //struct vkd3d_shader_stage_io_entry *e;
+
+        std::string semanticName = d3d_input.semantic;
+
+        auto key = std::format("{}_{}", semanticName, d3d_input.semantic_index);
+
+        if(shaderStageIoMap.find(key) != shaderStageIoMap.end())
+        //if (!(e = io_map->Append(d3d_input.semantic, d3d_input.semantic_index)))
         {
-            auto self = (SPVRemapper*)userdata;
-            return self->CaptureShaderStageOutput(*d3d_input, *vulkan_variable) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+            //ERR("Duplicate semantic %s (%u).\n", d3d_input.semantic, d3d_input.semantic_index);
+
+            assert(false);
+            return false;
         }
+
+        ShaderStageIOInfo e{
+            .semanticName  = semanticName,
+            .semanticIndex = d3d_input.semantic_index,
+            .vk_location   = vulkan_variable.location,
+            .vk_component  = vulkan_variable.component,
+            .vk_flags      = vulkan_variable.flags
+        };
+
+        shaderStageIoMap.insert({key, e});
+
+        return true;
+    }
+
+
+    dxil_spv_bool SPVRemapper_RemapSRV(void *userdata, 
+                                    const dxil_spv_d3d_binding *binding,
+                                    dxil_spv_srv_vulkan_binding *vk_binding
+    ) {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapSRV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+
+    dxil_spv_bool SPVRemapper_RemapSampler(void *userdata,
+                                        const dxil_spv_d3d_binding *binding,
+                                        dxil_spv_vulkan_binding *vk_binding
+    ) {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapSampler(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+
+    dxil_spv_bool SPVRemapper_RemapUAV (void *userdata,
+                                    const dxil_spv_uav_d3d_binding *binding,
+                                    dxil_spv_uav_vulkan_binding *vk_binding
+    ) {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapUAV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+
+    dxil_spv_bool SPVRemapper_RemapCBV(void *userdata,
+                                    const dxil_spv_d3d_binding *binding,
+                                    dxil_spv_cbv_vulkan_binding *vk_binding
+    ) {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapCBV(*binding, *vk_binding) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+
+    dxil_spv_bool SPVRemapper_RemapVertexInput(void *userdata, 
+                                            const dxil_spv_d3d_vertex_input *d3d_input,
+                                            dxil_spv_vulkan_vertex_input *vk_input
+    ) {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapVertexInput(*d3d_input, *vk_input) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+    dxil_spv_bool SPVRemapper_RemapShaderStageInput(void *userdata, const dxil_spv_d3d_shader_stage_io *d3d_input,
+                                                            dxil_spv_vulkan_shader_stage_io *vulkan_variable)
+    {
+        auto self = (SPVRemapper*)userdata;
+        return self->RemapShaderStageInput(*d3d_input, *vulkan_variable) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
+    dxil_spv_bool SPVRemapper_CaptureShaderStageOutput(void *userdata, const dxil_spv_d3d_shader_stage_io *d3d_input,
+                                                            dxil_spv_vulkan_shader_stage_io *vulkan_variable)
+    {
+        auto self = (SPVRemapper*)userdata;
+        return self->CaptureShaderStageOutput(*d3d_input, *vulkan_variable) ? DXIL_SPV_TRUE : DXIL_SPV_FALSE;
+    }
 
     struct ThreadAllocatorGuard {
         ThreadAllocatorGuard(){ dxil_spv_begin_thread_allocator_context(); }

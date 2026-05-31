@@ -484,4 +484,22 @@ namespace alloy::vk {
 
         _debugName = name;
     }
+
+
+    
+    void VulkanSampler::SetDebugName(const std::string& name) {
+        // Check for a valid function pointer
+
+        if (_dev->GetContext().GetCaps().hasDebugUtilExt)
+        {
+            VkDebugUtilsObjectNameInfoEXT nameInfo = {};
+            nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+            nameInfo.objectType = VK_OBJECT_TYPE_SAMPLER;
+            nameInfo.objectHandle = (uint64_t)_sampler;
+            nameInfo.pObjectName = name.c_str();
+            VK_INST_CALL(_dev, vkSetDebugUtilsObjectNameEXT(_dev->LogicalDev(), &nameInfo));
+        }
+
+        _debugName = name;
+    }
 }

@@ -14,16 +14,6 @@
 #include "VulkanBindableResource.hpp"
 
 
-template <>
-struct std::hash<alloy::VertexInputSemantic>
-{
-    std::size_t operator()(const alloy::VertexInputSemantic& k) const
-    {
-        return std::hash<uint32_t>()((uint32_t)k.name)
-             ^ (std::hash<uint32_t>()(k.slot) << 1);
-    }
-};
-
 namespace alloy::vk{
 class VkShaderRAII {
     VulkanDevice* _dev;
@@ -84,6 +74,7 @@ public:
         return false;
     }
 
+#if 0
     class PipelineRemapper : public alloy::vk::SPVRemapper {
     public:
         using BindingRemapInfo = std::vector<VulkanResourceLayout::ResourceSetInfo>;
@@ -95,31 +86,6 @@ public:
         const IAMappingInfo* _iaMappings;
         const PushConstantRemapInfo* _pushConstantRemappings;
 
-        bool FindVkBindingSet(
-            VkDescriptorType type,
-            uint32_t d3dRegSpace,
-            uint32_t d3dRegIdx,
-            uint32_t& vkSetOut,
-            uint32_t& vkSlotOut
-        ) {
-            if(!_bindingRemappings) return false;
-
-            for(const auto& s : *_bindingRemappings) {
-                if(s.type == type) {
-                    for(auto& b : s.bindings) {
-                        if(b.regSpaceDesignated == d3dRegSpace &&
-                           b.regIdxDesignated == d3dRegIdx) {
-                            vkSetOut = b.bindSetAllocated;
-                            vkSlotOut = b.bindSlotAllocated;
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            assert(false && __FUNCTION__": Failed to find vulkan bindings");
-            return false;
-        }
 
     public:
 
@@ -298,7 +264,7 @@ public:
             return true;
         }
     };
-
+#endif
 
 
     VulkanPipelineBase::~VulkanPipelineBase() {
@@ -377,7 +343,7 @@ public:
 
         rsCI.depthClampEnable = false;
         VkPipelineRasterizationDepthClipStateCreateInfoEXT rsDepthClipCI{};
-        if(dev->GetVkFeatures().supportsDepthClip) {
+        if(dev->GetVkFeatures().flags.supportsDepthClip) {
 
             //If the pNext chain of VkPipelineRasterizationStateCreateInfo includes
             // a VkPipelineRasterizationDepthClipStateCreateInfoEXT structure, then
@@ -458,23 +424,21 @@ public:
         // Pipeline Layout
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pSetInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
             //refCnts.push_back(desc.resourceLayout);
-            pSetInfo = &resourceLayout->GetResSetInfo();
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
 
-            if(!pPushConstantRemapInfo->empty()) {
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_ALL_GRAPHICS,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-
-            for(auto& s : *pSetInfo) {
+            for(auto& s : setInfo) {
                 dsls.push_back(s.layout);
             }
         }
@@ -580,10 +544,9 @@ public:
         //    specializationInfo.pMapEntries = mapEntries.data();
         //}
 
-        PipelineRemapper remapper {
-            pSetInfo,
-            &iaMappings,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            &iaMappings
         };
         //alloy::vk::SPVRemapper remapper{
         //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
@@ -781,20 +744,21 @@ public:
 
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pSetInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
-            pSetInfo = &(resourceLayout->GetResSetInfo());
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
-            if(!pPushConstantRemapInfo->empty()) {
+            //refCnts.push_back(desc.resourceLayout);
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
+
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_COMPUTE_BIT,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-            for(auto& s : *pSetInfo) {
+            for(auto& s : setInfo) {
                 dsls.push_back(s.layout);
             }
         }
@@ -844,10 +808,9 @@ public:
         //    specializationInfo.pMapEntries = mapEntries.data();
         //}
 
-        PipelineRemapper remapper {
-            pSetInfo,
-            nullptr,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            nullptr
         };
 
         VkShaderRAII cs{dev.get()};
@@ -967,7 +930,7 @@ public:
 
         rsCI.depthClampEnable = false;
         VkPipelineRasterizationDepthClipStateCreateInfoEXT rsDepthClipCI{};
-        if(dev->GetVkFeatures().supportsDepthClip) {
+        if(dev->GetVkFeatures().flags.supportsDepthClip) {
 
             //If the pNext chain of VkPipelineRasterizationStateCreateInfo includes
             // a VkPipelineRasterizationDepthClipStateCreateInfoEXT structure, then
@@ -1048,23 +1011,21 @@ public:
         // Pipeline Layout
         std::vector<VkDescriptorSetLayout> dsls{};
         std::vector<VkPushConstantRange> pushConstantRanges;
-        const PipelineRemapper::BindingRemapInfo* pSetInfo = nullptr;
-        const PipelineRemapper::PushConstantRemapInfo* pPushConstantRemapInfo = nullptr;
+        
         if(desc.resourceLayout) {
             auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
             //refCnts.push_back(desc.resourceLayout);
-            pSetInfo = &resourceLayout->GetResSetInfo();
-            pPushConstantRemapInfo = &(resourceLayout->GetPushConstants());
+            const auto& setInfo = resourceLayout->GetResSetInfo();
+            const auto& pcInfo = resourceLayout->GetPushConstants();
 
-            if(!pPushConstantRemapInfo->empty()) {
+            if(!pcInfo.empty()) {
                 pushConstantRanges.emplace_back(
                     /*stageFlags*/ VK_SHADER_STAGE_ALL_GRAPHICS,
                     /*offset    */ 0,
                     /*size      */ resourceLayout->GetPushConstantSize() * 4
                 );
             }
-
-            for(auto& s : *pSetInfo) {
+            for(auto& s : setInfo) {
                 dsls.push_back(s.layout);
             }
         }
@@ -1172,29 +1133,10 @@ public:
         //
 
         //#TODO: revisit dxil-spv remapper for mesh shaders
-        PipelineRemapper remapper {
-            pSetInfo,
-            nullptr,
-            pPushConstantRemapInfo
+        SPVRemapper remapper {
+            PtrCast<VulkanResourceLayout>(desc.resourceLayout.get()),
+            nullptr
         };
-        //alloy::vk::SPVRemapper remapper{
-        //    [&iaMappings](auto& d3dIn, auto& vkOut) -> bool {
-        //        VertexInputSemantic d3dSemantic {};
-        //        VertexInputSemantic::Name d3dSemanticName;
-        //        if(!Str2Semantic(d3dIn.semantic, d3dSemanticName))
-        //            return false;
-        //
-        //        d3dSemantic.name = d3dSemanticName;
-        //        d3dSemantic.slot = d3dIn.semantic_index;
-        //
-        //        auto findRes = iaMappings.find(d3dSemantic);
-        //        if(findRes == iaMappings.end())
-        //            return false;
-        //        vkOut.location = findRes->second;
-        //
-        //        return true;
-        //    }
-        //};
 
         VkShaderRAII shaderMods[3] { {dev.get()}, {dev.get()}, {dev.get()}};
         pipelineCI.stageCount = 0;

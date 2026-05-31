@@ -75,57 +75,22 @@ namespace alloy
         };
 
         struct Description{
-#if 0
-            struct ElementDescription{
-                uint32_t  bindingSlot;
-                uint32_t  bindingSpace;
-                std::string name;
-                IBindableResource::ResourceKind kind;
-
-                alloy::common::BitFlags<IShader::Stage> stages;
-
-                union Options
-                {
-                    struct {
-                        /// <summary>
-                        /// No special options.
-                        /// </summary>
-                        //None,
-                        /// <summary>
-                        /// Can be applied to a buffer type resource (<see cref="ResourceKind.StructuredBufferReadOnly"/>,
-                        /// <see cref="ResourceKind.StructuredBufferReadWrite"/>, or <see cref="ResourceKind.UniformBuffer"/>), allowing it to be
-                        /// bound with a dynamic offset using <see cref="CommandList.SetGraphicsResourceSet(uint, ResourceSet, uint[])"/>.
-                        /// Offsets specified this way must be a multiple of <see cref="GraphicsDevice.UniformBufferMinOffsetAlignment"/> or
-                        /// <see cref="GraphicsDevice.StructuredBufferMinOffsetAlignment"/>.
-                        /// </summary>
-                        //std::uint8_t dynamicBinding : 1;
-                        
-                        //Resource is writable by shader
-                        // can only applied to storage buffers, texture storages
-                        std::uint8_t writable : 1;
-                    };
-                    std::uint8_t value;
-                } options;
-
-
-            };
-
-            std::vector<ElementDescription> elements;
-#endif
             std::vector<PushConstantDescription> pushConstants;
             std::vector<ShaderResourceDescription> shaderResources;
 
             // Create a T2 bindless layout. Check resourceBindingModel first.
             //
-            // If this is set, and shaderResources is not empty, this will
-            // enable a hybrid bindful layout. Global descriptor heap indexing
-            // CAN read the bindful slots.
-            //
-            // hybrid bindful will follow API declaration order instead of binding
-            // slot order and tightly packed from the start of bindless heap.
-            // Note: this is NOT the shader register slot but the position in 
-            // descriptor heap.
-            bool useGlobalHeaps;
+            // If this is set, shaderResources is ignored. We only support
+            // full bindless mode.
+            bool useGlobalHeaps = false;
+        };
+
+        struct HeapRangeLocation {
+            enum {
+                ResourceHeap, SamplerHeap
+            } heapType;
+
+            uint32_t offsetFromRangeBase;
         };
 
     protected:

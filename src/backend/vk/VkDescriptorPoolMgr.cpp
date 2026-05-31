@@ -48,9 +48,15 @@ namespace alloy::vk {
 
         for(i = end; i < _dirtyPools.size(); ++i) {
             Container* container = _dirtyPools[i].get();
-            VK_CHECK(VK_DEV_CALL(_dev,
-                vkResetDescriptorPool(_dev->LogicalDev(), container->pool, 0)));
-            _freePools.push(container->pool);
+            if(container->isDedicatedAlloc) {
+                VK_DEV_CALL(_dev,
+                    vkDestroyDescriptorPool(_dev->LogicalDev(),  container->pool, 0));
+            }
+            else {
+                VK_CHECK(VK_DEV_CALL(_dev,
+                    vkResetDescriptorPool(_dev->LogicalDev(), container->pool, 0)));
+                _freePools.push(container->pool);
+            }
         }
 
         _dirtyPools.erase(_dirtyPools.begin() + end, _dirtyPools.end());
@@ -96,6 +102,22 @@ namespace alloy::vk {
         pool_info.poolSizeCount = 1;
         pool_info.pPoolSizes = &poolSize;
 
+        // Need special treatment for mutable type pools
+        static constexpr VkMutableDescriptorTypeListEXT mutableTypeList {
+            .descriptorTypeCount = sizeof(kMutableDescTypes) / sizeof(kMutableDescTypes[0]),
+            .pDescriptorTypes = kMutableDescTypes
+        };
+
+        static constexpr VkMutableDescriptorTypeCreateInfoEXT mutablePoolInfo {
+            .sType = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+            .mutableDescriptorTypeListCount = 1,
+            .pMutableDescriptorTypeLists = &mutableTypeList,
+        };
+
+        if(_poolType == VK_DESCRIPTOR_TYPE_MUTABLE_EXT) {
+            pool_info.pNext = &mutablePoolInfo;
+        }
+
         VkDescriptorPool descriptorPool;
         VK_CHECK(VK_DEV_CALL(_dev,
             vkCreateDescriptorPool(_dev->LogicalDev(), &pool_info, nullptr, &descriptorPool)));
@@ -106,7 +128,7 @@ namespace alloy::vk {
     
     _DescriptorSet _DescriptorPoolMgr::Allocate(
         VkDescriptorSetLayout layout,
-        bool descriptorCnt, // Total descriptor counts. We can't get this info from
+        uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
                             //   VkDescriptorSetLayout.
         bool isVariableCnt // Enables variable count
     ) {
@@ -145,8 +167,9 @@ namespace alloy::vk {
                     vkAllocateDescriptorSets(_dev->LogicalDev(), &allocInfo, &set)));
 
                 auto pContainer = std::make_unique<Container>(
-                    dedicatedPool,
-                    1 // we have 1 allocation as initial value
+                    /*.pool */ dedicatedPool,
+                    /*.refCnt */ 0, // _DescriptorSet ctor will increment ref cnt
+                    /*.isDedicatedAlloc */ true
                 );
 
                 allocated = _DescriptorSet(
@@ -161,8 +184,7 @@ namespace alloy::vk {
                     fromFreshPool = true;
                     auto newPool = _GetOnePool();
                     auto pContainer = std::make_unique<Container>(
-                        newPool,
-                        0
+                        newPool
                     );
                     _currentPool = pContainer.get();
                     _dirtyPools.push_back(std::move(pContainer));
@@ -202,8 +224,7 @@ namespace alloy::vk {
 
                         //Wrap the raw pool
                         auto pContainer = std::make_unique<Container>(
-                            newPool,
-                            1 // we have 1 allocation as initial value
+                            newPool
                         );
 
                         //change current pool to new pool

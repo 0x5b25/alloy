@@ -41,6 +41,15 @@ namespace alloy::vk {
         //}
         vmaDestroyAllocator(_allocator);
 
+        // Universal T2 heap layouts. All descriptor heaps that referenced these hold a
+        // strong ref to this device, so they are already destroyed by now.
+        if(_t2ResourceHeapDsl != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2ResourceHeapDsl, nullptr);
+        if(_t2SamplerHeapDsl != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2SamplerHeapDsl, nullptr);
+        if(_t2OffsetUBODSL != VK_NULL_HANDLE)
+            _fnTable.vkDestroyDescriptorSetLayout(_dev, _t2OffsetUBODSL, nullptr);
+
         //Uninit managers
         _descPoolMgrs.clear();
         //_cmdPoolMgr.DeInit();
@@ -59,17 +68,96 @@ namespace alloy::vk {
     }
 
     
+    uint32_t VulkanDevice::_QueryMaxSupportedSamplerDescPerSet() {
+
+        auto& devCaps = _adp->GetCaps();
+        auto maxSetCnt = devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools;
+        
+        {
+            // Provided by VK_VERSION_1_2
+            VkDescriptorSetVariableDescriptorCountLayoutSupport varCntSupport {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT,
+                //uint32_t           maxVariableDescriptorCount;
+            };
+
+            VkDescriptorSetLayoutSupport supportStat {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+                .pNext = &varCntSupport,
+            };
+
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+                               | VK_SHADER_STAGE_VERTEX_BIT
+                               | VK_SHADER_STAGE_FRAGMENT_BIT
+                               | VK_SHADER_STAGE_TASK_BIT_EXT
+                               | VK_SHADER_STAGE_MESH_BIT_EXT
+                               , // Add raytracing in the future
+            };
+
+            
+            static constexpr VkDescriptorBindingFlags bindingFlags =
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .bindingCount = 1,
+                .pBindingFlags = &bindingFlags,
+            };
+
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
+
+            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &dslCI, &supportStat);
+
+            if(supportStat.supported) {
+                maxSetCnt = varCntSupport.maxVariableDescriptorCount;
+            }
+        };
+
+        return std::min({ 
+            maxSetCnt,
+            devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools,
+            
+            // Sampler heap
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindSamplers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindSamplers,
+        });
+    }
+    
     uint32_t VulkanDevice::_QueryMaxSupportedMutDescPerSet() {
 
-        auto _IsSizeSupported = [this](uint32_t size) {
+        auto& devCaps = _adp->GetCaps();
+        auto maxSetCnt = devCaps.properties12.maxUpdateAfterBindDescriptorsInAllPools;
+
+        {
+            
+            // Provided by VK_VERSION_1_2
+            VkDescriptorSetVariableDescriptorCountLayoutSupport varCntSupport {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT,
+                //uint32_t           maxVariableDescriptorCount;
+            };
+
             VkDescriptorSetLayoutSupport supportStat {
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+                .pNext = &varCntSupport,
             };
 
             VkDescriptorSetLayoutBinding binding{
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
-                .descriptorCount = size,
+                .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
                                | VK_SHADER_STAGE_VERTEX_BIT
                                | VK_SHADER_STAGE_FRAGMENT_BIT
@@ -85,6 +173,11 @@ namespace alloy::vk {
                 VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                 VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
             };
+            static constexpr VkDescriptorBindingFlags bindingFlags =
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
 
             VkMutableDescriptorTypeListEXT mutableTypeList {
                 .descriptorTypeCount = sizeof(mutableTypes) / sizeof(mutableTypes[0]),
@@ -97,39 +190,127 @@ namespace alloy::vk {
                 .pMutableDescriptorTypeLists = &mutableTypeList
             };
 
-            VkDescriptorSetLayoutCreateInfo CI{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
                 .pNext = &mutableCI,
                 .bindingCount = 1,
-                .pBindings = &binding
+                .pBindingFlags = &bindingFlags,
             };
 
-            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &CI, &supportStat);
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
 
-            return supportStat.supported == VK_TRUE;
+            _fnTable.vkGetDescriptorSetLayoutSupport(_dev, &dslCI, &supportStat);
+
+            if(supportStat.supported) {
+                maxSetCnt = varCntSupport.maxVariableDescriptorCount;
+            }
         };
 
         
-        //Conservative size is VkPhyDev1.1 props
+        // https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkGetDescriptorSetLayoutSupport.html:
+        // Conservative size is VkPhyDev1.1 maintenance3 props
         // VkPhysicalDeviceVulkan11Properties::maxPerSetDescriptors
         
-        auto& devCaps = _adp->GetCaps();
-        auto maxSetCnt = devCaps.properties11.maxPerSetDescriptors;
+        return std::min( { 
+            maxSetCnt,
+            // Combined resoource heap
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindUniformBuffers,
+            //devCaps.properties12.maxDescriptorSetUpdateAfterBindUniformBuffersDynamic;
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageBuffers,
+            //devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageBuffersDynamic;
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindSampledImages,
+            devCaps.properties12.maxDescriptorSetUpdateAfterBindStorageImages,
 
-        // Query following sizes, from large to small
-        for(uint32_t size : { devCaps.limits.maxDescriptorSetUniformBuffers,
-                              devCaps.limits.maxDescriptorSetStorageBuffers,
-                              devCaps.limits.maxDescriptorSetSampledImages,
-                              devCaps.limits.maxDescriptorSetStorageImages, }
-        ) {
-            if(size > maxSetCnt) {
-                if(_IsSizeSupported(size)) {
-                    maxSetCnt = size;
-                }
-            }
-        }
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindUniformBuffers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindStorageBuffers,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindSampledImages,
+            devCaps.properties12.maxPerStageDescriptorUpdateAfterBindStorageImages,
+            devCaps.properties12.maxPerStageUpdateAfterBindResources,
+        });
+    }
 
-        return maxSetCnt;
+    void VulkanDevice::_CreateT2DSLs() {
+        // Shared binding flags for both heap DSLs: the heap is a partially-populated,
+        // update-after-bind, variable-count array.
+        static constexpr VkDescriptorBindingFlags defaultBindingFlags =
+            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+           // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+        auto _CreateDSL = [&](
+            VkDescriptorType type,
+            uint32_t count,
+            VkDescriptorBindingFlags bindingFlags,
+            const VkMutableDescriptorTypeCreateInfoEXT* mutableCI
+        ) -> VkDescriptorSetLayout {
+            VkDescriptorSetLayoutBinding binding{
+                .binding = 0,
+                .descriptorType = type,
+                .descriptorCount = count,
+                .stageFlags = VK_SHADER_STAGE_ALL,
+            };
+
+            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+                .pNext = mutableCI,
+                .bindingCount = 1,
+                .pBindingFlags = &bindingFlags,
+            };
+
+            VkDescriptorSetLayoutCreateInfo dslCI{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = &bindingFlagsCI,
+                .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                .bindingCount = 1,
+                .pBindings = &binding,
+            };
+
+            VkDescriptorSetLayout dsl = VK_NULL_HANDLE;
+            VK_CHECK(VK_DEV_CALL(this,
+                vkCreateDescriptorSetLayout(_dev, &dslCI, nullptr, &dsl)));
+            return dsl;
+        };
+
+        // Resource heap: mutable-typed, candidate types match _QueryMaxSupportedMutDescPerSet.
+
+        VkMutableDescriptorTypeListEXT mutableTypeList{
+            .descriptorTypeCount = sizeof(_DescriptorPoolMgr::kMutableDescTypes) 
+                / sizeof(_DescriptorPoolMgr::kMutableDescTypes[0]),
+            .pDescriptorTypes = _DescriptorPoolMgr::kMutableDescTypes,
+        };
+
+        VkMutableDescriptorTypeCreateInfoEXT mutableCI{
+            .sType = VK_STRUCTURE_TYPE_MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT,
+            .mutableDescriptorTypeListCount = 1,
+            .pMutableDescriptorTypeLists = &mutableTypeList,
+        };
+
+        _t2ResourceHeapDsl = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+            _features.maxVariableCntDescriptorsPerSetMutableType,
+            defaultBindingFlags | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+            &mutableCI);
+
+        _t2SamplerHeapDsl = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_SAMPLER,
+            _features.maxVariableCntDescriptorsPerSetSampler,
+            defaultBindingFlags | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+            nullptr);
+        
+        _t2OffsetUBODSL = _CreateDSL(
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            defaultBindingFlags,
+            1,
+            nullptr
+        );
     }
 
     common::sp<IGraphicsDevice> VulkanDevice::Make(
@@ -284,6 +465,10 @@ namespace alloy::vk {
                     features12.shaderUniformTexelBufferArrayNonUniformIndexing = true;
                     features12.shaderStorageTexelBufferArrayNonUniformIndexing = true;
                 }
+
+                if(devCaps.resourceBindingModel == ResourceBindingModel::T2) {
+                    features12.descriptorBindingVariableDescriptorCount = true;
+                }
             }
 
             //Enable the descriptor buffer
@@ -384,9 +569,10 @@ namespace alloy::vk {
         //    dev->_features.supportsDebug = _AddExtIfPresent(VkDevExtNames::VK_EXT_DEBUG_UTILS);
 
         dev->_features.flags.supportsPresent = _AddExtIfPresent(VkDevExtNames::VK_KHR_SWAPCHAIN);
-        if (options.preferStandardClipSpaceYDirection) {
-            dev->_features.flags.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
-        }
+        //if (options.preferStandardClipSpaceYDirection) {
+        //    dev->_features.flags.supportsMaintenance1 = _AddExtIfPresent(VkDevExtNames::VK_KHR_MAINTENANCE1);
+        //}
+        dev->_features.flags.supportsMaintenance1 = true; // VK1.1 core behavior, no extension needed.
         dev->_features.flags.supportsGetMemReq2 = _AddExtIfPresent(VkDevExtNames::VK_KHR_GET_MEMORY_REQ2);
         dev->_features.flags.supportsDedicatedAlloc = _AddExtIfPresent(VkDevExtNames::VK_KHR_DEDICATED_ALLOCATION);
 
@@ -431,12 +617,17 @@ namespace alloy::vk {
         _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
         _CreatePoolMgr(VK_DESCRIPTOR_TYPE_SAMPLER);
 
+        dev->_features.maxVariableCntDescriptorsPerSetSampler =
+             dev->_QueryMaxSupportedSamplerDescPerSet();
+
         if(devCaps.supportMutableDescriptorType) {
             _CreatePoolMgr(VK_DESCRIPTOR_TYPE_MUTABLE_EXT);
-            dev->_features.maxMutableDescriptorsPerSet =
+            dev->_features.maxVariableCntDescriptorsPerSetMutableType =
                 dev->_QueryMaxSupportedMutDescPerSet();
+            // Universal T2 heap layouts depend on maxMutableDescriptorsPerSet being set.
+            dev->_CreateT2DSLs();
         } else {
-            dev->_features.maxMutableDescriptorsPerSet = 0;
+            dev->_features.maxVariableCntDescriptorsPerSetMutableType = 0;
         }
 
         //Get queues
@@ -610,18 +801,17 @@ namespace alloy::vk {
 
     _DescriptorSet VulkanDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout,
             VkDescriptorType type,
-            bool descriptorCnt, // Total descriptor counts. We can't get this info from
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
                                 //   VkDescriptorSetLayout.
             bool isVariableCnt, // Enables variable count
             bool isMutableSet   // Implies partially bound and update after use.
     ){
         assert(_descPoolMgrs.contains(type));
-        if(isMutableSet &&
+        assert(!isMutableSet ||
            GetAdapter().GetAdapterInfo().resourceBindingModel
-               == ResourceBindingModel::FixedBindings
-        ) {
-            throw std::runtime_error("Vulkan mutable ResourceSet requires DescriptorIndexing support.");
-        }
+               != ResourceBindingModel::FixedBindings
+            && "Vulkan mutable ResourceSet requires DescriptorIndexing support.");
+
         return _descPoolMgrs.at(type).Allocate(
             layout,
             descriptorCnt,

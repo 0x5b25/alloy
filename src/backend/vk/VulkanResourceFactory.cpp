@@ -7,7 +7,7 @@
 #include "VulkanDevice.hpp"
 #include "VulkanPipeline.hpp"
 #include "VulkanCommandList.hpp"
-//#include "VulkanDescriptorHeap.hpp"
+#include "VulkanDescriptorHeap.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanShader.hpp"
 #include "VulkanBindableResource.hpp"
@@ -32,26 +32,11 @@ namespace alloy::vk
     V(MutableResourceSet)\
     V(ResourceSet)\
     V(ResourceLayout)\
+    V(ResourceDescriptorHeap)\
+    V(SamplerDescriptorHeap)\
     V(SwapChain)
 
     VK_RF_FOR_EACH_RES(VK_IMPL_RF_CREATE_WITH_DESC)
-
-
-    common::sp<IResourceDescriptorHeap> VulkanResourceFactory::CreateResourceDescriptorHeap(
-        const IResourceDescriptorHeap::Description& description
-    ) {
-        assert(false);
-        return nullptr;
-        //return VulkanResourceDescriptorHeap::Make(_CreateNewDevHandle(), description);
-    }
-
-    common::sp<ISamplerDescriptorHeap> VulkanResourceFactory::CreateSamplerDescriptorHeap(
-        const ISamplerDescriptorHeap::Description& description
-    ) {
-        assert(false);
-        return nullptr;
-        //return VulkanSamplerDescriptorHeap::Make(_CreateNewDevHandle(), description);
-    }
 
     common::sp<VulkanDevice> VulkanResourceFactory::_CreateNewDevHandle(){
         auto dev = GetBase();

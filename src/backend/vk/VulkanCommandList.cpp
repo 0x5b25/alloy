@@ -8,8 +8,9 @@
 #include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
 #include "VulkanContext.hpp"
-#include "backend/vk/VulkanPipeline.hpp"
+#include "VulkanPipeline.hpp"
 #include "VulkanResourceBarrier.hpp"
+#include "VulkanDescriptorHeap.hpp"
 
 #include <ranges>
 
@@ -444,6 +445,42 @@ namespace alloy::vk{
         }
     }
 
+    void VkRenderCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        assert(currentPipeline != nullptr);
+
+        const auto* pRsrcHeap = PtrCast<VulkanResourceDescriptorHeap>(resourceHeap.get());
+        const auto* pSampHeap = PtrCast<VulkanSamplerDescriptorHeap>(samplerHeap.get());
+
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+
+        std::vector<VkDescriptorSet> descriptorSets(2, VK_NULL_HANDLE);
+
+        if(pRsrcHeap) {
+            resources.insert(resourceHeap);
+            auto heapSet = pRsrcHeap->GetHeapSet();
+            descriptorSets[VulkanResourceLayout::T2Set_ResourceHeap] = heapSet;
+        }
+
+        if(pSampHeap) {
+            resources.insert(samplerHeap);
+            auto heapSet = pSampHeap->GetHeapSet();
+            descriptorSets[VulkanResourceLayout::T2Set_SamplerHeap] = heapSet;
+        }
+
+        VK_DEV_CALL(dev,
+            vkCmdBindDescriptorSets(
+                cmdList,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                VulkanResourceLayout::T2Set_ResourceHeap,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr));
+    }
 
     void VkRenderCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
                                            std::span<const uint32_t> data,
@@ -555,6 +592,42 @@ namespace alloy::vk{
     }
 
 
+    void VkComputeCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        assert(currentPipeline != nullptr);
+
+        const auto* pRsrcHeap = PtrCast<VulkanResourceDescriptorHeap>(resourceHeap.get());
+        const auto* pSampHeap = PtrCast<VulkanSamplerDescriptorHeap>(samplerHeap.get());
+
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+
+        std::vector<VkDescriptorSet> descriptorSets(2, VK_NULL_HANDLE);
+
+        if(pRsrcHeap) {
+            resources.insert(resourceHeap);
+            auto heapSet = pRsrcHeap->GetHeapSet();
+            descriptorSets[VulkanResourceLayout::T2Set_ResourceHeap] = heapSet;
+        }
+
+        if(pSampHeap) {
+            resources.insert(samplerHeap);
+            auto heapSet = pSampHeap->GetHeapSet();
+            descriptorSets[VulkanResourceLayout::T2Set_SamplerHeap] = heapSet;
+        }
+
+        VK_DEV_CALL(dev,
+            vkCmdBindDescriptorSets(
+                cmdList,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                VulkanResourceLayout::T2Set_ResourceHeap,
+                descriptorSets.size(),
+                descriptorSets.data(),
+                0,
+                nullptr));
+    }
 
     void VkComputeCmdEnc::SetPushConstants( std::uint32_t pushConstantIndex,
                                             std::span<const uint32_t> data,

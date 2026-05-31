@@ -149,7 +149,8 @@ namespace alloy::vk
                 std::uint32_t value;
             } flags;
 
-            uint32_t maxMutableDescriptorsPerSet;
+            uint32_t maxVariableCntDescriptorsPerSetMutableType;
+            uint32_t maxVariableCntDescriptorsPerSetSampler;
         };
 
     private:
@@ -162,6 +163,14 @@ namespace alloy::vk
         VmaAllocator _allocator;
         //_CmdPoolMgr _cmdPoolMgr;
         std::unordered_map<VkDescriptorType, _DescriptorPoolMgr> _descPoolMgrs;
+
+        // Universal T2 (DescriptorHeap) descriptor-set-layouts, built once at device
+        // creation when mutable descriptor type is supported. Variable descriptor count,
+        // sized to device maxima. Referenced (non-owning) by VulkanResourceLayout's T2
+        // set 0/1 and used by descriptor heaps to allocate their backing sets.
+        VkDescriptorSetLayout _t2ResourceHeapDsl = VK_NULL_HANDLE;
+        VkDescriptorSetLayout _t2SamplerHeapDsl = VK_NULL_HANDLE;
+        VkDescriptorSetLayout _t2OffsetUBODSL = VK_NULL_HANDLE;
 
         VulkanCommandQueue* _gfxQ;
         VulkanCommandQueue* _copyQ;
@@ -186,6 +195,11 @@ namespace alloy::vk
         //
         // For samplers use VkPhysicalDeviceLimits::maxDescriptorSetSamplers
         uint32_t _QueryMaxSupportedMutDescPerSet();
+        uint32_t _QueryMaxSupportedSamplerDescPerSet();
+
+        // Build the universal T2 heap DSLs (_t2ResourceHeapDsl / _t2SamplerHeapDsl).
+        // Called once during Make() when mutable descriptor type is supported.
+        void _CreateT2DSLs();
 
     public:
 
@@ -231,12 +245,18 @@ namespace alloy::vk
 
         const Features& GetVkFeatures() const {return _features; }
 
+        // Universal T2 descriptor heap layouts. VK_NULL_HANDLE if mutable descriptor
+        // type is unsupported (T2 unavailable).
+        VkDescriptorSetLayout GetT2ResourceHeapDSL() const { return _t2ResourceHeapDsl; }
+        VkDescriptorSetLayout GetT2SamplerHeapDSL() const { return _t2SamplerHeapDsl; }
+        VkDescriptorSetLayout GetT2OffsetUBOHDSL() const { return _t2OffsetUBODSL; }
+
     public:
         //sp<_CmdPoolContainer> GetCmdPool() { return _cmdPoolMgr.GetOnePool(); }
         _DescriptorSet AllocateDescriptorSet(
             VkDescriptorSetLayout layout,
             VkDescriptorType type,
-            bool descriptorCnt, // Total descriptor counts. We can't get this info from
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
                                 //   VkDescriptorSetLayout.
             bool isVariableCnt, // Enables variable count
             bool isMutableSet   // Implies partially bound and update after use.

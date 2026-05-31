@@ -176,6 +176,10 @@ namespace alloy::vk
         virtual void SetGraphicsMutableResourceSet(
             const common::sp<IMutableResourceSet>& rs) override;
 
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
             std::span<const uint32_t> data,
@@ -227,6 +231,10 @@ namespace alloy::vk
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
         virtual void SetComputeMutableResourceSet(
             const common::sp<IMutableResourceSet>& rs) override;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

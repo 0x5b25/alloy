@@ -11,9 +11,124 @@
 
 namespace alloy::dxc
 { 
+    namespace {
 
-    common::sp<IResourceLayout> DXCResourceLayout::Make(const common::sp<DXCDevice> &dev, const Description &desc)
-    {
+        ID3D12RootSignature* CreateT2RootSignature(
+            DXCDevice* dev,
+            const std::vector<D3D12_ROOT_PARAMETER1>& rootParams
+        ) {
+            auto& d3d12Dll = dev->GetContext().GetD3D12Dll();
+            constexpr auto flags 
+                = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
+                | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT
+                | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
+                | D3D12_ROOT_SIGNATURE_FLAG_SAMPLER_HEAP_DIRECTLY_INDEXED
+                ;
+
+            ID3DBlob* signature;
+            HRESULT hr = E_FAIL;
+
+            std::vector<D3D12_ROOT_PARAMETER> rootParamsV1(rootParams.size());
+            for(std::size_t i = 0; i < rootParams.size(); ++i) {
+                auto& dst = rootParamsV1[i];
+                const auto& src = rootParams[i];
+                assert(src.ParameterType == D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS);
+                dst.ParameterType = src.ParameterType;
+                dst.Constants = src.Constants;
+                dst.ShaderVisibility = src.ShaderVisibility;
+            }
+
+            D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
+            rootSigDesc.NumParameters = static_cast<UINT>(rootParamsV1.size());
+            rootSigDesc.pParameters = rootParamsV1.data();
+            rootSigDesc.NumStaticSamplers = 0;
+            rootSigDesc.pStaticSamplers = nullptr;
+            rootSigDesc.Flags = flags;
+
+            hr = d3d12Dll.pfnD3D12SerializeRootSignature(
+                &rootSigDesc,
+                D3D_ROOT_SIGNATURE_VERSION_1,
+                &signature,
+                nullptr);
+            
+            ID3D12RootSignature* rootSignature;
+
+            if(SUCCEEDED(hr)) {
+
+                hr = dev->GetDevice()->CreateRootSignature(
+                    0,
+                    signature->GetBufferPointer(),
+                    signature->GetBufferSize(),
+                    IID_PPV_ARGS(&rootSignature));
+            }
+
+            signature->Release();
+
+            if(FAILED(hr)) {
+                return nullptr;
+            }
+
+            return rootSignature;
+        }
+
+    } // namespace
+
+    DXCResourceLayout::~DXCResourceLayout() {
+        _rootSig->Release();
+    }
+    
+    common::sp<IResourceLayout> DXCResourceLayout::Make(
+        const common::sp<DXCDevice> &dev,
+        const Description &desc
+    ) {
+        if(desc.useGlobalHeaps) {
+            return _MakeT2Bindless(dev, desc);
+        } else {
+            return _MakeFixedSize(dev, desc);
+        }
+    }
+ 
+    common::sp<IResourceLayout> DXCResourceLayout::_MakeT2Bindless(
+        const common::sp<DXCDevice>& dev,
+        const Description& desc
+    ) {
+        assert(dev->GetDevCaps().SupportBindless());
+        assert(desc.shaderResources.empty());
+
+        std::vector<D3D12_ROOT_PARAMETER1> rootParams;
+        uint32_t rootConstantRequested = 0;
+        for(auto& rootConsts : desc.pushConstants) {
+            rootParams.emplace_back();
+            auto& rootParam = rootParams.back();
+            rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+            rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
+            rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
+            rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
+            rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+            rootConstantRequested += rootConsts.sizeInDwords;
+        }
+
+        assert(rootConstantRequested <= MAX_ROOT_SIGNATURE_SIZE_DW);
+
+
+        auto layout = common::sp(new DXCResourceLayout(dev, desc));
+        layout->_rootSig = CreateT2RootSignature(dev.get(), rootParams);
+        
+        if(!layout->_rootSig) {
+            return nullptr;
+        }
+
+        layout->_rootConstantCount = rootConstantRequested;
+        layout->_heapCount = 0;
+        layout->_slotLocations.clear();
+        return layout;
+    }
+
+    common::sp<IResourceLayout> DXCResourceLayout::_MakeFixedSize(
+        const common::sp<DXCDevice>& dev,
+        const Description& desc
+    ) {
         auto pDev = dev->GetDevice();
         auto& d3d12Dll = dev->GetContext().GetD3D12Dll();
 
@@ -133,9 +248,8 @@ namespace alloy::dxc
             rootConstantRequested += rootConsts.sizeInDwords;
         }
 
-        if(rootConstantCnt < rootConstantRequested) {
-            throw std::invalid_argument("Too many root constants, root signature exceeded 256 DWORDS");
-        }
+        assert(rootConstantCnt >= rootConstantRequested &&
+            "Too many root constants, root signature exceeded 256 DWORDS");
 
         D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
         rootSigDesc.NumParameters = rootParams.size();
@@ -143,15 +257,25 @@ namespace alloy::dxc
         rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
                           | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT;
 
-        Microsoft::WRL::ComPtr<ID3DBlob> signature;
-        auto hr = d3d12Dll.pfnD3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
-        if (FAILED(hr))
+        ID3DBlob* signature;
+        ID3D12RootSignature* rootSignature;
+        auto hr = d3d12Dll.pfnD3D12SerializeRootSignature(
+            &rootSigDesc,
+            D3D_ROOT_SIGNATURE_VERSION_1,
+            &signature,
+            nullptr);
+
+        if (SUCCEEDED(hr))
         {
-            return nullptr;
+            hr = pDev->CreateRootSignature(
+                0, 
+                signature->GetBufferPointer(),
+                signature->GetBufferSize(),
+                IID_PPV_ARGS(&rootSignature));
         }
 
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
-        hr = pDev->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
+        signature->Release();
+
         if (FAILED(hr))
         {
             return nullptr;
@@ -226,10 +350,8 @@ namespace alloy::dxc
                 ++layoutSlot)
             {
                 auto& slotDesc = layoutDesc.shaderResources[layoutSlot];
-                if(resIdx + slotDesc.bindingCount > desc.boundResources.size()) {
-                    throw std::invalid_argument(
-                        "DX12 ResourceSet boundResources does not match ResourceLayout capacity.");
-                }
+                assert(resIdx + slotDesc.bindingCount <= desc.boundResources.size() &&
+                        "DX12 ResourceSet boundResources count is smaller than ResourceLayout capacity.");
 
                 auto& write = writes.emplace_back();
                 write.layoutSlot = layoutSlot;
@@ -240,10 +362,8 @@ namespace alloy::dxc
                 }
             }
 
-            if(resIdx != desc.boundResources.size()) {
-                throw std::invalid_argument(
+            assert(resIdx == desc.boundResources.size() &&
                     "DX12 ResourceSet boundResources contains more entries than ResourceLayout requires.");
-            }
 
             return writes;
         }
@@ -442,23 +562,13 @@ namespace alloy::dxc
         const auto d3dHwTier = dev->GetDevCaps().options.ResourceBindingTier;
 
         for(auto& write : writes) {
-            if(write.layoutSlot >= slotDescs.size()) {
-                throw std::out_of_range("DX12 ResourceSet write layoutSlot is out of range.");
-            }
 
             auto& slotDesc = slotDescs[write.layoutSlot];
-            if(write.firstArrayElement + write.resources.size() > slotDesc.bindingCount) {
-                throw std::out_of_range("DX12 ResourceSet write exceeds layout slot bindingCount.");
-            }
             if(write.resources.empty()) {
                 continue;
             }
 
             auto location = _layout->GetSlotLocation(write.layoutSlot);
-            if(!location.valid || location.heapIndex >= _descHeap.size()) {
-                throw std::invalid_argument(
-                    "DX12 ResourceSet write references a layout slot without descriptor storage.");
-            }
 
             const auto heapType =
                 slotDesc.kind == IBindableResource::ResourceKind::Sampler
@@ -721,10 +831,6 @@ namespace alloy::dxc
     ) {
         auto requiredBoundResourceCount =
             GetRequiredBoundResourceCount(desc.layout->GetDesc());
-        if(desc.boundResources.size() != requiredBoundResourceCount) {
-            throw std::invalid_argument(
-                "DX12 ResourceSet requires boundResources to exactly match ResourceLayout capacity.");
-        }
 
         auto resourceSet = common::sp(new DXCResourceSet(dev, desc));
         resourceSet->AllocateDescriptorHeaps();
@@ -745,11 +851,9 @@ namespace alloy::dxc
         const common::sp<DXCDevice>& dev,
         const IMutableResourceSet::Description& desc
     ) {
-        if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-               == ResourceBindingModel::FixedBindings)
-        {
-            throw std::runtime_error("DX12 mutable ResourceSet requires DescriptorIndexing support.");
-        }
+        assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+               != ResourceBindingModel::FixedBindings 
+               && "DX12 mutable ResourceSet requires DescriptorIndexing support.");
 
         auto resSet = common::sp(new DXCMutableResourceSet(dev, desc));
         resSet->AllocateDescriptorHeaps();

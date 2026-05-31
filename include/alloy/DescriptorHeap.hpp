@@ -3,6 +3,7 @@
 #include "alloy/Buffer.hpp"
 #include "alloy/Sampler.hpp"
 #include "alloy/Texture.hpp"
+#include "alloy/BindableResource.hpp"
 
 #include <cstdint>
 #include <span>
@@ -121,17 +122,12 @@ namespace alloy
     // descriptor-type variant is needed for sampler writes.
     using SamplerDescriptorWrite = common::sp<ISampler>;
 
-    struct ResourceDescriptorHeapDescription {
-        std::uint32_t capacity;
-    };
-
-    struct SamplerDescriptorHeapDescription {
-        std::uint32_t capacity;
-    };
-
     class IResourceDescriptorHeap : public common::RefCntBase {
     public:
-        using Description = ResourceDescriptorHeapDescription;
+
+        struct Description {
+            std::uint32_t capacity;
+        };
 
         virtual const Description& GetDesc() const = 0;
 
@@ -143,13 +139,14 @@ namespace alloy
             std::span<const ResourceDescriptorWrite> writes) = 0;
         virtual void Clear(ResourceDescriptorIndex index) = 0;
         virtual void ClearRange(ResourceDescriptorIndex firstIndex, std::uint32_t count) = 0;
-
-        virtual void* GetNativeHandle() const { return nullptr; }
     };
 
     class ISamplerDescriptorHeap : public common::RefCntBase {
     public:
-        using Description = SamplerDescriptorHeapDescription;
+
+        struct Description {
+            std::uint32_t capacity;
+        };
 
         virtual const Description& GetDesc() const = 0;
 
@@ -161,7 +158,5 @@ namespace alloy
             std::span<const SamplerDescriptorWrite> samplers) = 0;
         virtual void Clear(SamplerDescriptorIndex index) = 0;
         virtual void ClearRange(SamplerDescriptorIndex firstIndex, std::uint32_t count) = 0;
-
-        virtual void* GetNativeHandle() const { return nullptr; }
     };
 } // namespace alloy

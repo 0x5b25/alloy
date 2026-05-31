@@ -8,6 +8,7 @@
 #include "DXCTexture.hpp"
 #include "DXCShader.hpp"
 #include "DXCBindableResource.hpp"
+#include "DXCResourceHeap.hpp"
 #include "DXCSwapChain.hpp"
 #include "DXCDevice.hpp"
 
@@ -30,6 +31,8 @@ namespace alloy::dxc
     /*V(Shader)*/\
     V(ResourceSet)\
     V(MutableResourceSet)\
+    V(ResourceDescriptorHeap)\
+    V(SamplerDescriptorHeap)\
     V(ResourceLayout)\
     V(SwapChain)
 
@@ -49,19 +52,6 @@ namespace alloy::dxc
     //) {
     //    return DXCMutableResourceSet::Make(_CreateNewDevHandle(), description);
     //}
-
-    common::sp<IResourceDescriptorHeap> DXCResourceFactory::CreateResourceDescriptorHeap(
-        const IResourceDescriptorHeap::Description& description
-    ) {
-        assert(false);
-        return nullptr;
-    }
-    common::sp<ISamplerDescriptorHeap> DXCResourceFactory::CreateSamplerDescriptorHeap(
-        const ISamplerDescriptorHeap::Description& description
-    ) {
-        assert(false);
-        return nullptr;
-    }
 
     common::sp<IShader> DXCResourceFactory::CreateShader(
         const IShader::Description& desc,

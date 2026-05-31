@@ -181,6 +181,13 @@ namespace alloy::layers::AutoResourceUsageTracking {
         virtual void SetIndexBuffer(
             const common::sp<BufferRange>& buffer, IndexFormat format) override;
 
+         virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        ) override {
+            assert(false);
+        }
+
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
             std::span<const uint32_t> data,
@@ -237,6 +244,14 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
         virtual void SetComputeMutableResourceSet(
             const common::sp<IMutableResourceSet>& rs) override;
+
+            
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        ) override {
+            assert(false);
+        }
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

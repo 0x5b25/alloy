@@ -42,7 +42,7 @@ namespace alloy::dxc {
         
         common::sp<DXCDevice> dev;
 
-        Microsoft::WRL::ComPtr<ID3D12RootSignature> _rootSig;
+        ID3D12RootSignature* _rootSig;
 
     
         //VkDescriptorSetLayout _dsl;
@@ -70,17 +70,28 @@ namespace alloy::dxc {
         ) : IResourceLayout(desc)
             , dev(dev)
         {}
+
+        static common::sp<IResourceLayout> _MakeFixedSize(
+            const common::sp<DXCDevice>& dev,
+            const Description& desc
+        );
+
+        
+        static common::sp<IResourceLayout> _MakeT2Bindless(
+            const common::sp<DXCDevice>& dev,
+            const Description& desc
+        );
     
     public:
-        virtual ~DXCResourceLayout() override {}
+        virtual ~DXCResourceLayout() override;
     
         static common::sp<IResourceLayout> Make(
             const common::sp<DXCDevice>& dev,
             const Description& desc
         );
 
-        void* GetNativeHandle() const override {return _rootSig.Get(); }
-        ID3D12RootSignature* GetHandle() const {return _rootSig.Get(); }
+        void* GetNativeHandle() const override {return _rootSig; }
+        ID3D12RootSignature* GetHandle() const {return _rootSig; }
     
         //const VkDescriptorSetLayout& GetHandle() const {return _dsl;}
         //std::uint32_t GetDynamicBufferCount() const {return _dynamicBufferCount;}

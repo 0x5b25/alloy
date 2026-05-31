@@ -34,6 +34,9 @@ namespace alloy::vk
         VkPhysicalDeviceVulkan13Features features13;
         VkPhysicalDeviceVulkan14Features features14;
 
+        // Guaranteed by VK1.1
+        VkPhysicalDeviceMaintenance3Properties maintenance3Props;
+
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
         //bool hasDescriptorBufferExt;
         bool hasMutableDescriptorTypeExt;
@@ -43,6 +46,7 @@ namespace alloy::vk
 
         bool supportMutableDescriptorType;
         bool supportDescriptorBuffer;
+
         bool supportsDescriptorIndexing;
 
         ResourceBindingModel resourceBindingModel;

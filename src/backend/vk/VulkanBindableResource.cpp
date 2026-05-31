@@ -35,9 +35,13 @@ namespace alloy::vk
     }
 
     VulkanResourceLayout::~VulkanResourceLayout(){
-        for(auto& s : _sets)
-            VK_DEV_CALL(_dev, 
-                vkDestroyDescriptorSetLayout(_dev->LogicalDev(), s.layout, nullptr));
+        // T2 set 0/1 reference device-owned shared DSLs; do not destroy those.
+        if(!_desc.useGlobalHeaps) {
+            for(auto& s : _sets) {
+                VK_DEV_CALL(_dev,
+                    vkDestroyDescriptorSetLayout(_dev->LogicalDev(), s.layout, nullptr));
+            }
+        }
     }
 
     
@@ -188,20 +192,16 @@ namespace alloy::vk
         const common::sp<VulkanDevice>& dev,
         const Description& desc
     ){
+        assert(desc.shaderResources.empty() && "Hybrid bindful not supported.");
+
         const auto& phyDevCaps = dev->GetDevCaps();
         assert(phyDevCaps.supportMutableDescriptorType);
 
-        const auto& devVkFeats = dev->GetVkFeatures();
-        assert(devVkFeats.maxMutableDescriptorsPerSet != 0);
+        using _ResKind = IBindableResource::ResourceKind;
 
-
-        const bool useDescriptorIndexing =
-                    dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-                        != ResourceBindingModel::FixedBindings;
-
+        // Push constants are unchanged from the fixed-size path.
         std::vector<PushConstantInfo> pushConstants;
         uint32_t pushConstantSize = 0;
-
         for(auto& pc : desc.pushConstants){
             pushConstants.push_back({
                 .bindingSlot = pc.bindingSlot,
@@ -212,112 +212,32 @@ namespace alloy::vk
             pushConstantSize += pc.sizeInDwords;
         }
 
-        auto& elements = desc.shaderResources;
-        
-        std::vector<ResourceSetInfo> sets;
-        std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
-        // Also builds the 
-        // desc.shaderResources -> ResSet::Desc.boundResources index mapping 
-        {
-            uint32_t linearBase = 0;
-            for(uint32_t i = 0; i < elements.size(); i++) {
-                const auto& e = elements[i];
-                auto vkType = VdToVkDescriptorType(e.kind, e.options);
 
-                ResourceSetInfo* set = nullptr;
-                uint32_t setIdx = 0;
-                for(setIdx = 0; setIdx < sets.size(); ++setIdx) {
-                    if(sets[setIdx].type == vkType) {
-                        set = &sets[setIdx];
-                        break;
-                    }
-                }
+        // Assign per-slot T2 metadata. Resource-kind and sampler-kind slots each get a
+        // contiguous relative-offset range within their own heap, in API order. The
+        // offset word index mirrors the relative heap offset
 
-                if(!set) {
-                    set = &sets.emplace_back();
-                    set->type = vkType;
-                }
-
-                auto bindingCnt = set->bindings.size();
-                auto& b = set->bindings.emplace_back();
-
-
-                slotLocations[i].setIndexAllocated = setIdx;
-                slotLocations[i].bindingAllocated = bindingCnt;
-                slotLocations[i].linearResourceOffset = linearBase;
-
-                b.regIdxDesignated = e.bindingSlot;
-                b.bindSlotAllocated = bindingCnt;
-                b.regSpaceDesignated = e.bindingSpace;
-                b.bindSetAllocated = setIdx;
-                b.indexInShaderResources = i;
-
-                set->elementCnt += e.bindingCount;
-                linearBase += e.bindingCount;
-            }
-        }
-
-        // Create the layouts
-        for(uint32_t i = 0; i < sets.size(); i++) {
-            auto& s = sets[i];
-
-            std::vector<VkDescriptorSetLayoutBinding> bindings;
-                    bindings.reserve(s.bindings.size());
+        // Fixed 4-set ABI. Absent sets keep VK_NULL_HANDLE so set indices stay stable.
+        // Ideally we have the 2 sets for later offset buffers, but we put them in 
+        // VulkanDescriptorRange to only pay for what you use
+        std::vector<ResourceSetInfo> t2SetInfos{
             
-            std::vector<VkDescriptorBindingFlags> bindingFlags;
-                    bindingFlags.reserve(s.bindings.size());
+            // set 0: resource heap — device universal mutable DSL (non-owning).
+            {
+                .type = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
+                .layout = dev->GetT2ResourceHeapDSL(),
+            },
 
-            for(const auto& b : s.bindings) {
-
-                const auto& bindingDesc = desc.shaderResources[
-                    b.indexInShaderResources
-                ];
-
-                assert(s.type ==
-                    VdToVkDescriptorType(bindingDesc.kind, bindingDesc.options));
-
-                auto& binding = bindings.emplace_back();
-            
-                binding.binding = b.bindSlotAllocated;
-                binding.descriptorCount = bindingDesc.bindingCount;
-                binding.descriptorType = s.type;
-                binding.stageFlags = VdToVkShaderStages(bindingDesc.stages);
-
-
-                VkDescriptorBindingFlags flags = 0;
-                if(useDescriptorIndexing) {
-                    flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-                                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-                }
-                bindingFlags.push_back(flags);
-            }
-
-            
-            VkDescriptorSetLayoutCreateInfo dslCI{};
-            dslCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            dslCI.bindingCount = bindings.size();
-            dslCI.pBindings = bindings.data();
-            if(useDescriptorIndexing) {
-                dslCI.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-            }
-
-            VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI {};
-            if(useDescriptorIndexing) {
-                bindingFlagsCI.sType =
-                    VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-                bindingFlagsCI.bindingCount = bindingFlags.size();
-                bindingFlagsCI.pBindingFlags = bindingFlags.data();
-                dslCI.pNext = &bindingFlagsCI;
-            }
-
-            VK_CHECK(VK_DEV_CALL(dev, 
-                vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
-        }
-
+            // set 1: sampler heap — device universal sampler DSL (non-owning), if used.
+            {
+                .type = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .layout = dev->GetT2SamplerHeapDSL(),
+            },
+        };
+    
         auto dsl = new VulkanResourceLayout(dev, desc);
-        dsl->_sets = std::move(sets);
-        dsl->_slotLocations = std::move(slotLocations);
+        dsl->_sets = std::move(t2SetInfos);
+        // _slotLocations is unused on the T2 path. only full bindless is supported
         dsl->_pushConstants = std::move(pushConstants);
         dsl->_pushConstantSize = pushConstantSize;
 
@@ -369,10 +289,6 @@ namespace alloy::vk
                 ++layoutSlot)
             {
                 auto& slotDesc = layoutDesc.shaderResources[layoutSlot];
-                if(resIdx + slotDesc.bindingCount > desc.boundResources.size()) {
-                    throw std::invalid_argument(
-                        "ResourceSet boundResources does not match ResourceLayout capacity.");
-                }
 
                 auto& write = writes.emplace_back();
                 write.layoutSlot = layoutSlot;
@@ -381,11 +297,6 @@ namespace alloy::vk
                 for(uint32_t i = 0; i < slotDesc.bindingCount; ++i) {
                     write.resources.push_back(desc.boundResources[resIdx++]);
                 }
-            }
-
-            if(resIdx != desc.boundResources.size()) {
-                throw std::invalid_argument(
-                    "ResourceSet boundResources contains more entries than ResourceLayout requires.");
             }
 
             return writes;
@@ -434,10 +345,6 @@ namespace alloy::vk
     ){
         auto requiredBoundResourceCount =
             GetRequiredBoundResourceCount(desc.layout->GetDesc());
-        if(desc.boundResources.size() != requiredBoundResourceCount) {
-            throw std::invalid_argument(
-                "Vulkan ResourceSet requires boundResources to exactly match ResourceLayout capacity.");
-        }
 
         auto descSet = new VulkanResourceSet(dev, desc);
         descSet->AllocateDescriptorSets();
@@ -466,11 +373,9 @@ namespace alloy::vk
             const common::sp<VulkanDevice>& dev,
             const Description& desc
     ){
-        if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-               == ResourceBindingModel::FixedBindings)
-        {
-            throw std::runtime_error("Vulkan mutable ResourceSet requires DescriptorIndexing support.");
-        }
+        assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+               != ResourceBindingModel::FixedBindings &&
+            "Vulkan mutable ResourceSet requires DescriptorIndexing support.");
 
         auto descSet = new VulkanMutableResourceSet(dev, desc);
         descSet->AllocateDescriptorSets();
@@ -502,14 +407,8 @@ namespace alloy::vk
         assert(_boundResources.size() == GetRequiredBoundResourceCount(_layout->GetDesc()));
 
         for(auto& write : writes) {
-            if(write.layoutSlot >= slotDescs.size()) {
-                throw std::out_of_range("ResourceSet write layoutSlot is out of range.");
-            }
 
             auto& slotDesc = slotDescs[write.layoutSlot];
-            if(write.firstArrayElement + write.resources.size() > slotDesc.bindingCount) {
-                throw std::out_of_range("ResourceSet write exceeds layout slot bindingCount.");
-            }
             if(write.resources.empty()) {
                 continue;
             }
@@ -548,9 +447,8 @@ namespace alloy::vk
             }
 
             for(uint32_t i = 0; i < write.resources.size(); ++i) {
-                if(write.resources[i] == nullptr) {
-                    throw std::invalid_argument("ResourceSet write contains a null resource.");
-                }
+                assert(write.resources[i] != nullptr &&
+                    "ResourceSet write contains a null resource.");
 
                 switch(slotDesc.kind) {
                     case _ResKind::UniformBuffer:

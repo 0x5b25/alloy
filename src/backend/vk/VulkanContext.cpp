@@ -69,6 +69,11 @@ namespace alloy::vk
             properties11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
             devProps2.pNext = &properties11;
 
+            maintenance3Props.sType 
+                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES;
+            maintenance3Props.pNext = devProps2.pNext;
+            devProps2.pNext = &maintenance3Props;
+
             features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
             features2.pNext = &features11;
 
@@ -192,8 +197,14 @@ namespace alloy::vk
                    features12.shaderStorageTexelBufferArrayDynamicIndexing;
         }
 
+        if(IsExtSupported(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME)) {
+            supportMutableDescriptorType = true;
+        }
+
         if(supportsDescriptorIndexing) {
-            if(supportMutableDescriptorType)
+            if(supportMutableDescriptorType &&
+               features12.descriptorBindingVariableDescriptorCount
+            )
                 resourceBindingModel = ResourceBindingModel::T2;
             else
                 resourceBindingModel = ResourceBindingModel::T1;

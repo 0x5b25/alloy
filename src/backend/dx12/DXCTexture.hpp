@@ -113,6 +113,7 @@ namespace alloy::dxc
     class DXCSampler : public ISampler{
     
         common::sp<DXCDevice> _dev;
+        std::string _debugName;
     
         DXCSampler(
             const common::sp<DXCDevice>& dev,
@@ -132,6 +133,12 @@ namespace alloy::dxc
             const ISampler::Description& desc
         ) {
             return common::sp(new DXCSampler(dev, desc));
+        }
+
+        
+        virtual void SetDebugName(const std::string& name) override {
+            // We don't really have a sampler object in dx12
+            _debugName = name;
         }
     
     };

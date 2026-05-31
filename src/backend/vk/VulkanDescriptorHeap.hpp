@@ -1,39 +1,36 @@
 #pragma once
 
 #include <volk.h>
-#include <vk_mem_alloc.h>
 
 #include "alloy/DescriptorHeap.hpp"
 
+#include "VkDescriptorPoolMgr.hpp"
+#include "VulkanBindableResource.hpp"
+
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 namespace alloy::vk
 {
     class VulkanDevice;
 
-    class VulkanResourceDescriptorHeap : public IResourceDescriptorHeap {
+    // T2 resource descriptor heap, backed by a single VK_DESCRIPTOR_TYPE_MUTABLE_EXT
+    // descriptor set sized to capacity, allocated from the device's shared mutable pool
+    // against the device's universal resource-heap DSL. Indexed Write/Clear address the
+    // set's binding 0 by array element. The heap owns strong references to written
+    // resources until they are cleared/overwritten.
+    class VulkanResourceDescriptorHeap final : public IResourceDescriptorHeap {
         common::sp<VulkanDevice> _dev;
         Description _desc;
 
-        VkBuffer _buffer = VK_NULL_HANDLE;
-        VmaAllocation _allocation = VK_NULL_HANDLE;
-        void* _mappedData = nullptr;
-        VkDeviceAddress _deviceAddress = 0;
-        VkDeviceSize _stride = 0;
-        VkDeviceSize _bufferSize = 0;
+        _DescriptorSet _heapSet;
 
-        std::vector<std::optional<ResourceDescriptorWrite>> _entries;
+        // Type-erased lifetime anchors, sized to capacity. Null = unwritten.
+        std::vector<common::sp<IBindableResource>> _entries;
 
         VulkanResourceDescriptorHeap(
             const common::sp<VulkanDevice>& dev,
             const Description& desc);
-
-        void EncodeDescriptor(
-            ResourceDescriptorIndex index,
-            const ResourceDescriptorWrite& write);
-        void ClearDescriptor(ResourceDescriptorIndex index);
 
     public:
         ~VulkanResourceDescriptorHeap() override;
@@ -53,41 +50,29 @@ namespace alloy::vk
         void Clear(ResourceDescriptorIndex index) override;
         void ClearRange(ResourceDescriptorIndex firstIndex, std::uint32_t count) override;
 
-        VkBuffer GetHandle() const { return _buffer; }
-        VkDeviceAddress GetDeviceAddress() const { return _deviceAddress; }
-        VkDeviceSize GetStride() const { return _stride; }
-        VkDeviceSize GetBufferSize() const { return _bufferSize; }
-        const VulkanDescriptorHeapSetLayout& GetLayoutABI() const {
-            return _layoutABI->ResourceLayout();
-        }
+        // Internal: shared write primitive used by both the public indexed Write and by
+        // descriptor ranges. `resource` may be null to clear the entry.
+        void WriteSlot(
+            std::uint32_t absoluteIndex,
+            const ResourceDescriptorWrite& write,
+            const common::sp<IBindableResource>& lifetimeRef);
+        void ClearSlot(std::uint32_t absoluteIndex);
 
-        void* GetNativeHandle() const override {
-            return reinterpret_cast<void*>(_buffer);
-        }
+        VkDescriptorSet GetHeapSet() const { return _heapSet.GetHandle(); }
     };
 
-    class VulkanSamplerDescriptorHeap : public ISamplerDescriptorHeap {
+    // T2 sampler descriptor heap. Single SAMPLER descriptor set sized to capacity.
+    class VulkanSamplerDescriptorHeap final : public ISamplerDescriptorHeap {
         common::sp<VulkanDevice> _dev;
-        common::sp<VulkanDescriptorHeapLayoutABI> _layoutABI;
         Description _desc;
 
-        VkBuffer _buffer = VK_NULL_HANDLE;
-        VmaAllocation _allocation = VK_NULL_HANDLE;
-        void* _mappedData = nullptr;
-        VkDeviceAddress _deviceAddress = 0;
-        VkDeviceSize _stride = 0;
-        VkDeviceSize _bufferSize = 0;
+        _DescriptorSet _heapSet;
 
-        std::vector<SamplerDescriptorWrite> _entries;
+        std::vector<common::sp<ISampler>> _entries; // null = unwritten
 
         VulkanSamplerDescriptorHeap(
             const common::sp<VulkanDevice>& dev,
             const Description& desc);
-
-        void EncodeDescriptor(
-            SamplerDescriptorIndex index,
-            const SamplerDescriptorWrite& sampler);
-        void ClearDescriptor(SamplerDescriptorIndex index);
 
     public:
         ~VulkanSamplerDescriptorHeap() override;
@@ -107,16 +92,10 @@ namespace alloy::vk
         void Clear(SamplerDescriptorIndex index) override;
         void ClearRange(SamplerDescriptorIndex firstIndex, std::uint32_t count) override;
 
-        VkBuffer GetHandle() const { return _buffer; }
-        VkDeviceAddress GetDeviceAddress() const { return _deviceAddress; }
-        VkDeviceSize GetStride() const { return _stride; }
-        VkDeviceSize GetBufferSize() const { return _bufferSize; }
-        const VulkanDescriptorHeapSetLayout& GetLayoutABI() const {
-            return _layoutABI->SamplerLayout();
-        }
+        // Internal: shared write primitive. `sampler` may be null to clear.
+        void WriteSlot(std::uint32_t absoluteIndex, const common::sp<ISampler>& sampler);
 
-        void* GetNativeHandle() const override {
-            return reinterpret_cast<void*>(_buffer);
-        }
+        VkDescriptorSet GetHeapSet() const { return _heapSet.GetHandle(); }
+
     };
 }

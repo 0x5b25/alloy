@@ -92,6 +92,8 @@ namespace alloy
 
         virtual ~ISampler() {}
 
+        virtual void SetDebugName(const std::string& ) = 0;
+
     protected:
         Description description;
     };

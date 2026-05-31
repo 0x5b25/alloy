@@ -35,44 +35,26 @@ namespace alloy::vk {
     class VulkanDevice;
     class VulkanResourceLayout;
 
-    struct DescriptorResourceCounts
-    {
-        std::uint32_t uniformBufferCount;
-        std::uint32_t sampledImageCount;
-        std::uint32_t samplerCount;
-        std::uint32_t storageBufferCount;
-        std::uint32_t storageImageCount;
-        std::uint32_t uniformBufferDynamicCount;
-        std::uint32_t storageBufferDynamicCount;
-    };
-
-    struct PoolSize {
-        VkDescriptorType type;
-        float multiplier;
-    };
-    struct PoolSizes {
-        std::vector<PoolSize> sizes =
-        {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 1.f },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4.f },
-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2.f },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1.f },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1.f },
-            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1.f }
-        };
-    };
-
     class _DescriptorPoolMgr{
 
     public:
+        constexpr static VkDescriptorType kMutableDescTypes [] = {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        };
+
+
          struct Container {
             VkDescriptorPool pool;
             std::atomic<uint32_t> refCnt;
+            
+            // We generally don't want to reuse a dedicated
+            // allocation pool:
+            //   1. It has only 1 set capacity
+            //   2. It has non-standard descriptor capacity
+            bool isDedicatedAlloc;
          };
 
     private:
@@ -116,7 +98,7 @@ namespace alloy::vk {
         _DescriptorSet Allocate(
             
             VkDescriptorSetLayout layout,
-            bool descriptorCnt, // Total descriptor counts. We can't get this info from
+            uint32_t descriptorCnt, // Total descriptor counts. We can't get this info from
                                 //   VkDescriptorSetLayout.
             bool isVariableCnt // Enables variable count
         );
@@ -142,15 +124,21 @@ namespace alloy::vk {
         )
             : _pool(pool)
             , _descSet(set)
-        {}
+        {
+            if(_pool) {
+                auto origRefCnt = _pool->refCnt.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
 
 
         ~_DescriptorSet(){
             //No need to vkDestroy the desc set
             //since the whole will be reseted once
             //there is no reference to the pool.
-            if(_pool)
-                _pool->refCnt.fetch_sub(1, std::memory_order_release);
+            if(_pool) {
+                auto origRefCnt = _pool->refCnt.fetch_sub(1, std::memory_order_release);
+                assert(origRefCnt != 0);
+            }
         }
 
         //move semantics support

@@ -150,6 +150,7 @@ namespace alloy::vk
         VkSampler _sampler;
 
         common::sp<VulkanDevice> _dev;
+        std::string _debugName;
 
         VulkanSampler(
             const common::sp<VulkanDevice>& dev,
@@ -168,6 +169,10 @@ namespace alloy::vk
             const common::sp<VulkanDevice>& dev,
             const ISampler::Description& desc
         );
+
+        
+        
+        virtual void SetDebugName(const std::string& name) override;
 
     };
 
