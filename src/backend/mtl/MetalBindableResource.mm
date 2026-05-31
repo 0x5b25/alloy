@@ -7,8 +7,22 @@
 #include <cstring>
 #include <metal_irconverter_runtime/metal_irconverter_runtime.h>
 #include <stdexcept>
+#include <cassert>
 
 namespace alloy::mtl {
+
+    namespace {
+        constexpr uint32_t kIRRootSignatureFlagCBVSRVUAVHeapDirectlyIndexed = 0x400;
+        constexpr uint32_t kIRRootSignatureFlagSamplerHeapDirectlyIndexed = 0x800;
+
+        IRRootSignatureFlags T2RootSignatureFlags() {
+            return (IRRootSignatureFlags)(
+                IRRootSignatureFlagAllowInputAssemblerInputLayout
+                | IRRootSignatureFlagAllowStreamOutput
+                | kIRRootSignatureFlagCBVSRVUAVHeapDirectlyIndexed
+                | kIRRootSignatureFlagSamplerHeapDirectlyIndexed);
+        }
+    }
 
 #if 0
     void CreateRootSignature(){
@@ -131,6 +145,46 @@ namespace alloy::mtl {
         , _rootSig {}
     {
         //auto pDev = dev->GetHandle();
+
+        if(desc.useGlobalHeaps) {
+            assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+                   == ResourceBindingModel::DescriptorHeap);
+            assert(desc.shaderResources.empty());
+
+            std::vector<IRRootParameter1> rootParams;
+            _rootSigSizeInBytes = 0;
+            _descHeapCount = 0;
+
+            uint32_t rootConstantRequested = 0;
+            for(auto& rootConsts : desc.pushConstants) {
+                auto& rootParam = rootParams.emplace_back();
+                rootParam.ParameterType = IRRootParameterType32BitConstants;
+                rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
+                rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
+                rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
+                rootParam.ShaderVisibility = IRShaderVisibilityAll;
+
+                auto& pcInfo = _pushConstants.emplace_back();
+                pcInfo.sizeInDwords = rootConsts.sizeInDwords;
+                pcInfo.bindingSlot = rootConsts.bindingSlot;
+                pcInfo.bindingSpace = rootConsts.bindingSpace;
+                pcInfo.offsetInDwords = rootConstantRequested;
+
+                rootConstantRequested += rootConsts.sizeInDwords;
+                _rootSigSizeInBytes += rootConsts.sizeInDwords * 4;
+            }
+
+            IRVersionedRootSignatureDescriptor rsDesc {};
+            rsDesc.version = IRRootSignatureVersion_1_1;
+            rsDesc.desc_1_1.NumParameters = rootParams.size();
+            rsDesc.desc_1_1.pParameters = rootParams.data();
+            rsDesc.desc_1_1.Flags = T2RootSignatureFlags();
+
+            IRError* pRootSigError = nullptr;
+            _rootSig = IRRootSignatureCreateFromDescriptor(&rsDesc, &pRootSigError);
+            assert(_rootSig != nullptr);
+            return;
+        }
 
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
@@ -277,12 +331,6 @@ namespace alloy::mtl {
 
         IRError* pRootSigError = nullptr;
         _rootSig = IRRootSignatureCreateFromDescriptor( &rsDesc, &pRootSigError );
-        if ( !_rootSig )
-        {
-            // handle and release error
-            throw std::runtime_error("Root signature creation failed!");
-        }
-
         _slotLocations = std::move(slotLocations);
     }
 
@@ -335,10 +383,6 @@ namespace alloy::mtl {
             uint32_t resIdx = 0;
             for(uint32_t layoutSlot = 0; layoutSlot < layoutDesc.shaderResources.size(); ++layoutSlot) {
                 auto& slotDesc = layoutDesc.shaderResources[layoutSlot];
-                if(resIdx + slotDesc.bindingCount > desc.boundResources.size()) {
-                    throw std::invalid_argument(
-                        "Metal ResourceSet boundResources does not match ResourceLayout capacity.");
-                }
 
                 auto& write = writes.emplace_back();
                 write.layoutSlot = layoutSlot;
@@ -347,11 +391,6 @@ namespace alloy::mtl {
                 for(uint32_t i = 0; i < slotDesc.bindingCount; ++i) {
                     write.resources.push_back(desc.boundResources[resIdx++]);
                 }
-            }
-
-            if(resIdx != desc.boundResources.size()) {
-                throw std::invalid_argument(
-                    "Metal ResourceSet boundResources contains more entries than ResourceLayout requires.");
             }
 
             return writes;
@@ -438,24 +477,12 @@ namespace alloy::mtl {
         assert(_boundResources.size() == GetRequiredBoundResourceCount(_layout->GetDesc()));
 
         for(auto& write : writes) {
-            if(write.layoutSlot >= slotDescs.size()) {
-                throw std::out_of_range("Metal ResourceSet write layoutSlot is out of range.");
-            }
-
             auto& slotDesc = slotDescs[write.layoutSlot];
-            if(write.firstArrayElement + write.resources.size() > slotDesc.bindingCount) {
-                throw std::out_of_range("Metal ResourceSet write exceeds layout slot bindingCount.");
-            }
             if(write.resources.empty()) {
                 continue;
             }
 
             auto location = _layout->GetSlotLocation(write.layoutSlot);
-            if(!location.valid || _argBuf == nil) {
-                throw std::invalid_argument(
-                    "Metal ResourceSet write references a layout slot without argument-table storage.");
-            }
-
             const uint64_t heapBaseOffset =
                 slotDesc.kind == IBindableResource::ResourceKind::Sampler
                     ? _combinedResHeapSize
@@ -578,10 +605,6 @@ namespace alloy::mtl {
     ) {
         auto requiredBoundResourceCount =
             GetRequiredBoundResourceCount(desc.layout->GetDesc());
-        if(desc.boundResources.size() != requiredBoundResourceCount) {
-            throw std::invalid_argument(
-                "Metal ResourceSet requires boundResources to exactly match ResourceLayout capacity.");
-        }
 
         auto resourceSet = common::sp(new MetalResourceSet(dev, desc));
         resourceSet->AllocateArgumentBuffer();
@@ -610,12 +633,6 @@ namespace alloy::mtl {
         const common::sp<MetalDevice>& dev,
         const IMutableResourceSet::Description& desc
     ) {
-        if(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-               == ResourceBindingModel::FixedBindings)
-        {
-            throw std::runtime_error("Metal mutable ResourceSet requires DescriptorIndexing support.");
-        }
-
         auto resourceSet = common::sp(new MetalMutableResourceSet(dev, desc));
         resourceSet->AllocateArgumentBuffer();
 

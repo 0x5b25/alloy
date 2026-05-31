@@ -44,6 +44,8 @@ set(VLD_BACKEND_MTL_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/MetalShader.h"
     "${CMAKE_CURRENT_LIST_DIR}/MetalBindableResource.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MetalBindableResource.h"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalDescriptorHeap.mm"
+    "${CMAKE_CURRENT_LIST_DIR}/MetalDescriptorHeap.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/MetalResourceFactory.mm"
     "${CMAKE_CURRENT_LIST_DIR}/MetalResourceFactory.h"
 

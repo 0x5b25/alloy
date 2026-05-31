@@ -91,21 +91,62 @@ T2 is the full bindless target.
 
 T2 requires a larger shader remapping design and is intentionally not part of the T1 work.
 
-## T2 Public API Direction (Draft)
+## T2 Public API Direction
 
-T2 should not be a larger `IMutableResourceSet`. It introduces descriptor heap storage that
-allocates shader-visible integer indices. Higher-level engine systems, such as material
-tables and scene records, store those indices in GPU data.
+> **Decision (2026-05-30): No hybrid bindful. T2 = global heap + push constants only.**
+>
+> Earlier drafts of this section described *hybrid bindful*: bindful HLSL slots
+> (`register(t0)` etc.) whose descriptors physically live in the global heap, reached via a
+> per-range offset UBO (`dxil-spv` `use_heap=true` + `offset_binding`). That is dropped.
+>
+> Rationale: alloy deliberately exposes **no root-view binding**. Vulkan core has no
+> root-descriptor equivalent, and `VK_KHR_push_descriptor` is an NVIDIA-origin extension to
+> avoid. alloy's DX12 backend already routes **every** buffer/texture binding through a
+> descriptor table; only root *constants* use root-parameter space. So a constant buffer is
+> *already* table→descriptor→buffer (one indirection) on both backends — hybrid bindful was
+> never saving an indirection. It only added: per-range offset UBOs (sets 2/3), an
+> `offset_binding` remapper branch, and a CBV/sampler asymmetry (the `dxil-spv` CBV and
+> sampler binding structs have no `offset_binding` field, only SRV/UAV do).
+>
+> The T2 model is therefore:
+> - **Push / root constants** — the ≤128-byte hot path: heap indices, bases, flags, tiny
+>   scalars. (`dxil-spv` root-constant → push-constant promotion.)
+> - **Global heap** — everything else (SRV, UAV, CBV, sampler), reached by integer index.
+>   A T2 "constant buffer" is a heap-resident buffer addressed by a pushed/stored index, not
+>   a bound `cbuffer`. SRV/UAV/CBV route to the resource heap (set 0), samplers to the
+>   sampler heap (set 1), all with `use_heap=true`.
+> - **No offset UBOs, no `offset_binding`, no per-range bindful descriptor state.**
+>
+> Engine shader authors reach constants via heap indices; push constants carry just the
+> indices. This matches the GPU-driven renderer direction (push indices, pull data from
+> buffers by index) — see `docs/specs/renderer/resource_model.md`.
+>
+> Sections below that still describe offset UBOs / hybrid bindful are retained for history
+> but superseded by this record.
 
-Alloy exposes two descriptor heap object types:
+T2 is not a larger `IMutableResourceSet`. It factors the binding model into independent
+objects, each owning one concern:
 
-- A resource descriptor heap for uniform buffers, read-only storage buffers, read-write
-  storage buffers, sampled textures, and storage textures.
-- A sampler descriptor heap for samplers.
+- **`IResourceLayout`** — schema. Push constants and the convention for accessing the
+  global heap. No storage. (No bindful-slot heap offsets — see the decision record above.)
+- **`IDescriptorHeap`** — allocator over a backing store (DX12 shader-visible heap, Vk
+  descriptor pool or `VkBuffer` via `VK_EXT_descriptor_buffer`). Owns the sub-allocator and
+  the global heap binding location. No schema.
+- **`IDescriptorRange`** — a sub-allocation in a heap: a base index plus a count. Pure
+  bookkeeping; it carries no descriptor storage and no per-set bind state. Its base index is
+  what the engine bakes into GPU records / indirect commands.
+- **`IPipeline`** — compiled shaders, scoped by a layout.
 
-The portable shader ABI tokens are 32-bit descriptor indices relative to the currently bound
-resource descriptor heap or sampler descriptor heap. CPU-side wrappers may carry type
-information for validation, but GPU records should store plain `uint32_t` values.
+Compatibility reduces to: layout and heap agree on the heap binding convention; pipelines
+compiled against a layout bind against any compatible heap.
+
+The descriptor-storage backing (`VK_EXT_descriptor_buffer` vs descriptor pool) is a
+backend-internal choice, not an API change. The same `IDescriptorRange` interface serves
+both.
+
+Higher-level engine systems (material tables, scene records) store **32-bit descriptor
+indices** relative to the currently bound resource or sampler heap. CPU-side wrappers may
+carry type information for validation, but GPU records store plain `uint32_t`.
 
 Conceptually:
 
@@ -126,29 +167,6 @@ struct ResourceDescriptorIndex {
 struct SamplerDescriptorIndex {
     static constexpr uint32_t Invalid = 0xffffffffu;
     uint32_t value = Invalid;
-};
-
-struct ResourceDescriptorRange {
-    ResourceDescriptorType type;
-    uint32_t firstIndex;
-    uint32_t count;
-
-    ResourceDescriptorIndex At(uint32_t offset) const;
-};
-
-struct SamplerDescriptorRange {
-    uint32_t firstIndex;
-    uint32_t count;
-
-    SamplerDescriptorIndex At(uint32_t offset) const;
-};
-
-struct ResourceDescriptorHeapDescription {
-    uint32_t capacity;
-};
-
-struct SamplerDescriptorHeapDescription {
-    uint32_t capacity;
 };
 
 struct ResourceDescriptorWrite {
@@ -173,31 +191,55 @@ struct SamplerDescriptorClear {
     uint32_t count;
 };
 
-class IResourceDescriptorHeap : public common::RefCntBase {
-public:
-    virtual const ResourceDescriptorHeapDescription& GetDesc() const = 0;
+struct DescriptorHeapDescription {
+    uint32_t resourceCapacity;   // 0 to disable resource heap on this object
+    uint32_t samplerCapacity;    // 0 to disable sampler heap on this object
+};
 
-    virtual ResourceDescriptorRange Allocate(
+// Heap is allocator + storage. Owns sub-allocation policy and the global
+// heap binding location. Knows nothing about schema.
+class IDescriptorHeap : public common::RefCntBase {
+public:
+    virtual const DescriptorHeapDescription& GetDesc() const = 0;
+
+    // Allocate a contiguous range scoped by a layout. The range knows its
+    // heap base; the layout supplies the relative offsets and per-set
+    // bind-state shape.
+    virtual common::sp<IDescriptorRange> AllocateRange(
+        const common::sp<IResourceLayout>& layout) = 0;
+
+    // Free-form bindless allocation: hand back a heap index range that the
+    // engine writes into GPU records. Not scoped by a layout.
+    virtual ResourceDescriptorIndex AllocateResourceIndices(
         ResourceDescriptorType type,
         uint32_t count,
         uint32_t alignment = 1) = 0;
-    virtual void Free(const ResourceDescriptorRange& range) = 0;
+    virtual SamplerDescriptorIndex AllocateSamplerIndices(
+        uint32_t count,
+        uint32_t alignment = 1) = 0;
+    virtual void FreeResourceIndices(ResourceDescriptorIndex first, uint32_t count) = 0;
+    virtual void FreeSamplerIndices(SamplerDescriptorIndex first, uint32_t count) = 0;
 
+    // Direct heap writes for engine-issued indices.
     virtual void Write(std::span<const ResourceDescriptorWrite> writes) = 0;
+    virtual void Write(std::span<const SamplerDescriptorWrite> writes) = 0;
     virtual void Clear(std::span<const ResourceDescriptorClear> clears) = 0;
+    virtual void Clear(std::span<const SamplerDescriptorClear> clears) = 0;
 
     virtual void* GetNativeHandle() const { return nullptr; }
 };
 
-class ISamplerDescriptorHeap : public common::RefCntBase {
+// Range is a layout-scoped sub-allocation: a base index + count. Pure
+// bookkeeping — no descriptor storage, no per-set bind state, no offset UBO.
+// Writes go to the owning heap by absolute index (base + local).
+class IDescriptorRange : public common::RefCntBase {
 public:
-    virtual const SamplerDescriptorHeapDescription& GetDesc() const = 0;
+    virtual const IResourceLayout& GetLayout() const = 0;
+    virtual IDescriptorHeap& GetHeap() const = 0;
 
-    virtual SamplerDescriptorRange Allocate(uint32_t count, uint32_t alignment = 1) = 0;
-    virtual void Free(const SamplerDescriptorRange& range) = 0;
-
-    virtual void Write(std::span<const SamplerDescriptorWrite> writes) = 0;
-    virtual void Clear(std::span<const SamplerDescriptorClear> clears) = 0;
+    // Heap base index of this range. The engine bakes this into GPU records /
+    // indirect commands; the shader reaches resources via ResourceDescriptorHeap[base + i].
+    virtual uint32_t GetHeapBaseIndex() const = 0;
 
     virtual void* GetNativeHandle() const { return nullptr; }
 };
@@ -205,65 +247,66 @@ public:
 
 `ResourceDescriptorType` is deliberately separate from `IBindableResource::ResourceKind`.
 T0/T1 resource layouts can infer read/write interpretation from the layout slot, but T2
-writes do not have a layout slot. The write must say whether a storage buffer or texture is
-read-only or read-write so backends can create the correct native descriptor. Samplers use a
-separate heap type and therefore do not need a selectable descriptor type.
+free-form heap writes do not have a layout slot. The write must say whether a storage
+buffer or texture is read-only or read-write so backends can create the correct native
+descriptor. Samplers use a separate heap family and therefore do not need a selectable
+descriptor type.
 
-Descriptor heap creation is a sibling factory API beside resource-set creation. Descriptor
-heap binding is encoder-level state that T2-compatible resource-set binding must respect:
-
-```cpp
-ResourceFactory::CreateResourceDescriptorHeap(resourceDesc);
-ResourceFactory::CreateSamplerDescriptorHeap(samplerDesc);
-
-IRenderCommandEncoder::SetDescriptorHeaps(
-    const common::sp<IResourceDescriptorHeap>& resourceHeap,
-    const common::sp<ISamplerDescriptorHeap>& samplerHeap);
-IComputeCommandEncoder::SetDescriptorHeaps(
-    const common::sp<IResourceDescriptorHeap>& resourceHeap,
-    const common::sp<ISamplerDescriptorHeap>& samplerHeap);
-```
-
-The binding call makes descriptor indices meaningful for subsequent draw or dispatch work on
-that encoder. It takes one resource descriptor heap and one sampler descriptor heap because
-the shader-visible ABI has two heap families. If a shader uses only one family, the other
-binding can be null or omitted by an overload. Engines normally bind one global resource heap
-and one global sampler heap for the frame, but Alloy should allow switching heaps as long as
-the application understands that all stored indices are interpreted relative to the newly
-bound heaps.
-
-### T2 Pipeline Layout And Mixed Bindings
-
-T2 does not remove the top-level resource layout. The layout still owns the backend binding
-ABI: the DX12 root signature, the Vulkan pipeline layout, and Metal's first-level argument
-buffer layout AKA `IRRootSignature`. A T2-capable layout may combine ordinary bindful slots with global
-descriptor heap access.
-
-Bindful resources remain declared in `IResourceLayout::Description::shaderResources`.
-Heap-indexed resources are not declared as individual shader resource slots; they are enabled
-by descriptor heap usage flags on the layout. This allows mixed shaders where hot frame/pass
-constants remain bindful while material, texture, and scene indirection uses global heaps.
-
-Conceptually:
+Heap creation, range allocation, and binding are factory and encoder-level operations:
 
 ```cpp
-struct DescriptorHeapPipelineOptions {
-    bool useResourceDescriptorHeap;
-    bool useSamplerDescriptorHeap;
-};
+ResourceFactory::CreateDescriptorHeap(heapDesc);
+
+IRenderCommandEncoder::SetDescriptorHeap(const common::sp<IDescriptorHeap>& heap);
+IComputeCommandEncoder::SetDescriptorHeap(const common::sp<IDescriptorHeap>& heap);
+
+ICommandList::BeginRenderPass(action, passResourceUsage);
+ICommandList::BeginComputePass(passResourceUsage);
+
+IRenderCommandEncoder::SetGraphicsDescriptorRange(
+    uint32_t layoutSetIndex, const common::sp<IDescriptorRange>& range);
 ```
 
-The exact type name is still open, but the placement should be layout-owned rather than only
-pipeline-owned. A later cleanup could split this into a true `IPipelineLayout` if
-`IResourceLayout` becomes too resource-set-specific.
+A single heap object owns both resource and sampler families when the backend supports it
+(DX12 binds them as a pair anyway; Vulkan can group them into one heap object that owns
+both backing sets). Switching heaps mid-pass is legal but treated as a hard barrier — all
+prior heap-relative indices are invalidated for subsequent work.
 
-Shader-facing HLSL stays heap-native:
+Pass resource usage is deliberately separate from heap binding. `SetDescriptorHeap(s)`
+answers "which descriptor tables are visible"; `PassResourceUsage` answers "which resources
+may be touched during this pass, and with which stages/access." Metal uses this declaration
+to call `useResource(s)` for argument-buffer residency at pass begin. DX12 and Vulkan can use
+the same declaration later for transition and UAV/storage barriers; the T2 heap bind itself
+does not imply residency or memory ordering.
+
+### T2 Pipeline Layout And Push Constants
+
+T2 does not remove the top-level resource layout. The layout owns the schema: the DX12 root
+signature, the Vulkan pipeline layout, and Metal's first-level argument buffer layout. A
+T2 layout has exactly two kinds of binding:
+
+1. **Push / root constants** — declared in `IResourceLayout::Description::pushConstants`.
+   The ≤128-byte hot path. Carries heap indices, base offsets, flags, tiny scalars.
+2. **Global heap access** — the resource heap (set 0) and sampler heap (set 1). Not
+   declared as individual shader-resource slots; enabled by a descriptor-heap usage flag on
+   the layout. Every SRV/UAV/CBV/sampler the shader reads via `ResourceDescriptorHeap[]` /
+   `SamplerDescriptorHeap[]` resolves through these.
+
+There are **no bindful descriptor-table slots** in a T2 layout, and therefore no per-slot
+heap-offset assignment and no offset UBO. (See the decision record at the top of this
+section.)
+
+Shader-facing HLSL is heap-native, with constants reached by index:
 
 ```hlsl
-ConstantBuffer<FrameConstants> frame : register(b0, space0);
+// FrameConstants live in a heap-resident buffer; its index is pushed.
+struct PushConstants { uint frameConstantsIndex; uint instanceBufferIndex; };
+[[vk::push_constant]] PushConstants pc;
+
+ConstantBuffer<FrameConstants> frame = ResourceDescriptorHeap[pc.frameConstantsIndex];
 
 StructuredBuffer<InstanceData> instances =
-    ResourceDescriptorHeap[scene.instanceBufferIndex];
+    ResourceDescriptorHeap[pc.instanceBufferIndex];
 
 uint textureIndex = NonUniformResourceIndex(material.baseColorTexture);
 Texture2D<float4> baseColor = ResourceDescriptorHeap[textureIndex];
@@ -272,22 +315,54 @@ SamplerState samplerState =
     SamplerDescriptorHeap[material.baseColorSampler];
 ```
 
+A T2 "constant buffer" is thus a heap-resident buffer addressed by a pushed (or
+scene-record-stored) index, not a bound `cbuffer`. On both backends a heap CBV is
+table/heap → descriptor → buffer — the same single indirection a bound `cbuffer` would
+cost, since alloy exposes no root-view binding. Nothing is lost by routing it through the
+heap.
+
 `NonUniformResourceIndex` remains gated by the separate non-uniform resource indexing
 capability. A T2 backend may support heap indexing without promising cheap or legal per-lane
 divergent indices.
 
-The command encoder has only one active resource descriptor heap and one active sampler
-descriptor heap at a time. `SetDescriptorHeaps(resourceHeap, samplerHeap)` binds that heap
-pair for all subsequent T2 heap-indexed access, and for any bindful descriptor table ranges
-that are represented inside those heaps. Binding a T2 descriptor heap pair must not be
-treated as independent from resource-set binding.
+### `dxil-spv` Remapper For T2
 
-For mixed T2 layouts, bindful resource-set binding may fill ordinary root/layout slots, but
-it must not switch the native shader-visible heap pair. A backend may support bindful slots
-by using root constants, root descriptors, direct buffer bindings, or descriptor-table ranges
-allocated from the currently bound T2 heaps. A classic T0/T1 resource set that owns private
-shader-visible descriptor storage is not compatible with a T2 heap-bound encoder unless the
-backend can bind it without changing the active heap pair.
+All resource-class remap callbacks route to the global heap; the `(set, binding)` written in
+the callback *is* the heap's SPIR-V location (there is no converter-wide "heap set" option):
+
+- **SRV / UAV / CBV** → `set = 0` (resource heap), `binding = 0`, `bindless.use_heap = true`.
+  For CBV, set `vulkan.uniform_binding` (not the push-constant union member) unless the
+  register matches a declared root constant, in which case promote to push constant.
+- **Sampler** → `set = 1` (sampler heap), `binding = 0`, `bindless.use_heap = true`.
+- **Root constants** → push constants (existing promotion path).
+
+`offset_binding` is left zeroed on every path. `descriptor_type` still selects SSBO vs
+texel vs identity for untyped buffers as today.
+
+### 1+1 Heap Binding Discipline
+
+Alloy enforces the DX12 hardware constraint as the portable contract: at most **one
+resource heap and one sampler heap** are bound to an encoder at any time. Switching heaps
+mid-pass is legal but treated as a hard reset — all prior heap-relative indices in flight
+on that encoder are invalidated for subsequent draws. This matches:
+
+- DX12: `SetDescriptorHeaps` is a hardware barrier, only 1+1 shader-visible heaps allowed.
+- Vulkan: a single global heap descriptor set is bound; switching means rebinding.
+- Metal: one resource argument table + one sampler argument table per encoder.
+
+Engines that want multiple heaps (persistent + transient + per-domain) bind one at a time,
+in heap-grouped passes. The expected GPU-driven pattern is:
+
+```text
+for each heap-grouped batch:
+  cmd.SetDescriptorHeap(batch.heap);
+  cmd.SetPipeline(batch.pipeline);
+  cmd.SetPushConstants(batch.indices);         // heap base indices, flags
+  cmd.ExecuteIndirect(batch.indirectArgs);     // single command, many objects
+```
+
+The number of heap binds per frame is in the tens, not the thousands. Per-object descriptor
+indices live in indirect command buffers, not in command stream state.
 
 ### T2 Lifetime And Hazard Contract
 
@@ -319,60 +394,78 @@ material handles, or streaming-friendly reuse can allocate coarse ranges and sub
 inside them.
 
 T2 descriptor heaps do not imply resource barriers, texture layout transitions, residency
-management, or bindless material policy. Those remain engine responsibilities layered above
-Alloy.
+management, or bindless material policy. Pass-level `PassResourceUsage` is the Alloy hook for
+declaring those resources when a backend needs the information, but descriptor heap writes
+and descriptor heap binds remain storage/binding operations only.
 
 ### T2 Backend Mapping
 
 DX12:
 
-- Resource heaps map to shader-visible `CBV_SRV_UAV` descriptor heaps.
-- Sampler heaps map to shader-visible sampler descriptor heaps.
-- Pipeline creation enables direct heap indexing root signature flags for the heaps the
-  shader uses.
-- `SetDescriptorHeaps` maps to `ID3D12GraphicsCommandList::SetDescriptorHeaps`.
-- Writes create CBV/SRV/UAV or sampler descriptors at the allocated CPU heap indices.
+- `IDescriptorHeap` owns the shader-visible `CBV_SRV_UAV` heap and (optionally) the sampler
+  heap. The sub-allocator is a range allocator over heap indices.
+- The DX12 root signature is layout-owned and minimal: the two directly-indexed heap flags
+  (`CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED`, `SAMPLER_HEAP_DIRECTLY_INDEXED`) plus root
+  constants. No descriptor-table root parameters — there are no bindful tables in a T2
+  layout. Pipelines created against the same layout share the rootSig.
+- `IDescriptorRange` is a base-index + count carved out of the heap. The engine bakes the
+  base into GPU records / indirect data; the shader reads `ResourceDescriptorHeap[base + i]`.
+- `ResourceDescriptorHeap[k]` reads whatever is at heap index `k`, whether `k` came from a
+  range allocation or from engine-issued free-form index allocation.
+- `SetDescriptorHeap` maps to `ID3D12GraphicsCommandList::SetDescriptorHeaps`. The 1+1
+  hardware constraint is the source of the portable contract.
+- Writes create CBV/SRV/UAV or sampler descriptors at the allocated CPU heap indices via
+  `CreateConstantBufferView`/etc.
 
 Vulkan:
 
-- Vulkan cannot pull global heap bindings out of thin air. T2 pipelines still need a
-  `VkPipelineLayout` containing backend-owned descriptor set layouts for the global heap ABI.
-- Baseline Vulkan T2 should reserve typed global heap sets or bindings for storage buffers,
-  sampled images, storage images, and samplers. `dxil-spirv` can fold CBV/uniform-buffer heap
-  access into the storage-buffer path when configured that way.
-- Descriptor heap creation allocates descriptor storage for those typed arrays. Implementations
-  may use fixed descriptor counts, variable descriptor count sets, or descriptor buffers behind
-  the same Alloy heap object.
-- `VK_EXT_descriptor_buffer` is an optional implementation strategy, not the baseline T2
-  requirement. It removes descriptor pool/set allocation from the hot path, but descriptor bytes
-  are still laid out according to `VkDescriptorSetLayout`; `vkGetDescriptorSetLayoutSizeEXT`
-  and `vkGetDescriptorSetLayoutBindingOffsetEXT` remain part of the contract.
-- `VK_EXT_mutable_descriptor_type` should remain an explicit future path. Current planning
-  data has it at roughly 81% coverage for Vulkan 1.2+ Linux devices and roughly 62% coverage
-  on Windows, which is high enough to matter on platforms where Vulkan is primary. If used,
-  it may reduce the number of typed heap sets or better approximate a D3D12-style resource
-  heap, but it must not be required for baseline T2.
-- Command encoding binds the currently active resource and sampler heaps by binding the backend
-  descriptor sets or descriptor-buffer offsets associated with those typed arrays.
+- The resource heap is one `VK_DESCRIPTOR_TYPE_MUTABLE_EXT` descriptor set at set 0,
+  binding 0; the sampler heap is one `SAMPLER` set at set 1, binding 0. Both are
+  variable-count, partially-bound, update-after-bind, sized at allocation to the heap
+  capacity. The DSLs are device-universal singletons (variable-count, sized to device
+  maxima); heaps and layouts reference them. A single mutable set holds UBO/SSBO/sampled/
+  storage-image descriptors, so SRV/UAV/CBV all land in set 0.
+- All `ResourceDescriptorHeap[]` access remaps to set 0 with `use_heap=true`;
+  `SamplerDescriptorHeap[]` to set 1. No `offset_binding`, no per-range offset UBO — the
+  base index is carried in push constants or scene records (see decision record).
+- `IDescriptorHeap` is the sub-allocator. For T2 with descriptor pools, this is bookkeeping
+  over the mutable set's capacity. For descriptor buffer, it is a real allocator over a
+  `VkBuffer`.
+- `VK_EXT_descriptor_buffer` is an optional implementation strategy. The heap-as-allocator
+  factoring makes the swap an internal backend choice with no API impact: descriptor bytes
+  are still laid out according to `VkDescriptorSetLayout`;
+  `vkGetDescriptorSetLayoutSizeEXT` and `vkGetDescriptorSetLayoutBindingOffsetEXT` apply
+  when descriptor buffer is selected.
+- `VK_EXT_mutable_descriptor_type` is the **baseline** T2 backing (it is what collapses
+  SRV/UAV/CBV into one heap set, mirroring DX12 heap semantics). `VK_EXT_descriptor_buffer`
+  is the optional faster storage strategy layered behind the same heap object.
+- Command encoding binds the heap's backing descriptor set (or descriptor-buffer offsets)
+  once per pass. There is no per-range bind state — range base indices are supplied to the
+  shader via push constants or scene records.
 
 Metal:
 
 - Resource and sampler heaps map to argument buffer table storage.
 - Writes update argument table entries and retain referenced Alloy resources.
-- Binding installs the resource and sampler argument tables for the active encoder.
+- Binding installs only the resource and sampler argument tables for the active encoder.
+  It must not walk the whole heap and snapshot every referenced resource.
+- Resources reachable through bindless argument tables are made resident through
+  `PassResourceUsage` at `BeginRenderPass` / `BeginComputePass`, which maps to Metal
+  `useResource(s)` for the remaining duration of the pass.
 - Shader conversion maps heap-style access to the corresponding argument-buffer arrays.
 
 ### T2 Capability And Limits
 
 `ResourceBindingModel::DescriptorHeap` should be advertised only when the backend implements
-the complete T2 contract: resource and sampler descriptor heap creation, allocation, writes,
-command binding, pipeline heap ABI selection, and shader remapping. A backend should not
-report T2 merely because the native API has one relevant feature bit. For Vulkan, descriptor
-indexing alone is not enough unless the backend also implements the Alloy heap ABI: reserved
-global heap layouts, heap object creation, heap binding, update-after-bind semantics, and
-shader remapping from `ResourceDescriptorHeap[]` / `SamplerDescriptorHeap[]` to the backend
-typed arrays. `VK_EXT_descriptor_buffer` and `VK_EXT_mutable_descriptor_type` are optional
-implementation paths, not standalone capability signals.
+the complete T2 contract: heap allocation (both layout-scoped ranges and free-form
+indices), heap writes, command binding under 1+1 discipline, push-constant support, and
+shader remapping from `ResourceDescriptorHeap[]` / `SamplerDescriptorHeap[]` to the global
+heap sets.
+
+For Vulkan, descriptor indexing alone is not enough unless the backend also implements the
+Alloy heap ABI: heap object allocation, the mutable-type resource heap + sampler heap,
+`dxil-spirv` `use_heap` remapping, and the 1+1 binding contract. `VK_EXT_descriptor_buffer`
+is an optional faster-storage path, not a standalone capability signal.
 
 Adapter limits should grow explicit heap limits before the API lands:
 
@@ -380,36 +473,25 @@ Adapter limits should grow explicit heap limits before the API lands:
 struct DescriptorHeapLimits {
     uint32_t maxResourceDescriptors;
     uint32_t maxSamplerDescriptors;
-    uint32_t maxBoundResourceHeaps;
-    uint32_t maxBoundSamplerHeaps;
+    // The portable bind count is always 1 resource + 1 sampler heap per encoder.
+    // Backend-specific higher limits are not exposed.
 };
 ```
 
-The expected portable command-binding limit is one resource heap and one sampler heap at a
-time. Higher native limits can remain backend-specific until there is a cross-backend use
-case.
-
 ### T2 Open Questions
 
-- Whether `IResourceDescriptorHeap` and `ISamplerDescriptorHeap` should own the small range
-  allocators, or whether Alloy should expose only fixed heap storage plus write APIs and
-  leave all allocation to engines.
-- Exact placement of `DescriptorHeapPipelineOptions` in the pipeline descriptions.
-- Whether a future `IPipelineLayout` should replace the current use of `IResourceLayout` for
-  push constants and binding model selection.
-- Whether debug builds should install dummy descriptors on `Clear`, and which dummy resources
-  are required per descriptor type.
-- How much validation can catch descriptor index reuse while GPU records are still in flight.
-- Whether mixed bindful resources need a T2-compatible resource-set allocation mode, or
-  whether the first implementation should limit mixed bindful paths to root constants, root
-  descriptors, and direct buffer bindings that do not consume shader-visible heap state.
-- Whether T1 and T2 renderer descriptor managers can share one lifetime/retirement policy
-  while keeping separate shader-access frontend code.
-- Whether Vulkan should default to four typed global heap sets, a smaller number of sets with
-  multiple typed bindings, or a `VK_EXT_mutable_descriptor_type` path when that extension is
-  available.
-- Whether Vulkan should use `VK_EXT_descriptor_buffer` only as an optimization after the
-  descriptor-indexing typed-array baseline is working.
+- Whether `IDescriptorHeap` should own both resource and sampler families in one object
+  (DX12-natural) or expose them as separate objects (Vulkan-natural). Current direction:
+  unified object with optional sampler family.
+- Exact placement of the descriptor-heap usage flag in the pipeline / layout descriptions.
+- Whether a future `IPipelineLayout` should replace the current use of `IResourceLayout`
+  for push constants and binding model selection.
+- Whether debug builds should install dummy descriptors on `Clear`, and which dummy
+  resources are required per descriptor type.
+- How much validation can catch descriptor index reuse while GPU records are still in
+  flight.
+- Whether `IDescriptorRange` and the T1 `IMutableResourceSet` should be unified under one
+  interface (range = degenerate single-range heap), or kept separate for API clarity.
 
 ## T1 Public API Direction
 
@@ -604,13 +686,25 @@ This should be mechanical after the Vulkan T1 contract has been validated.
 7. [ ] Add debug diagnostics for obvious entry rewrite hazards where practical.
 8. [x] Add a small shader smoke that dynamically indexes a declared descriptor array.
     - [x] Validate Vulkan T1 with a real renderer path.
-9. [ ] After Vulkan is stable, implement DX12 and Metal T1 with the same public contract.
+9. [x] After Vulkan is stable, implement DX12 and Metal T1 with the same public contract.
     - [x] Add explicit DX12 and Metal mutable resource-set factory/bind stubs.
     - [x] Implement DX12 mutable resource sets under the same user-synchronized update contract.
-    - [ ] Implement Metal mutable resource sets under the same user-synchronized update contract.
-    - [ ] Revisit whether DX12 and Metal should advertise `DescriptorHeap` before T2 APIs exist.
+    - [x] Implement Metal mutable resource sets under the same user-synchronized update contract.
 10. [x] Draft the T2 descriptor-heap public API direction.
-11. [ ] Convert the T2 draft into public headers and backend stubs.
+11. [x] T2 public headers: `IResourceDescriptorHeap`/`ISamplerDescriptorHeap` indexed
+       writes.
+12. [ ] T2 backend implementation. **no-hybrid-bindful decision**: per-slot relative-offset assignment are being removed.
+    - [x] Vulkan T2 backend: `VulkanResourceDescriptorHeap` / `VulkanSamplerDescriptorHeap`
+       (mutable-type, pool-allocated, indexed Write/Clear), free-form bindless writes via heap-direct index allocation.
+    - [x] DX12 T2 backend: maps naturally to DX12 descriptor APIs.
+    - [x] Metal T2 backend: argument-table heap.
+    - [x] Pass-level resource usage declaration for Metal argument-buffer residency.
+    - [ ] Revisit whether Metal should always advertise T2 APIs.
+17. [ ] T2 functional smoke: heap-indexed texture + heap-indexed material constant buffer
+       drawn from one heap with push-constant indices
+    - [ ] Vulkan
+    - [ ] DX12
+    - [ ] Metal
 
 ## Open Follow-Ups
 
@@ -618,4 +712,6 @@ This should be mechanical after the Vulkan T1 contract has been validated.
 - Whether `layoutSlot` should remain an integer index or become an opaque handle.
 - How much debug diagnostics can infer about descriptor entry rewrite hazards.
 - Whether dummy descriptors should be installed in debug builds for easier failure diagnosis.
-- When to promote the T2 descriptor-heap draft into public API changes.
+- Whether to unify `IDescriptorRange` and `IMutableResourceSet` once T2 backends ship.
+- Backing-store policy: descriptor pool vs `VK_EXT_descriptor_buffer` selection criteria
+  (drives sub-allocator implementation choice).

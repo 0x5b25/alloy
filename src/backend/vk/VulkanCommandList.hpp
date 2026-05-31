@@ -102,8 +102,9 @@ namespace alloy::vk
         virtual void Begin() override;
         virtual void End() override;
 
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& ) override;
+        virtual IComputeCommandEncoder& BeginComputePass(const PassResourceUsage&) override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 

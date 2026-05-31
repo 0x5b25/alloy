@@ -16,7 +16,30 @@ namespace alloy::layers::AutoResourceUsageTracking {
         , _inner(std::move(inner))
     { }
 
+    namespace {
+        std::vector<PassResourceAccess> CopyPassResources(
+            const PassResourceUsage& usage
+        ) {
+            return { usage.resources.begin(), usage.resources.end() };
+        }
 
+        std::vector<BarrierOp> CopyPassBarriers(
+            const PassResourceUsage& usage
+        ) {
+            return { usage.barriers.begin(), usage.barriers.end() };
+        }
+
+        PassResourceUsage MakePassResourceUsage(
+            const std::vector<PassResourceAccess>& resources,
+            const std::vector<BarrierOp>& barriers
+        ) {
+            return {
+                std::span<const PassResourceAccess>(resources.data(), resources.size()),
+                std::span<const BarrierOp>(barriers.data(), barriers.size())
+            };
+        }
+    }
+    
     using common::operator|;
     static const ResourceAccessMask WRITE_MASK =
         ResourceAccess::RenderTarget                 |
@@ -721,7 +744,8 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
     TrackingRndCmdEnc::TrackingRndCmdEnc(
         TrackingCommandList* cmdList,
-        const RenderPassAction& fb
+        const RenderPassAction& fb,
+        const PassResourceUsage& usage
     )
         : TrackingCmdEncBase{ cmdList }
         , inner(nullptr)
@@ -813,19 +837,43 @@ namespace alloy::layers::AutoResourceUsageTracking {
         }
 
         recordedCmds.emplace_back(
-            [this, actions = fb](ICommandList* cmdList) {
-                inner = &cmdList->BeginRenderPass(actions);
+            [this,
+             actions = fb,
+             passResources = CopyPassResources(usage),
+             passBarriers = CopyPassBarriers(usage)](ICommandList* cmdList) {
+                auto passUsage = MakePassResourceUsage(passResources, passBarriers);
+                inner = &cmdList->BeginRenderPass(actions, passUsage);
             }
         );
     }
 
-    IRenderCommandEncoder& TrackingCommandList::BeginRenderPass(const RenderPassAction& actions) {
+    TrackingCompCmdEnc::TrackingCompCmdEnc(
+        TrackingCommandList* cmdList,
+        const PassResourceUsage& usage
+    )
+        : TrackingCmdEncBase{ cmdList }
+        , cmdList(cmdList)
+        , inner(nullptr)
+    {
+        recordedCmds.emplace_back(
+            [this,
+             passResources = CopyPassResources(usage),
+             passBarriers = CopyPassBarriers(usage)](ICommandList* cmdList) {
+                auto passUsage = MakePassResourceUsage(passResources, passBarriers);
+                inner = &cmdList->BeginComputePass(passUsage);
+            }
+        );
+    }
+
+    IRenderCommandEncoder& TrackingCommandList::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage& usage) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
 
         //auto vkfb = common::SPCast<VulkanFrameBufferBase>(fb);
 
-        auto* pNewEnc = new TrackingRndCmdEnc(this, actions);
+        auto* pNewEnc = new TrackingRndCmdEnc(this, actions, usage);
         //Record render pass
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;
@@ -837,11 +885,12 @@ namespace alloy::layers::AutoResourceUsageTracking {
         return *pNewEnc;
     }
 
-    IComputeCommandEncoder& TrackingCommandList::BeginComputePass() {
+    IComputeCommandEncoder& TrackingCommandList::BeginComputePass(
+        const PassResourceUsage& usage) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
 
-        auto* pNewEnc = new TrackingCompCmdEnc(this);
+        auto* pNewEnc = new TrackingCompCmdEnc(this, usage);
         //Record render pass
         _passes.push_back(pNewEnc);
         _currentPass = pNewEnc;

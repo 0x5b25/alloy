@@ -8,6 +8,7 @@
 #include "MetalTexture.h"
 #include "MetalShader.h"
 #include "MetalBindableResource.h"
+#include "MetalDescriptorHeap.hpp"
 #include "MetalSwapChain.h"
 //#include "MetalFramebuffer.h"
 #include "MetalDevice.h"
@@ -31,6 +32,8 @@ namespace alloy::mtl {
     /*V(Shader)*/\
     V(ResourceSet)\
     V(MutableResourceSet)\
+    V(ResourceDescriptorHeap)\
+    V(SamplerDescriptorHeap)\
     V(ResourceLayout)\
     V(SwapChain)
 

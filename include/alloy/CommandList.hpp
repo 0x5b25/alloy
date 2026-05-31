@@ -28,6 +28,15 @@ namespace alloy
     class IMutableResourceSet;
     class IResourceDescriptorHeap;
     class ISamplerDescriptorHeap;
+    class IBindableResource;
+
+    struct PassResourceAccess {
+        common::sp<IBindableResource> resource;
+        PipelineStages stages;
+        ResourceAccesses access;
+    };
+
+    using PassResourceUsage = std::span<const PassResourceAccess>;
 
     class IRenderCommandEncoder {
     public:
@@ -363,8 +372,9 @@ namespace alloy
         virtual void End() = 0;
 
         /////#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) = 0;
-        virtual IComputeCommandEncoder& BeginComputePass() = 0;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& usage = {} ) = 0;
+        virtual IComputeCommandEncoder& BeginComputePass( const PassResourceUsage& usage = {} ) = 0;
         virtual ITransferCommandEncoder& BeginTransferPass() = 0;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 

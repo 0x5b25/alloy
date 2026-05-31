@@ -1417,7 +1417,10 @@ namespace alloy::dxc
     }
 
 
-    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(const RenderPassAction& actions) {
+    IRenderCommandEncoder& DXCCommandList::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
         ////Record render pass
@@ -1434,7 +1437,9 @@ namespace alloy::dxc
         return *pNewEnc;
     }
 
-    IComputeCommandEncoder& DXCCommandList::BeginComputePass() {
+    IComputeCommandEncoder& DXCCommandList::BeginComputePass(
+        const PassResourceUsage&
+    ) {
 
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
@@ -1728,7 +1733,10 @@ namespace alloy::dxc
         barrier.LayoutBefore = _GetTexLayout(desc.from.layout);
     }
 
-    IRenderCommandEncoder& DXCCommandList6::BeginRenderPass(const RenderPassAction& actions) {
+    IRenderCommandEncoder& DXCCommandList6::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
         ////Record render pass

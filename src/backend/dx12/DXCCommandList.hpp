@@ -119,8 +119,9 @@ namespace alloy::dxc
         );
 
         ///#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& ) override;
+        virtual IComputeCommandEncoder& BeginComputePass( const PassResourceUsage& ) override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 
@@ -383,7 +384,8 @@ namespace alloy::dxc
 
 
         //Returns DXCRenderCmdEnc6 that supports mesh shader
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction& actions) override;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction& actions,
+                                                        const PassResourceUsage& usage ) override;
 
     };
 

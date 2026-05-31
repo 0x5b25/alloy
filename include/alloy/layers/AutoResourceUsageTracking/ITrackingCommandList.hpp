@@ -1,5 +1,6 @@
 #pragma once
 
+#include "alloy/CommandList.hpp"
 #include "alloy/common/RefCnt.hpp"
 
 namespace alloy {
@@ -18,8 +19,9 @@ namespace alloy {
         virtual void End() = 0;
 
         /////#TODO: add load, store and clearcolor handling for more efficient operation
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) = 0;
-        virtual IComputeCommandEncoder& BeginComputePass() = 0;
+        virtual IRenderCommandEncoder& BeginRenderPass( const RenderPassAction&,
+                                                        const PassResourceUsage& ) = 0;
+        virtual IComputeCommandEncoder& BeginComputePass( const PassResourceUsage& ) = 0;
         virtual ITransferCommandEncoder& BeginTransferPass() = 0;
         //virtual IBaseCommandEncoder* BeginWithBasicEncoder() = 0;
 

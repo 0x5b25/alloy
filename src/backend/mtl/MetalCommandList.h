@@ -154,6 +154,10 @@ public:
     virtual void SetGraphicsMutableResourceSet(
         const common::sp<IMutableResourceSet>& rs) override;
 
+    virtual void SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+
 
     virtual void SetPushConstants(
         std::uint32_t pushConstantIndex,
@@ -298,6 +302,10 @@ public:
             /*const std::vector<std::uint32_t>& dynamicOffsets*/) override;
         virtual void SetComputeMutableResourceSet(
             const common::sp<IMutableResourceSet>& rs) override;
+
+        virtual void SetDescriptorHeaps(
+            const common::sp<IResourceDescriptorHeap>& resourceHeap,
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
 
 
         virtual void SetPushConstants(
@@ -530,14 +538,12 @@ public:
 
     virtual ~MetalCommandList() override;
 
-
-    void RegisterObjInUse(const common::sp<common::RefCntBase>& obj) {_objsInUse.emplace(obj);}
-
     virtual void Begin() override {}
     virtual void End() override {}
 
-    virtual IRenderCommandEncoder&   BeginRenderPass(const RenderPassAction&) override;
-    virtual IComputeCommandEncoder&  BeginComputePass() override;
+    virtual IRenderCommandEncoder&   BeginRenderPass(const RenderPassAction&,
+                                                     const PassResourceUsage&) override;
+    virtual IComputeCommandEncoder&  BeginComputePass(const PassResourceUsage&) override;
     virtual ITransferCommandEncoder& BeginTransferPass() override;
     //virtual IBaseCommandEncoder*     BeginWithBasicEncoder() override;
 

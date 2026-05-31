@@ -326,10 +326,10 @@ namespace alloy::mtl
         info.capabilities.supportMeshShader = feat.IsMeshShaderSupported();
         info.capabilities.isUMA = feat.IsUMA();
 
-        // Argument buffer is universally supported on 
-        // metal shader converter target hardware 
+        // Metal Shader Converter's dynamic resource heaps require Tier 2
+        // argument buffers. M1+ devices meet this.
         info.capabilities.supportNonUniformResourceIndexing = true;
-        info.resourceBindingModel = ResourceBindingModel::DescriptorIndexing;
+        info.resourceBindingModel = ResourceBindingModel::T2;
 
         //#TODO: raytracing shaders default support in metal shader converter,
         // HW raytracing on apple M2+ devices

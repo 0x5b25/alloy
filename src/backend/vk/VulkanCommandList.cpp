@@ -1593,7 +1593,10 @@ namespace alloy::vk{
         }
     }
 
-    IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(const RenderPassAction& actions) {
+    IRenderCommandEncoder& VulkanCommandList::BeginRenderPass(
+        const RenderPassAction& actions,
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
 
@@ -1611,7 +1614,9 @@ namespace alloy::vk{
         return *pNewEnc;
     }
 
-    IComputeCommandEncoder& VulkanCommandList::BeginComputePass() {
+    IComputeCommandEncoder& VulkanCommandList::BeginComputePass(
+        const PassResourceUsage&
+    ) {
         //CHK_RENDERPASS_ENDED();
         _EndCurrentActivePass();
 

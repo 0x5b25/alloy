@@ -2,6 +2,7 @@
 #include "MetalDevice.h"
 #include "MetalTexture.h"
 #include "MetalBindableResource.h"
+#include "MetalDescriptorHeap.hpp"
 #include "MtlTypeCvt.h"
 #include "alloy/RenderPass.hpp"
 #include "MetalPipeline.h"
@@ -20,30 +21,109 @@ namespace {
         uint64_t shaderResourceHeapGPUVA,
         uint64_t samplerHeapGPUVA
     ) {
-        if(argBuffer.empty()) {
-            return;
-        }
-
-        size_t offset = 0;
-        auto writeHeapAddress = [&](uint64_t heapGPUVA) {
-            if(!heapGPUVA) {
-                return;
-            }
-
-            assert(offset + sizeof(heapGPUVA) <= argBuffer.size());
-            if(offset + sizeof(heapGPUVA) <= argBuffer.size()) {
-                std::memcpy(argBuffer.data() + offset, &heapGPUVA, sizeof(heapGPUVA));
-            }
-            offset += sizeof(heapGPUVA);
-        };
-
+        auto pHeap =(uint64_t*)argBuffer.data();
         if(shaderResourceHeapGPUVA) {
-            writeHeapAddress(shaderResourceHeapGPUVA);
+            *pHeap = shaderResourceHeapGPUVA;
+            pHeap++;
         }
         if(samplerHeapGPUVA) {
-            writeHeapAddress(samplerHeapGPUVA);
+            *pHeap = samplerHeapGPUVA;
+            pHeap++;
         }
     }
+
+    bool HasWriteAccess(const ResourceAccesses& access) {
+        return access[ResourceAccess::UnorderedAccess]
+            || access[ResourceAccess::RenderTarget]
+            || access[ResourceAccess::DepthStencilWrite]
+            || access[ResourceAccess::CopyDest]
+            || access[ResourceAccess::AccelerationStructureWrite];
+    }
+
+    bool HasReadAccess(const ResourceAccesses& access) {
+        return access[ResourceAccess::IndirectArgumentRead]
+            || access[ResourceAccess::VertexBufferRead]
+            || access[ResourceAccess::IndexBufferRead]
+            || access[ResourceAccess::ConstantBufferRead]
+            || access[ResourceAccess::ShaderResourceRead]
+            || access[ResourceAccess::DepthStencilRead]
+            || access[ResourceAccess::CopySource]
+            || access[ResourceAccess::AccelerationStructureRead]
+            || access[ResourceAccess::Present];
+    }
+
+    MTLResourceUsage ToMTLResourceUsage(const ResourceAccesses& access) {
+        MTLResourceUsage usage = 0;
+
+        if(HasReadAccess(access))
+            usage |= MTLResourceUsageRead;
+
+        if(HasWriteAccess(access))
+            usage |= MTLResourceUsageWrite;
+
+        return usage;
+    }
+
+    MTLRenderStages AllRenderStages() {
+        return MTLRenderStageVertex
+             | MTLRenderStageFragment
+             | MTLRenderStageObject
+             | MTLRenderStageMesh
+             | MTLRenderStageTile;
+    }
+
+    MTLRenderStages ToMTLRenderStages(const PipelineStages& stages) {
+        if(stages[PipelineStage::AllCommands] ||
+           stages[PipelineStage::AllGraphics] ||
+           stages[PipelineStage::AllShaders]
+        ) {
+            return AllRenderStages();
+        }
+
+        MTLRenderStages mtlStages = 0;
+        if(stages[PipelineStage::VertexShader] ||
+           stages[PipelineStage::VertexInput]
+        ) {
+            mtlStages |= MTLRenderStageVertex;
+        }
+        if(stages[PipelineStage::MeshShader]) {
+            mtlStages |= MTLRenderStageObject | MTLRenderStageMesh;
+        }
+        if(stages[PipelineStage::FragmentShader] ||
+           stages[PipelineStage::DepthStencil]   ||
+           stages[PipelineStage::ColorOutput]
+        ) {
+            mtlStages |= MTLRenderStageFragment;
+        }
+
+        return mtlStages;
+    }
+
+    id<MTLResource> GetMetalResource(const common::sp<IBindableResource>& resource) {
+        if(!resource) {
+            return nil;
+        }
+
+        switch(resource->GetResourceKind()) {
+        case IBindableResource::ResourceKind::UniformBuffer:
+        case IBindableResource::ResourceKind::StorageBuffer: {
+            auto* range = common::PtrCast<BufferRange>(resource.get());
+            auto* mtlBuffer =
+                static_cast<const MetalBuffer*>(range->GetBufferObject().get());
+            return mtlBuffer->GetHandle();
+        }
+        case IBindableResource::ResourceKind::Texture: {
+            auto* texView = common::PtrCast<ITextureView>(resource.get());
+            auto* mtlTex =
+                common::PtrCast<MetalTexture>(texView->GetTextureObject().get());
+            return mtlTex->GetHandle();
+        }
+        case IBindableResource::ResourceKind::Sampler:
+            return nil;
+        }
+        return nil;
+    }
+
 }
 
 
@@ -248,19 +328,44 @@ void MetalRenderCmdEnc::SetGraphicsMutableResourceSet(
 
         auto mtlRS = common::PtrCast<MetalMutableResourceSet>(rs.get());
 
-        auto usedRes = mtlRS->GetUseResources();
-        if(!usedRes.empty()) {
-            [_mtlEnc useResources:usedRes.data()
-                            count:usedRes.size()
-                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
-                           stages:MTLRenderStageVertex | MTLRenderStageFragment
-            ];
-        }
-
         SetRootArgumentBufferHeaps(
             _drawResources.argBuffer,
             mtlRS->GetShaderResHeapGPUVA(),
             mtlRS->GetSamplerHeapGPUVA());
+    }
+}
+
+void MetalRenderCmdEnc::SetDescriptorHeaps(
+    const common::sp<IResourceDescriptorHeap>& resourceHeap,
+    const common::sp<ISamplerDescriptorHeap>& samplerHeap
+) {
+    @autoreleasepool {
+        id<MTLBuffer> resourceHeapBuffer = nil;
+        if(resourceHeap) {
+            resources.insert(resourceHeap);
+            auto* mtlHeap =
+                common::PtrCast<MetalResourceDescriptorHeap>(resourceHeap.get());
+            resourceHeapBuffer = mtlHeap->GetHandle();
+        }
+
+        id<MTLBuffer> samplerHeapBuffer = nil;
+        if(samplerHeap) {
+            resources.insert(samplerHeap);
+            auto* mtlHeap =
+                common::PtrCast<MetalSamplerDescriptorHeap>(samplerHeap.get());
+            samplerHeapBuffer = mtlHeap->GetHandle();
+        }
+
+        auto _SetHeapBuffer = [&](id<MTLBuffer> resourceHeapBuffer, uint32_t index) {
+            
+            [_mtlEnc setVertexBuffer:resourceHeapBuffer offset:0 atIndex:index];
+            [_mtlEnc setFragmentBuffer:resourceHeapBuffer offset:0 atIndex:index];
+            [_mtlEnc setObjectBuffer:resourceHeapBuffer offset:0 atIndex:index];
+            [_mtlEnc setMeshBuffer:resourceHeapBuffer offset:0 atIndex:index];
+        };
+
+        _SetHeapBuffer(resourceHeapBuffer, kIRDescriptorHeapBindPoint);
+        _SetHeapBuffer(samplerHeapBuffer, kIRSamplerHeapBindPoint);
     }
 }
 
@@ -600,18 +705,40 @@ void MetalRenderCmdEnc::DrawIndexed(
 
             auto mtlRS = common::PtrCast<MetalMutableResourceSet>(rs.get());
 
-            auto usedRes = mtlRS->GetUseResources();
-            if(!usedRes.empty()) {
-                [_mtlEnc useResources:usedRes.data()
-                            count:usedRes.size()
-                            usage:MTLResourceUsageRead | MTLResourceUsageWrite
-                ];
-            }
-
             SetRootArgumentBufferHeaps(
                 _compResources.argBuffer,
                 mtlRS->GetShaderResHeapGPUVA(),
                 mtlRS->GetSamplerHeapGPUVA());
+        }
+    }
+
+    void MetalComputeCmdEnc::SetDescriptorHeaps(
+        const common::sp<IResourceDescriptorHeap>& resourceHeap,
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    ) {
+        @autoreleasepool {
+            id<MTLBuffer> resourceHeapBuffer = nil;
+            if(resourceHeap) {
+                resources.insert(resourceHeap);
+                auto* mtlHeap =
+                    common::PtrCast<MetalResourceDescriptorHeap>(resourceHeap.get());
+                resourceHeapBuffer = mtlHeap->GetHandle();
+            }
+
+            id<MTLBuffer> samplerHeapBuffer = nil;
+            if(samplerHeap) {
+                resources.insert(samplerHeap);
+                auto* mtlHeap =
+                    common::PtrCast<MetalSamplerDescriptorHeap>(samplerHeap.get());
+                samplerHeapBuffer = mtlHeap->GetHandle();
+            }
+
+            [_mtlEnc setBuffer:resourceHeapBuffer
+                         offset:0
+                        atIndex:kIRDescriptorHeapBindPoint];
+            [_mtlEnc setBuffer:samplerHeapBuffer
+                         offset:0
+                        atIndex:kIRSamplerHeapBindPoint];
         }
     }
 
@@ -662,8 +789,10 @@ void MetalRenderCmdEnc::DrawIndexed(
     }
 
 
-IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction& action)
-{
+IRenderCommandEncoder& MetalCommandList::BeginRenderPass(
+    const RenderPassAction& action,
+    const PassResourceUsage& usage
+) {
     assert(_currEncoder == nullptr);
 
     //RegisterObjInUse(renderPass);
@@ -789,6 +918,17 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
             = [[_cmdBuf renderCommandEncoderWithDescriptor: pass] retain];
 
         MetalRenderCmdEnc* thisEncoder = new MetalRenderCmdEnc(this, rawEnc, action);
+        for(auto& resourceUsage : usage) {
+            auto resource = GetMetalResource(resourceUsage.resource);
+            if(!resource) {
+                continue;
+            }
+
+            _objsInUse.insert(resourceUsage.resource);
+            [rawEnc useResource:resource
+                           usage:ToMTLResourceUsage(resourceUsage.access)
+                          stages:ToMTLRenderStages(resourceUsage.stages)];
+        }
 
         _passes.push_back(thisEncoder);
         _currEncoder = thisEncoder;
@@ -799,7 +939,8 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
 
 
 
-    IComputeCommandEncoder&  MetalCommandList::BeginComputePass(){
+    IComputeCommandEncoder&  MetalCommandList::BeginComputePass(
+        const PassResourceUsage& usage){
         assert(_currEncoder == nullptr);
 
         @autoreleasepool {
@@ -810,6 +951,16 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(const RenderPassAction&
                 = [[_cmdBuf computeCommandEncoderWithDescriptor:pass] retain];
 
             auto thisEncoder = new MetalComputeCmdEnc(this, rawEnc);
+            for(auto& resourceUsage : usage) {
+                auto resource = GetMetalResource(resourceUsage.resource);
+                if(!resource) {
+                    continue;
+                }
+
+                _objsInUse.insert(resourceUsage.resource);
+                [rawEnc useResource:resource
+                              usage:ToMTLResourceUsage(resourceUsage.access)];
+            }
 
             _passes.push_back(thisEncoder);
             _currEncoder = thisEncoder;

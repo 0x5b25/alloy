@@ -92,8 +92,11 @@ namespace alloy::layers::AutoResourceUsageTracking {
         virtual void Begin() override;
         virtual void End() override;
 
-        virtual IRenderCommandEncoder& BeginRenderPass(const RenderPassAction&) override;
-        virtual IComputeCommandEncoder& BeginComputePass() override;
+        virtual IRenderCommandEncoder& BeginRenderPass(
+            const RenderPassAction&,
+            const PassResourceUsage& usage = {}) override;
+        virtual IComputeCommandEncoder& BeginComputePass(
+            const PassResourceUsage& usage = {}) override;
         virtual ITransferCommandEncoder& BeginTransferPass() override;
         
         virtual void SetDebugName(const std::string& name) override {
@@ -168,7 +171,8 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
         TrackingRndCmdEnc(
             TrackingCommandList* cmdList,
-            const RenderPassAction& fb
+            const RenderPassAction& fb,
+            const PassResourceUsage& usage
         );
 
         //Delegates
@@ -233,7 +237,8 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
         
         TrackingCompCmdEnc(
-            TrackingCommandList* cmdList
+            TrackingCommandList* cmdList,
+            const PassResourceUsage& usage
         );
 
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
