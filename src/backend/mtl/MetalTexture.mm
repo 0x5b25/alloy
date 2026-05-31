@@ -102,11 +102,10 @@ namespace alloy::mtl  {
         const ITexture::Description& desc,
         id<MTLTexture> tex
     )
-        : ITexture(desc)
-        , _dev(dev)
+        : _dev(dev)
         , _tex(tex)
-    {
-    }
+        , _desc(desc)
+    { }
 
     MetalTexture::~MetalTexture() {
 
@@ -302,20 +301,15 @@ namespace alloy::mtl  {
         }
     }
 
-    MetalRenderTarget::MetalRenderTarget(const common::sp<MetalTextureView>& texView)
-        : _texView(texView)
-    { }
 
-    MetalRenderTarget::~MetalRenderTarget(){}
+    void MetalSampler::SetDebugName(const std::string& name) {
+        // Metal sampler state don't have debug label
+        //@autoreleasepool {
+        //    auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+        //    [_sampler setLabel:nsSrc];
+        //}
 
-    ITextureView& MetalRenderTarget::GetTexture() const {
-        return *_texView.get();
-    }
-
-    common::sp<MetalRenderTarget> MetalRenderTarget::Make(
-        const common::sp<MetalTextureView>& texView
-    ) {
-        return common::sp(new MetalRenderTarget(texView));
+        _name = name;
     }
 
 }

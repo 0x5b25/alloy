@@ -691,8 +691,8 @@ void MetalCmdQ::WaitForIdle() {
 MetalBuffer::MetalBuffer( const common::sp<MetalDevice>& dev,
             const IBuffer::Description& desc,
             id<MTLBuffer> buffer )
-    : IBuffer(desc)
-    , _dev(dev)
+    : _dev(dev)
+    , _desc(desc)
     , _mtlBuffer(buffer)
 {}
 
@@ -734,7 +734,7 @@ MetalBuffer::~MetalBuffer() {
             //[buffer retain];
 
             auto alBuf = new MetalBuffer(dev, desc, buffer);
-            alBuf->description.sizeInBytes = alignedSize;
+            alBuf->_desc.sizeInBytes = alignedSize;
             return common::sp(alBuf);
         }
     }

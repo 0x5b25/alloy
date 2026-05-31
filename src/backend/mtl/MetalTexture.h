@@ -4,7 +4,6 @@
 
 #include "alloy/Texture.hpp"
 #include "alloy/Sampler.hpp"
-#include "alloy/FrameBuffer.hpp"
 
 #import <Metal/Metal.h>
 
@@ -16,6 +15,8 @@ class MetalDevice;
         common::sp<MetalDevice> _dev;
 
         id<MTLTexture> _tex;
+
+        Description _desc;
     public:
 
         MetalTexture(
@@ -27,7 +28,7 @@ class MetalDevice;
 
 
         id<MTLTexture> GetHandle() const {return _tex;}
-        
+
         virtual void* GetNativeHandle() const override {return GetHandle();}
 
 
@@ -36,9 +37,13 @@ class MetalDevice;
             const ITexture::Description& desc,
             id<MTLTexture> nativeRes
         );
-        
+
         static common::sp<MetalTexture> Make(const common::sp<MetalDevice> &dev,
                                              const ITexture::Description &desc);
+
+        virtual const Description& GetDesc() const override {
+            return _desc;
+        }
 
         virtual void WriteSubresource(
             uint32_t mipLevel,
@@ -70,57 +75,58 @@ class MetalDevice;
     };
 
     class MetalTextureView : public ITextureView {
+        common::sp<MetalTexture> _tgt;
+        Description _desc;
+
 
     public:
 
         MetalTextureView(
-            common::sp<ITexture>&& target,
+            common::sp<MetalTexture> target,
             const ITextureView::Description& desc
-        ) 
-            : ITextureView(std::move(target), desc)
-        {}
+        )
+            : _tgt( std::move(target) )
+            , _desc(desc)
+        {
+
+        }
 
     public:
         virtual ~MetalTextureView() {}
-        
+
+
+        virtual const Description& GetDesc() const  override {
+            return _desc;
+        }
+
+
+        virtual common::sp<ITexture> GetTextureObject() const override {
+            return _tgt;
+        }
     };
 
     class MetalSampler : public ISampler {
-        
+
         common::sp<MetalDevice> _dev;
         id<MTLSamplerState> _sampler;
-        
+
+        std::string _name;
     public:
-        
-        
+
         MetalSampler(
             const common::sp<MetalDevice>& dev,
             const ISampler::Description& desc,
             id<MTLSamplerState> sampler
         );
-        
+
         virtual ~MetalSampler() override;
-        
+
         id<MTLSamplerState> GetHandle() const {return _sampler;}
-        
+
         static common::sp<MetalSampler> Make(const common::sp<MetalDevice> &dev,
                                              const ISampler::Description &desc);
-        
+
+        virtual void SetDebugName(const std::string& ) override;
+
     };
-
-    class MetalRenderTarget : public IRenderTarget {
-
-        common::sp<MetalTextureView> _texView;
-    public:
-        MetalRenderTarget(const common::sp<MetalTextureView>& texView);
-        virtual ~MetalRenderTarget();
-
-        virtual ITextureView& GetTexture() const override;
-
-        static common::sp<MetalRenderTarget> Make(
-            const common::sp<MetalTextureView>& texView
-        );
-    
-    };
-
 }

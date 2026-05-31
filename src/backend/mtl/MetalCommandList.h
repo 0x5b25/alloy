@@ -40,6 +40,7 @@ public:
 
     virtual void EndPass() {}
 
+    virtual id<MTLCommandEncoder> GetEnc() const = 0;
   //void RegisterObjInUse(const common::sp<common::RefCntBase> &obj);
   // void WaitForFence(const common::sp<IFence>& fence);
   // void UpdateFence(const common::sp<IFence>& fence);
@@ -117,6 +118,8 @@ public:
         }
         _mtlEnc = nullptr;
     }
+
+    virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
 
     void SetPipelineBase(MetalGfxPipelineBase* mtlPipeline);
 
@@ -266,10 +269,6 @@ public:
                               std::uint32_t groupCountY,
                               std::uint32_t groupCountZ) override;
 
-
-    virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override;
-    virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override;
-
 };
 
 
@@ -294,6 +293,8 @@ public:
         virtual ~MetalComputeCmdEnc() {}
 
         virtual void EndPass() override {}
+
+        virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
 
         virtual void SetPipeline(const common::sp<IComputePipeline>&) override;
 
@@ -332,11 +333,6 @@ public:
         /// read. This value must be a multiple of 4.</param>
         virtual void DispatchIndirect(const sp<Buffer>& indirectBuffer, std::uint32_t offset) = 0;
         #endif
-
-
-        virtual void WaitForFenceBeforeStages(const common::sp<IFence>&, const PipelineStages&) override {}
-        virtual void UpdateFenceAfterStages(const common::sp<IFence>&, const PipelineStages&) override {}
-
     };
 
 
@@ -363,6 +359,8 @@ public:
             }
             _mtlEnc = nullptr;
         }
+
+        virtual id<MTLCommandEncoder> GetEnc() const override  { return _mtlEnc; }
 
         /// <summary>
         /// Copies a region from the source <see cref="DeviceBuffer"/> to another region in the destination <see cref="DeviceBuffer"/>.
@@ -513,11 +511,6 @@ public:
         /// <param name="destination">The destination of the resolve operation. Must be a non-multisampled <see cref="Texture"/>
         /// (<see cref="Texture.SampleCount"/> == 1).</param>
         //virtual void ResolveTexture(const common::sp<ITexture>& source, const common::sp<ITexture>& destination) override;
-
-
-        virtual void WaitForFence(const common::sp<IFence>&) override {}
-        virtual void UpdateFence(const common::sp<IFence>&) override {}
-
     };
 
 
@@ -564,22 +557,33 @@ public:
     // to create nested debug groupings. Each call to PushDebugGroup must be followed by a matching call to
     // <see cref="PopDebugGroup"/>.
     // <param name="name">The name of the group. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void PushDebugGroup(const std::string& name,const Color4f& color) override {}
+    virtual void PushDebugGroup(const std::string& name,const Color4f& color) override {
+        @autoreleasepool {
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [_cmdBuf pushDebugGroup:nsSrc];
+        }
+    }
 
     // Pops the current debug group. This method must only be called after <see cref="PushDebugGroup(string)"/> has been
     // called on this instance.
-    virtual void PopDebugGroup() override {}
+    virtual void PopDebugGroup() override {
+        @autoreleasepool {
+            [_cmdBuf popDebugGroup];
+        }
+    }
 
     // Inserts a debug marker into the CommandList at the current position. This is used by graphics debuggers to identify
     // points of interest in a command stream.
     // <param name="name">The name of the marker. This is an opaque identifier used for display by graphics debuggers.</param>
-    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override {}
+    virtual void InsertDebugMarker(const std::string& name, const Color4f& color) override;
 
     //virtual void EncodeWaitForEvent(const common::sp<IEvent>& event, uint64_t expectedValue) override;
     //virtual void EncodeSignalEvent(const common::sp<IEvent>& event, uint64_t value) override;
 
 
     //virtual void Present(const common::sp<RenderTarget>& ) override;
+
+    virtual void SetDebugName(const std::string& ) override;
 
     id<MTLCommandBuffer> GetHandle() const {return _cmdBuf;}
 };

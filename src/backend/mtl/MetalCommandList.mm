@@ -152,6 +152,32 @@ MetalCommandList::~MetalCommandList() {
 }
 
 
+    void MetalCommandList::SetDebugName(const std::string& name) {
+        @autoreleasepool {
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [_cmdBuf setLabel:nsSrc];
+        }
+    }
+
+    void MetalCommandList::InsertDebugMarker(const std::string& name, const Color4f&) {
+        @autoreleasepool {
+            id<MTLCommandEncoder> enc;
+            if(_currEncoder) {
+                enc = _currEncoder->GetEnc();
+            } else {
+                enc = [_cmdBuf computeCommandEncoder];
+            }
+
+            auto nsSrc = [NSString stringWithUTF8String:name.c_str()];
+            [enc insertDebugSignpost:nsSrc];
+
+            if(!_currEncoder) {
+                [enc endEncoding];
+            }
+        }
+    }
+
+
 MetalRenderCmdEnc::MetalRenderCmdEnc(
     MetalCommandList* cmdBuf,
     id<MTLRenderCommandEncoder>  enc,
@@ -357,7 +383,7 @@ void MetalRenderCmdEnc::SetDescriptorHeaps(
         }
 
         auto _SetHeapBuffer = [&](id<MTLBuffer> resourceHeapBuffer, uint32_t index) {
-            
+
             [_mtlEnc setVertexBuffer:resourceHeapBuffer offset:0 atIndex:index];
             [_mtlEnc setFragmentBuffer:resourceHeapBuffer offset:0 atIndex:index];
             [_mtlEnc setObjectBuffer:resourceHeapBuffer offset:0 atIndex:index];
@@ -425,7 +451,7 @@ void MetalRenderCmdEnc::SetFullViewport() {
     };
 
     for(auto& rt : _actions.colorTargetActions) {
-        auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+        auto& texDesc = rt.target->GetTextureObject()->GetDesc();
         _SetVP(texDesc);
         break;
     }
@@ -433,7 +459,7 @@ void MetalRenderCmdEnc::SetFullViewport() {
     if(!vpIsSet) {
         if(_actions.depthTargetAction) {
             auto& dt = _actions.depthTargetAction.value();
-            auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = dt.target->GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             vpIsSet = true;
         }
@@ -442,7 +468,7 @@ void MetalRenderCmdEnc::SetFullViewport() {
     if(!vpIsSet) {
         if(_actions.stencilTargetAction) {
             auto& st = _actions.stencilTargetAction.value();
-            auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = st.target->GetTextureObject()->GetDesc();
             _SetVP(texDesc);
             vpIsSet = true;
         }
@@ -454,7 +480,7 @@ void MetalRenderCmdEnc::SetFullViewport() {
 }
 
 
-void MetalRenderCmdEnc::SetScissorRects(std::span<const Rect>& rects) {
+void MetalRenderCmdEnc::SetScissorRects(std::span<const Rect> rects) {
 
     std::vector<MTLScissorRect> mtlRects { };
     mtlRects.reserve(rects.size());
@@ -486,7 +512,7 @@ void MetalRenderCmdEnc::SetFullScissorRect() {
     };
 
     for(auto& rt : _actions.colorTargetActions) {
-        auto& texDesc = rt.target->GetTexture().GetTextureObject()->GetDesc();
+        auto& texDesc = rt.target->GetTextureObject()->GetDesc();
         _SetSR(texDesc);
         break;
     }
@@ -494,7 +520,7 @@ void MetalRenderCmdEnc::SetFullScissorRect() {
     if(!srIsSet) {
         if(_actions.depthTargetAction) {
             auto& dt = _actions.depthTargetAction.value();
-            auto& texDesc = dt.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = dt.target->GetTextureObject()->GetDesc();
             _SetSR(texDesc);
         }
     }
@@ -502,7 +528,7 @@ void MetalRenderCmdEnc::SetFullScissorRect() {
     if(!srIsSet) {
         if(_actions.stencilTargetAction) {
             auto& st = _actions.stencilTargetAction.value();
-            auto& texDesc = st.target->GetTexture().GetTextureObject()->GetDesc();
+            auto& texDesc = st.target->GetTextureObject()->GetDesc();
             _SetSR(texDesc);
         }
     }
@@ -532,7 +558,7 @@ void MetalRenderCmdEnc::Draw( std::uint32_t vertexCount,
         for(int i = 0; i < vertLayout.size(); i++) {
             auto& vertBuf = registry.boundVertexBuffers[i];
             auto offset = vertBuf->GetShape().GetOffsetInBytes();
-            auto mtlBuf = common::PtrCast<MetalBuffer>(vertBuf->GetBufferObject());
+            auto mtlBuf = common::PtrCast<MetalBuffer>(vertBuf->GetBufferObject().get());
             auto rawBuf = mtlBuf->GetHandle();
             usedRes.emplace_back(rawBuf);
 
@@ -587,7 +613,7 @@ void MetalRenderCmdEnc::DrawIndexed(
         auto mtlPipeline = static_cast<MetalGfxPipeline*>(registry.boundPipeline);
 
         auto& bufferRange = registry.boundIndexBuffer;
-        auto mtlBuffer = static_cast<MetalBuffer*>(bufferRange->GetBufferObject());
+        auto mtlBuffer = PtrCast<MetalBuffer>(bufferRange->GetBufferObject().get());
 
         auto vertLayout = mtlPipeline->GetVertexLayouts();
 
@@ -597,7 +623,7 @@ void MetalRenderCmdEnc::DrawIndexed(
         for(int i = 0; i < vertLayout.size(); i++) {
             auto& vertBuf = registry.boundVertexBuffers[i];
             auto offset = vertBuf->GetShape().GetOffsetInBytes();
-            auto mtlBuf = common::PtrCast<MetalBuffer>(vertBuf->GetBufferObject());
+            auto mtlBuf = PtrCast<MetalBuffer>(vertBuf->GetBufferObject().get());
             auto rawBuf = mtlBuf->GetHandle();
             usedRes.emplace_back(rawBuf);
 
@@ -829,18 +855,18 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(
                 case LoadAction::Clear:mtlColorTgt.loadAction = MTLLoadActionClear; break;
             }
 
-            auto& mtlTexView = ctAct.target->GetTexture();
-            auto mtlColorTex = PtrCast<MetalTexture>(mtlTexView.GetTextureObject().get());
+            auto mtlTexView = ctAct.target;
+            auto mtlColorTex = PtrCast<MetalTexture>(mtlTexView->GetTextureObject().get());
             mtlColorTgt.texture = mtlColorTex->GetHandle();
-            mtlColorTgt.level = mtlTexView.GetDesc().baseMipLevel;
-            mtlColorTgt.slice = mtlTexView.GetDesc().baseArrayLayer;
+            mtlColorTgt.level = mtlTexView->GetDesc().baseMipLevel;
+            mtlColorTgt.slice = mtlTexView->GetDesc().baseArrayLayer;
 
             if(hasMSAATarget) {
-                auto& mtlResolveTexView = ctAct.msaaResolveTarget->GetTexture();
-                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView.GetTextureObject().get());
+                auto mtlResolveTexView = ctAct.msaaResolveTarget;
+                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView->GetTextureObject().get());
                 mtlColorTgt.resolveTexture = mtlResolveTex->GetHandle();
-                mtlColorTgt.resolveLevel = mtlResolveTexView.GetDesc().baseMipLevel;
-                mtlColorTgt.resolveSlice = mtlResolveTexView.GetDesc().baseArrayLayer;
+                mtlColorTgt.resolveLevel = mtlResolveTexView->GetDesc().baseMipLevel;
+                mtlColorTgt.resolveSlice = mtlResolveTexView->GetDesc().baseArrayLayer;
             }
         }
 
@@ -870,19 +896,19 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(
                 case LoadAction::Clear:mtlDT.loadAction = MTLLoadActionClear; break;
             }
 
-            auto& mtlTexView = dtAct.target->GetTexture();
-            auto mtlDepthTex = PtrCast<MetalTexture>(mtlTexView.GetTextureObject().get());
+            auto mtlTexView = dtAct.target;
+            auto mtlDepthTex = PtrCast<MetalTexture>(mtlTexView->GetTextureObject().get());
 
             mtlDT.texture = mtlDepthTex->GetHandle();
-            mtlDT.level = mtlTexView.GetDesc().baseMipLevel;
-            mtlDT.slice = mtlTexView.GetDesc().baseArrayLayer;
+            mtlDT.level = mtlTexView->GetDesc().baseMipLevel;
+            mtlDT.slice = mtlTexView->GetDesc().baseArrayLayer;
 
             if(hasMSAATarget) {
-                auto& mtlResolveTexView = dtAct.msaaResolveTarget->GetTexture();
-                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView.GetTextureObject().get());
+                auto& mtlResolveTexView = dtAct.msaaResolveTarget;
+                auto mtlResolveTex = PtrCast<MetalTexture>(mtlResolveTexView->GetTextureObject().get());
                 mtlDT.resolveTexture = mtlResolveTex->GetHandle();
-                mtlDT.resolveLevel = mtlResolveTexView.GetDesc().baseMipLevel;
-                mtlDT.resolveSlice = mtlResolveTexView.GetDesc().baseArrayLayer;
+                mtlDT.resolveLevel = mtlResolveTexView->GetDesc().baseMipLevel;
+                mtlDT.resolveSlice = mtlResolveTexView->GetDesc().baseArrayLayer;
 
                 switch(dtAct.msaaResolveMode) {
                     case MSAADepthResolveMode::Min : mtlDT.depthResolveFilter = MTLMultisampleDepthResolveFilterMin; break;
@@ -907,10 +933,10 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(
                 case LoadAction::Clear:mtlST.loadAction = MTLLoadActionClear; break;
             }
 
-            auto mtlTex = common::SPCast<MetalTexture>(action.stencilTargetAction->target->GetTexture().GetTextureObject());
+            auto mtlTex = common::SPCast<MetalTexture>(action.stencilTargetAction->target->GetTextureObject());
             mtlST.texture = mtlTex->GetHandle();
-            mtlST.level = action.stencilTargetAction->target->GetTexture().GetDesc().baseMipLevel;
-            mtlST.slice = action.stencilTargetAction->target->GetTexture().GetDesc().baseArrayLayer;
+            mtlST.level = action.stencilTargetAction->target->GetDesc().baseMipLevel;
+            mtlST.slice = action.stencilTargetAction->target->GetDesc().baseArrayLayer;
         }
 
         //RenderPassImpl* mtlRndrPass = static_cast<RenderPassImpl*>(renderPass.get());
@@ -988,44 +1014,6 @@ IRenderCommandEncoder& MetalCommandList::BeginRenderPass(
 
     }
 
-
-void MetalRenderCmdEnc::WaitForFenceBeforeStages(const common::sp<IFence>& fence, const PipelineStages& stages) {
-#if 0
-    resources.push_back(fence);
-
-    auto fenceImpl = static_cast<FenceImpl*>(fence.get());
-
-    MTLRenderStages mtlStages;
-
-    if(stages[RenderStage::Vertex]) mtlStages |= MTLRenderStageVertex;
-    if(stages[RenderStage::Fragment]) mtlStages |= MTLRenderStageFragment;
-    if(stages[RenderStage::Mesh]) mtlStages |= MTLRenderStageMesh;
-    if(stages[RenderStage::Object]) mtlStages |= MTLRenderStageObject;
-    if(stages[RenderStage::Tile]) mtlStages |= MTLRenderStageTile;
-
-    [_mtlEnc waitForFence:fenceImpl->GetHandle() beforeStages:mtlStages ];
-#endif
-}
-void MetalRenderCmdEnc::UpdateFenceAfterStages(const common::sp<IFence>& fence, const PipelineStages& stages) {
-#if 0
-    RegisterObjInUse(fence);
-
-    auto fenceImpl = static_cast<FenceImpl*>(fence.get());
-
-    MTLRenderStages mtlStages;
-
-    if(stages[RenderStage::Vertex]) mtlStages |= MTLRenderStageVertex;
-    if(stages[RenderStage::Fragment]) mtlStages |= MTLRenderStageFragment;
-    if(stages[RenderStage::Mesh]) mtlStages |= MTLRenderStageMesh;
-    if(stages[RenderStage::Object]) mtlStages |= MTLRenderStageObject;
-    if(stages[RenderStage::Tile]) mtlStages |= MTLRenderStageTile;
-
-    [_mtlEnc updateFence:fenceImpl->GetHandle() afterStages:mtlStages ];
-#endif
-}
-
-
-
 void MetalTransferCmdEnc::CopyBuffer(
     const common::sp<BufferRange>& source,
     const common::sp<BufferRange>& destination,
@@ -1036,8 +1024,8 @@ void MetalTransferCmdEnc::CopyBuffer(
 
     resources.insert(source);
     resources.insert(destination);
-    auto srcBufferImpl = static_cast<MetalBuffer*>(source->GetBufferObject());
-    auto dstBufferImpl = static_cast<MetalBuffer*>(destination->GetBufferObject());
+    auto srcBufferImpl = PtrCast<MetalBuffer>(source->GetBufferObject().get());
+    auto dstBufferImpl = PtrCast<MetalBuffer>(destination->GetBufferObject().get());
     [_mtlEnc    copyFromBuffer:srcBufferImpl->GetHandle()
                   sourceOffset:source->GetShape().GetOffsetInBytes()
                       toBuffer:dstBufferImpl->GetHandle()
@@ -1064,8 +1052,9 @@ void MetalTransferCmdEnc::CopyBuffer(
         resources.insert(source);
         resources.insert(destination);
 
-        auto mtlBufSrc = static_cast<MetalBuffer*>(source->GetBufferObject());
-        auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
+        auto mtlBufSrc = common::PtrCast<MetalBuffer>(source->GetBufferObject().get());
+        auto mtlTexDst = PtrCast<MetalTexture>(destination->GetTextureObject().get());
+        const auto& texViewDesc = destination->GetDesc();
 
         [_mtlEnc   copyFromBuffer:(id<MTLBuffer>)mtlBufSrc->GetHandle()
                         sourceOffset:(NSUInteger)source->GetShape().GetOffsetInBytes()
@@ -1073,8 +1062,8 @@ void MetalTransferCmdEnc::CopyBuffer(
                 sourceBytesPerImage:(NSUInteger)sourceBytesPerImage
                         sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
                         toTexture:(id<MTLTexture>)mtlTexDst->GetHandle()
-                    destinationSlice:(NSUInteger)dstBaseArrayLayer
-                    destinationLevel:(NSUInteger)dstMipLevel
+                    destinationSlice:(NSUInteger)texViewDesc.baseArrayLayer + dstBaseArrayLayer
+                    destinationLevel:(NSUInteger)texViewDesc.baseMipLevel + dstMipLevel
                 destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z)
         ];
     }
@@ -1093,12 +1082,14 @@ void MetalTransferCmdEnc::CopyBuffer(
         resources.insert(source);
         resources.insert(destination);
 
-        auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
-        auto mtlBufDst = static_cast<MetalBuffer*>(destination->GetBufferObject());
+        auto mtlTexSrc = PtrCast<MetalTexture>(source->GetTextureObject().get());
+        const auto& texViewDesc = source->GetDesc();
+
+        auto mtlBufDst = PtrCast<MetalBuffer>(destination->GetBufferObject().get());
 
         [_mtlEnc    copyFromTexture:(id<MTLTexture>)mtlTexSrc->GetHandle()
-                        sourceSlice:(NSUInteger)srcBaseArrayLayer
-                        sourceLevel:(NSUInteger)srcMipLevel
+                        sourceSlice:(NSUInteger)texViewDesc.baseArrayLayer + srcBaseArrayLayer
+                        sourceLevel:(NSUInteger)texViewDesc.baseMipLevel + srcMipLevel
                        sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)
                          sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
                            toBuffer:(id<MTLBuffer>)mtlBufDst->GetHandle()
@@ -1139,17 +1130,20 @@ void MetalTransferCmdEnc::CopyBuffer(
         resources.insert(source);
         resources.insert(destination);
 
-        auto mtlTexSrc = static_cast<MetalTexture*>(source.get());
-        auto mtlTexDst = static_cast<MetalTexture*>(destination.get());
+        auto mtlTexSrc = PtrCast<MetalTexture>(source->GetTextureObject().get());
+        const auto& srcTexViewDesc = source->GetDesc();
+
+        auto mtlTexDst = PtrCast<MetalTexture>(destination->GetTextureObject().get());
+        const auto& dstTexViewDesc = destination->GetDesc();
 
         [_mtlEnc copyFromTexture:mtlTexSrc->GetHandle()
-                     sourceSlice:(NSUInteger)srcBaseArrayLayer
-                     sourceLevel:(NSUInteger)srcMipLevel
+                     sourceSlice:(NSUInteger)srcTexViewDesc.baseArrayLayer + srcBaseArrayLayer
+                     sourceLevel:(NSUInteger)srcTexViewDesc.baseMipLevel + srcMipLevel
                     sourceOrigin:(MTLOrigin)MTLOriginMake(srcOrigin.x, srcOrigin.y, srcOrigin.z)
                       sourceSize:(MTLSize)MTLSizeMake(copySize.width, copySize.height, copySize.depth)
                        toTexture:mtlTexDst->GetHandle()
-                destinationSlice:(NSUInteger)dstBaseArrayLayer
-                destinationLevel:(NSUInteger)dstMipLevel
+                destinationSlice:(NSUInteger)dstTexViewDesc.baseArrayLayer + dstBaseArrayLayer
+                destinationLevel:(NSUInteger)dstTexViewDesc.baseMipLevel + dstMipLevel
                destinationOrigin:(MTLOrigin)MTLOriginMake(dstOrigin.x, dstOrigin.y, dstOrigin.z)
         ];
 

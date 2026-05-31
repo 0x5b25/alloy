@@ -2,7 +2,6 @@
 
 #include "MetalDevice.h"
 #include "MetalTexture.h"
-#include "alloy/FrameBuffer.hpp"
 #include "alloy/SwapChain.hpp"
 
 #include <cassert>
@@ -15,118 +14,76 @@
 
 namespace alloy::mtl{
 
-    class MetalSCFB;
+    class MetalSwapChain;
 
-class MetalSwapChain : public ISwapChain{
-    common::sp<MetalDevice> _dev;
-    CAMetalLayer* _layer;
+    class MetalSCTexView : public MetalTextureView{
 
-    std::vector<common::sp<MetalTexture>> _dsTex;
+        common::sp<MetalSwapChain> _sc;
 
-    // Metal doesn't give us this value. Let's assume metal's
-    // nextDrawable will return images in order.
-    uint32_t _currentFrameIdx;
-    id<CAMetalDrawable> _currentCt;
-    
-    //MetalSCFB* _capturingFb;
-    
-public:
+    public:
+        MetalSCTexView (
+            common::sp<MetalTexture> target,
+            const ITextureView::Description& desc,
+            common::sp<MetalSwapChain> sc
+        )
+            : MetalTextureView(std::move(target), desc)
+            , _sc(std::move(sc))
+        {
 
-    //DeviceImpl* GetDev() const {return _dev.get();}
+        }
+    };
 
-    MetalSwapChain( const common::sp<MetalDevice> &dev, 
+    class MetalSwapChain : public ISwapChain{
+        common::sp<MetalDevice> _dev;
+        CAMetalLayer* _layer;
+
+        // Metal doesn't give us this value. Let's assume metal's
+        // nextDrawable will return images in order.
+        uint32_t _currentFrameIdx;
+        id<CAMetalDrawable> _currentCt;
+
+        //MetalSCFB* _capturingFb;
+
+        Description _desc;
+
+    public:
+
+        //DeviceImpl* GetDev() const {return _dev.get();}
+
+        MetalSwapChain( const common::sp<MetalDevice> &dev,
                     CAMetalLayer *layer,
                     const Description& desc);
 
-    static common::sp<MetalSwapChain> Make(
-        const common::sp<MetalDevice> &dev,
-        const Description& desc
-    );
+        static common::sp<MetalSwapChain> Make(
+            const common::sp<MetalDevice> &dev,
+            const Description& desc
+        );
 
-    virtual ~MetalSwapChain();
+        virtual ~MetalSwapChain();
 
-    virtual void Resize(unsigned width, unsigned height) override;
-    
-    virtual common::sp<IFrameBuffer> GetBackBuffer() override;
-
-    virtual uint32_t GetBackBufferIndex() override { return _currentFrameIdx; }
-    
-    common::sp<MetalDevice> GetDevice() const { return _dev; }
-
-    void BackBufferReleased(MetalSCFB* which) {
-        //assert(_capturingFb != nullptr);
-        //assert(which == _capturingFb);
-        //if(which == _capturingFb)
-        //    _capturingFb = nullptr;
-    }
-
-    virtual bool IsSyncToVerticalBlank() const override { return false; }
-    virtual void SetSyncToVerticalBlank(bool sync) override {}
-
-    bool HasDepthTarget() const {return description.depthFormat.has_value();}
-
-    virtual std::uint32_t GetWidth() const override;
-    virtual std::uint32_t GetHeight() const override;
-
-
-    void ReleaseFramebuffers();
-    void CreateFramebuffers(std::uint32_t width, std::uint32_t height);
-
-    void PresentBackBuffer();
-
-};
-
-    class MetalSCFB : public IFrameBuffer {
-        common::sp<MetalSwapChain> _sc;
-        id<CAMetalDrawable> _drawable;
-        common::sp<MetalTexture> _dsTex;
-
-    public:
-
-        MetalSCFB(
-            const common::sp<MetalSwapChain>& sc,
-            id<CAMetalDrawable> drawable,
-            const common::sp<MetalTexture>& depthStencil
-        )
-            : _sc(sc)
-            , _drawable(drawable)
-            , _dsTex(depthStencil)
-        { 
-            [_drawable retain];
+        virtual const Description& GetDesc() const override {
+            return _desc;
         }
 
-        virtual ~MetalSCFB() {
+        virtual void Resize(unsigned width, unsigned height) override;
 
-            [_drawable release];
-            _sc->BackBufferReleased(this);
-        }
+        virtual common::sp<ITextureView> GetBackBuffer() override;
 
-        virtual OutputDescription GetDesc() override;
+        virtual uint32_t GetBackBufferIndex() override { return _currentFrameIdx; }
 
-        id<CAMetalDrawable> GetDrawable() const {return _drawable;}
-    };
+        common::sp<MetalDevice> GetDevice() const { return _dev; }
 
-    class MetalSCRT : public IRenderTarget{
+        virtual bool IsSyncToVerticalBlank() const override { return false; }
+        virtual void SetSyncToVerticalBlank(bool sync) override {}
 
-        common::sp<MetalSCFB> _fb;
-        common::sp<MetalTextureView> _view;
-
-    public:
-        MetalSCRT(
-            const common::sp<MetalSCFB>& fb,
-            const common::sp<MetalTextureView>& view
-        )
-            : _fb(fb)
-            , _view(view)
-        {
-        }
-
-        virtual ~MetalSCRT() override {
-        }
+        virtual std::uint32_t GetWidth() const override;
+        virtual std::uint32_t GetHeight() const override;
 
 
-        virtual ITextureView& GetTexture() const override {return *_view.get();}
+        void ReleaseFramebuffers();
+        void CreateFramebuffers(std::uint32_t width, std::uint32_t height);
 
+        void PresentBackBuffer();
 
     };
 

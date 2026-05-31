@@ -3,9 +3,9 @@
 #include "TrackingDevice.hpp"
 
 namespace alloy::layers::AutoResourceUsageTracking {
-    
 
-    
+
+
     TrackingCommandList::TrackingCommandList(
         common::sp<TrackingDevice> dev,
         TrackingCommandQueue* cmdQ,
@@ -16,30 +16,6 @@ namespace alloy::layers::AutoResourceUsageTracking {
         , _inner(std::move(inner))
     { }
 
-    namespace {
-        std::vector<PassResourceAccess> CopyPassResources(
-            const PassResourceUsage& usage
-        ) {
-            return { usage.resources.begin(), usage.resources.end() };
-        }
-
-        std::vector<BarrierOp> CopyPassBarriers(
-            const PassResourceUsage& usage
-        ) {
-            return { usage.barriers.begin(), usage.barriers.end() };
-        }
-
-        PassResourceUsage MakePassResourceUsage(
-            const std::vector<PassResourceAccess>& resources,
-            const std::vector<BarrierOp>& barriers
-        ) {
-            return {
-                std::span<const PassResourceAccess>(resources.data(), resources.size()),
-                std::span<const BarrierOp>(barriers.data(), barriers.size())
-            };
-        }
-    }
-    
     using common::operator|;
     static const ResourceAccessMask WRITE_MASK =
         ResourceAccess::RenderTarget                 |
@@ -99,12 +75,12 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
         for(uint32_t i = 0; i < layoutSlots.size(); ++i) {
             const auto& slot = layoutSlots[i];
-            
+
             for(uint32_t arrIdx = 0; arrIdx < slot.bindingCount; ++arrIdx) {
                 auto pBoundRes = rs->GetBoundResource(i, arrIdx);
                 if(!pBoundRes) continue;
 
-                
+
                 using _ResKind = IBindableResource::ResourceKind;
 
                 switch (slot.kind) {
@@ -166,7 +142,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
     }
 
     void TrackingCmdEncBase::InsertDebugMarker(const std::string& name, const Color4f& color) {
-        
+
         recordedCmds.emplace_back([this, name, color](ICommandList* cmdList){
             cmdList->InsertDebugMarker(name, color);
         });
@@ -240,7 +216,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
         });
     }
 
-    
+
     void TrackingRndCmdEnc::SetPipeline(const common::sp<IMeshShaderPipeline>& pipeline){
 
         recordedCmds.emplace_back([this, pipeline](ICommandList* cmdList){
@@ -260,7 +236,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
     }
 
     void TrackingCompCmdEnc::SetPipeline(const common::sp<IComputePipeline>& pipeline){
-        
+
         recordedCmds.emplace_back([this, pipeline](ICommandList* cmdList){
             inner->SetPipeline(pipeline);
         });
@@ -294,7 +270,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
             state
         );
 
-        
+
         recordedCmds.emplace_back([this, buffer, format](ICommandList* cmdList){
             inner->SetIndexBuffer(buffer, format);
         });
@@ -377,7 +353,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
     }
 
     void TrackingRndCmdEnc::SetFullScissorRect() {
-        
+
         recordedCmds.emplace_back([this](auto _){
             inner->SetFullScissorRect();
         });
@@ -481,7 +457,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
         RegisterBufferUsage(dstBuffer, dstState);
 
         recordedCmds.emplace_back([=, this](ICommandList* cmdList){
-            
+
             inner->CopyTextureToBuffer(
                 src, srcOrigin, srcMipLevel, srcBaseArrayLayer,
                 dst, dstBytesPerRow, dstBytesPerImage,
@@ -767,10 +743,10 @@ namespace alloy::layers::AutoResourceUsageTracking {
             RegisterTexUsage(trackedTexView, state);
 
             if(ctAct.msaaResolveTarget) {
-                auto trackedResolveTexView 
+                auto trackedResolveTexView
                     = PtrCast<TrackedTexView>(ctAct.msaaResolveTarget.get());
                 auto trackedResolveTex = PtrCast<TrackedTexture>(trackedResolveTexView->GetTextureObject().get());
-                
+
                 auto vkResolveTex = trackedResolveTex->GetInnerTexture();
 
                 TrackingCommandList::TextureState destinationState{};
@@ -804,7 +780,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
             RegisterTexUsage(trackedTexView, state);
 
             if(dtAct.msaaResolveTarget) {
-                auto tResolveTexView 
+                auto tResolveTexView
                     = PtrCast<TrackedTexView>(dtAct.msaaResolveTarget.get());
                 auto tResolveTex = PtrCast<TrackedTexture>(tResolveTexView->GetTextureObject().get());
 
@@ -836,13 +812,13 @@ namespace alloy::layers::AutoResourceUsageTracking {
             RegisterTexUsage(trackedTexView, state);
         }
 
+        std::vector<PassResourceAccess> usageCopy { usage.begin(), usage.end() };
         recordedCmds.emplace_back(
             [this,
              actions = fb,
-             passResources = CopyPassResources(usage),
-             passBarriers = CopyPassBarriers(usage)](ICommandList* cmdList) {
-                auto passUsage = MakePassResourceUsage(passResources, passBarriers);
-                inner = &cmdList->BeginRenderPass(actions, passUsage);
+             passResources = std::move(usageCopy)
+            ](ICommandList* cmdList) {
+                inner = &cmdList->BeginRenderPass(actions, passResources);
             }
         );
     }
@@ -855,12 +831,12 @@ namespace alloy::layers::AutoResourceUsageTracking {
         , cmdList(cmdList)
         , inner(nullptr)
     {
+        std::vector<PassResourceAccess> usageCopy { usage.begin(), usage.end() };
         recordedCmds.emplace_back(
             [this,
-             passResources = CopyPassResources(usage),
-             passBarriers = CopyPassBarriers(usage)](ICommandList* cmdList) {
-                auto passUsage = MakePassResourceUsage(passResources, passBarriers);
-                inner = &cmdList->BeginComputePass(passUsage);
+             passResources = std::move(usageCopy)
+            ](ICommandList* cmdList) {
+                inner = &cmdList->BeginComputePass(passResources);
             }
         );
     }

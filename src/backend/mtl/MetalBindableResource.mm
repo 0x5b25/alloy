@@ -135,8 +135,57 @@ namespace alloy::mtl {
 #endif
 
 
+    MetalResourceLayout::MetalResourceLayout(
+        _T2BindlessCtorTag,
+        const common::sp<MetalDevice>& dev,
+        const IResourceLayout::Description& desc
+    )
+        : IResourceLayout(desc)
+        , _dev(dev)
+        , _rootSig {}
+    {
+        assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
+               == ResourceBindingModel::DescriptorHeap);
+        assert(desc.shaderResources.empty());
+
+        std::vector<IRRootParameter1> rootParams;
+        _rootSigSizeInBytes = 0;
+        _descHeapCount = 0;
+
+        uint32_t rootConstantRequested = 0;
+        for(auto& rootConsts : desc.pushConstants) {
+            auto& rootParam = rootParams.emplace_back();
+            rootParam.ParameterType = IRRootParameterType32BitConstants;
+            rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
+            rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
+            rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
+            rootParam.ShaderVisibility = IRShaderVisibilityAll;
+
+            auto& pcInfo = _pushConstants.emplace_back();
+            pcInfo.sizeInDwords = rootConsts.sizeInDwords;
+            pcInfo.bindingSlot = rootConsts.bindingSlot;
+            pcInfo.bindingSpace = rootConsts.bindingSpace;
+            pcInfo.offsetInDwords = rootConstantRequested;
+
+            rootConstantRequested += rootConsts.sizeInDwords;
+            _rootSigSizeInBytes += rootConsts.sizeInDwords * 4;
+        }
+
+        IRVersionedRootSignatureDescriptor rsDesc {};
+        rsDesc.version = IRRootSignatureVersion_1_1;
+        rsDesc.desc_1_1.NumParameters = rootParams.size();
+        rsDesc.desc_1_1.pParameters = rootParams.data();
+        rsDesc.desc_1_1.Flags = T2RootSignatureFlags();
+
+        IRError* pRootSigError = nullptr;
+        _rootSig = IRRootSignatureCreateFromDescriptor(&rsDesc, &pRootSigError);
+        assert(_rootSig != nullptr);
+        return;
+    }
+
 
     MetalResourceLayout::MetalResourceLayout(
+        _FixedSizeCtorTag,
         const common::sp<MetalDevice>& dev,
         const IResourceLayout::Description& desc
     )
@@ -146,45 +195,6 @@ namespace alloy::mtl {
     {
         //auto pDev = dev->GetHandle();
 
-        if(desc.useGlobalHeaps) {
-            assert(dev->GetAdapter().GetAdapterInfo().resourceBindingModel
-                   == ResourceBindingModel::DescriptorHeap);
-            assert(desc.shaderResources.empty());
-
-            std::vector<IRRootParameter1> rootParams;
-            _rootSigSizeInBytes = 0;
-            _descHeapCount = 0;
-
-            uint32_t rootConstantRequested = 0;
-            for(auto& rootConsts : desc.pushConstants) {
-                auto& rootParam = rootParams.emplace_back();
-                rootParam.ParameterType = IRRootParameterType32BitConstants;
-                rootParam.Constants.Num32BitValues = rootConsts.sizeInDwords;
-                rootParam.Constants.ShaderRegister = rootConsts.bindingSlot;
-                rootParam.Constants.RegisterSpace = rootConsts.bindingSpace;
-                rootParam.ShaderVisibility = IRShaderVisibilityAll;
-
-                auto& pcInfo = _pushConstants.emplace_back();
-                pcInfo.sizeInDwords = rootConsts.sizeInDwords;
-                pcInfo.bindingSlot = rootConsts.bindingSlot;
-                pcInfo.bindingSpace = rootConsts.bindingSpace;
-                pcInfo.offsetInDwords = rootConstantRequested;
-
-                rootConstantRequested += rootConsts.sizeInDwords;
-                _rootSigSizeInBytes += rootConsts.sizeInDwords * 4;
-            }
-
-            IRVersionedRootSignatureDescriptor rsDesc {};
-            rsDesc.version = IRRootSignatureVersion_1_1;
-            rsDesc.desc_1_1.NumParameters = rootParams.size();
-            rsDesc.desc_1_1.pParameters = rootParams.data();
-            rsDesc.desc_1_1.Flags = T2RootSignatureFlags();
-
-            IRError* pRootSigError = nullptr;
-            _rootSig = IRRootSignatureCreateFromDescriptor(&rsDesc, &pRootSigError);
-            assert(_rootSig != nullptr);
-            return;
-        }
 
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
@@ -504,7 +514,7 @@ namespace alloy::mtl {
                     case IBindableResource::ResourceKind::StorageBuffer : {
                         auto* range = common::PtrCast<BufferRange>(elem.get());
                         auto* rangedMtlBuffer =
-                            static_cast<const MetalBuffer*>(range->GetBufferObject());
+                            PtrCast<MetalBuffer>(range->GetBufferObject().get());
 
                         auto baseGPUAddr = [rangedMtlBuffer->GetHandle() gpuAddress];
                         auto byteCnt = range->GetShape().GetSizeInBytes();
@@ -566,13 +576,13 @@ namespace alloy::mtl {
                 case IBindableResource::ResourceKind::UniformBuffer :
                 case IBindableResource::ResourceKind::StorageBuffer : {
 
-                    auto* range = common::PtrCast<BufferRange>(elem.get());
-                    auto* rangedMtlBuffer = static_cast<const MetalBuffer*>(range->GetBufferObject());
+                    const auto* range = common::PtrCast<BufferRange>(elem.get());
+                    const auto* rangedMtlBuffer = PtrCast<MetalBuffer>(range->GetBufferObject().get());
                     useRes.push_back(rangedMtlBuffer->GetHandle());
                 }break;
                 case IBindableResource::ResourceKind::Texture : {
-                    auto* texView = common::PtrCast<ITextureView>(elem.get());
-                    auto* mtlTex = common::PtrCast<MetalTexture>(texView->GetTextureObject().get());
+                    const auto* texView = common::PtrCast<ITextureView>(elem.get());
+                    const auto* mtlTex = common::PtrCast<MetalTexture>(texView->GetTextureObject().get());
                     useRes.push_back(mtlTex->GetHandle());
                 }break;
 

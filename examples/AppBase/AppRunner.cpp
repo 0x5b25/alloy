@@ -177,7 +177,7 @@ int AppRunner::Run(IApp* pUserApp) {
 
         auto& tgt = _perFrameResource;
         auto backBufferView = _swapChain->GetBackBuffer();
-        
+
         auto cmdQ = _dev->GetGfxCommandQueue();
         auto commandList = cmdQ->CreateCommandList();
         {
@@ -262,7 +262,9 @@ int AppRunner::Run(IApp* pUserApp) {
 
             commandList->Barrier(barriers);
 
-            auto& pass = commandList->BeginRenderPass(passAction);
+            auto bindlessAccesses = pUserApp->GetFrameBindlessResources();
+
+            auto& pass = commandList->BeginRenderPass(passAction, bindlessAccesses);
 
             commandList->PushDebugGroup("Draw scene", {0.5, 0.9, 0.4, 1.0});
 

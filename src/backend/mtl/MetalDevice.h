@@ -128,6 +128,7 @@ namespace alloy::mtl
         common::sp<MetalDevice> _dev;
         id<MTLBuffer> _mtlBuffer;
 
+        Description _desc;
 
     public:
         MetalBuffer( const common::sp<MetalDevice>& dev,
@@ -143,6 +144,9 @@ namespace alloy::mtl
                                             const IBuffer::Description& desc);
 
 
+        virtual const Description& GetDesc() const override {
+            return _desc;
+        }
         virtual void* MapToCPU() override;
 
         virtual void UnMap() override;

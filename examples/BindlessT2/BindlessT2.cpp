@@ -115,6 +115,10 @@ public:
     virtual void Update() override {}
 
     virtual void OnDrawGui() override {}
+
+    virtual std::vector<alloy::PassResourceAccess>
+    GetFrameBindlessResources() override;
+
     virtual void OnRenderFrame(alloy::IRenderCommandEncoder& renderPass) override;
 
     virtual void OnFrameComplete(std::uint32_t frameIdx) override {}
@@ -495,6 +499,29 @@ void BindlessT2::_CreatePipeline() {
     _pipeline = factory.CreateGraphicsPipeline(pipelineDescription);
 }
 
+
+std::vector<alloy::PassResourceAccess>
+BindlessT2::GetFrameBindlessResources() {
+
+    std::vector<alloy::PassResourceAccess> access;
+    for(auto& view : textureViews) {
+        access.push_back({
+           .resource = view,
+           .stages = alloy::PipelineStage::AllGraphics,
+           .access = alloy::ResourceAccess::ShaderResourceRead
+        });
+    }
+
+    access.push_back({
+        .resource = alloy::BufferRange::MakeByteBuffer(frameConstantsBuffer),
+        .stages = alloy::PipelineStage::AllGraphics,
+        .access = alloy::ResourceAccess::ShaderResourceRead
+    });
+
+    return access;
+}
+
+
 void BindlessT2::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     auto timeElapsedSec = _runner->GetTimeService()->GetElapsedSeconds();
 
@@ -549,7 +576,7 @@ void BindlessT2::OnRenderFrame(alloy::IRenderCommandEncoder& pass) {
     };
 
     pass.SetDescriptorHeaps(resourceHeap, samplerHeap);
-    
+
     pass.SetPipeline(_pipeline);
     pass.SetFullViewport();
     pass.SetFullScissorRect();

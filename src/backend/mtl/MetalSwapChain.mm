@@ -13,178 +13,12 @@
 
 namespace alloy::mtl {
 
-common::sp<MetalSwapChain> MetalSwapChain::Make(
-        const common::sp<MetalDevice> &dev,
-        const Description& desc
-) {
-    @autoreleasepool{
-
-        auto swapChain = CreateSurface(dev->GetHandle(), desc.source);
-        if(!swapChain) {
-            return nullptr;
-        }
-        //[[MTLRenderPassDescriptor alloc] init];
-        //CAMetalLayer *swapChain = [CAMetalLayer new];
-
-        swapChain.device = dev->GetHandle();
-        //swapChain.opaque = true;
-        //swapChain.pixelFormat = VdToMtlPixelFormat(desc.colorFormat);
-        //swapChain.pixelFormat = MTLPixelFormatRGBA8Unorm;
-        //Metal specs say that drawable count can only be 2 or 3
-        swapChain.maximumDrawableCount = desc.backBufferCnt;
-        swapChain.drawableSize = {(float)desc.initialWidth, (float)desc.initialHeight};
-#if 0
-        if(desc.source){
-            switch(desc.source->tag){
-
-            case SwapChainSource::Tag::NSView: {
-                auto NSViewSrc = (NSViewSwapChainSource*)desc.source;
-
-                auto nsView = (NSView*)NSViewSrc->nsView;
-
-                nsView.layer = swapChain;
-                nsView.wantsLayer = true;
-
-            } break;
-            case SwapChainSource::Tag::NSWindow:{
-                auto NSWndSrc = (NSWindowSwapChainSource*)desc.source;
-
-                NSWindow* nsWnd = (NSWindow*)NSWndSrc->nsWindow;
-
-                nsWnd.contentView.layer = swapChain;
-                nsWnd.contentView.wantsLayer = true;
-            } break;
-            case SwapChainSource::Tag::Win32:
-            default:
-            break;
-            }
-        }
-#endif
-        //[swapChain retain];
-        auto sc = new MetalSwapChain(dev, swapChain, desc);
-
-        sc->CreateFramebuffers(desc.initialWidth, desc.initialHeight);
-
-        return common::sp(sc);
-    }
-}
-
-std::uint32_t MetalSwapChain::GetWidth() const {
-    return _layer.drawableSize.width;
-}
-std::uint32_t MetalSwapChain::GetHeight() const {
-
-    return _layer.drawableSize.height;
-}
-
-
-    MetalSwapChain::MetalSwapChain(
-        const common::sp<MetalDevice> &dev,
-        CAMetalLayer *layer,
-        const Description& desc
-    )
-        : ISwapChain(desc)
-        , _layer(layer)
-        , _dev(dev)
-        , _currentCt(nil)
-        , _currentFrameIdx(0)
-    {
-        //auto mtlDev = static_cast<DeviceImpl*>(dev.get());
-        //mtlDev->ref();
-        //_dev.reset(mtlDev);
-    }
-
-    MetalSwapChain::~MetalSwapChain(){
-        @autoreleasepool {
-            [_layer release];
-        }
-    }
-
-    void MetalSwapChain::Resize(unsigned width, unsigned height) {
-        @autoreleasepool {
-            ReleaseFramebuffers();
-            _layer.drawableSize = {(float)width, (float)height};
-            CreateFramebuffers(width, height);
-        }
-    }
-
-    void MetalSwapChain::ReleaseFramebuffers() {
-        if(_currentCt != nil) {
-            [_currentCt release];
-            _currentCt = nil;
-        }
-        _currentFrameIdx = 0;
-        _dsTex.clear();
-    }
-
-    void MetalSwapChain::CreateFramebuffers(std::uint32_t width, std::uint32_t height) {
-        if (description.depthFormat.has_value()) {
-            for(uint32_t i = 0; i < description.backBufferCnt; i++)
-            {
-
-                ITexture::Description dsDesc{};
-                dsDesc.type = alloy::ITexture::Description::Type::Texture2D;
-                dsDesc.width = width;
-                dsDesc.height = height;
-                dsDesc.depth = 1;
-                dsDesc.mipLevels = 1;
-                dsDesc.arrayLayers = 1;
-                dsDesc.usage.depthStencil = true;
-                dsDesc.sampleCount = SampleCount::x1;
-                dsDesc.format = description.depthFormat.value();
-
-                auto vldDepthTex = _dev->GetResourceFactory().CreateTexture(dsDesc);
-                auto mtlDepthTex = common::SPCast<MetalTexture>(vldDepthTex);
-
-                _dsTex.push_back(mtlDepthTex);
-            }
-        }
-    }
-
-
-    common::sp<IFrameBuffer> MetalSwapChain::GetBackBuffer() {
-        ///#TODO: Not thread safe.
-        //Switch to next drawable
-        if(_currentCt == nil) {
-            @autoreleasepool{
-
-                _currentCt = [_layer nextDrawable];
-                [_currentCt retain];
-
-                _currentFrameIdx ++;
-                if(_currentFrameIdx >= _layer.maximumDrawableCount) {
-                    _currentFrameIdx = 0;
-                }
-            }
-        }
-
-        common::sp<MetalTexture> dsTex;
-        if(!_dsTex.empty())
-            dsTex = _dsTex[_currentFrameIdx];
-
-        auto fb = new MetalSCFB(common::ref_sp(this), _currentCt, dsTex);
-
-
-        return common::sp(fb);
-    }
-
-
-    void MetalSwapChain::PresentBackBuffer() {
-        assert(_currentCt != nil);
-        //assert(_capturingFb->unique());
-
-        [_currentCt present];
-        [_currentCt release];
-
-        //_capturingFb->unref();
-        _currentCt = nil;
-    }
-
-
-    OutputDescription MetalSCFB::GetDesc() {
-        OutputDescription desc { };
-
-        auto rawTex = _drawable.texture;
+    static
+    common::sp<ITextureView> _WrapDrawable(
+        const MetalSwapChain* sc,
+        id<CAMetalDrawable> drawable
+    ) {
+        auto rawTex = drawable.texture;
 
         ITexture::Description texDesc{};
 
@@ -217,33 +51,124 @@ std::uint32_t MetalSwapChain::GetHeight() const {
         texDesc.format = MtlToAlPixelFormat([rawTex pixelFormat]);///#TODO: add format support
 
 
-        auto vldTex = MetalTexture::WrapNative(_sc->GetDevice(), texDesc, rawTex);
+        auto vldTex = MetalTexture::WrapNative(sc->GetDevice(), texDesc, rawTex);
 
 
         ITextureView::Description colorViewDesc{};
         colorViewDesc.arrayLayers = 1;
         colorViewDesc.mipLevels = 1;
-        auto colorView = new MetalTextureView(vldTex, colorViewDesc);
+        return common::make_sp<MetalSCTexView>(
+            vldTex,
+            colorViewDesc,
+            common::ref_sp(sc));
+    }
 
-        desc.colorAttachments.push_back(common::sp(new MetalSCRT(
-            common::ref_sp(this),
-            common::sp(colorView)
-        )));
+    common::sp<MetalSwapChain> MetalSwapChain::Make(
+        const common::sp<MetalDevice> &dev,
+        const Description& desc
+    ) {
+        @autoreleasepool{
 
-        if(_dsTex) {
-            ITextureView::Description dsViewDesc{};
-            dsViewDesc.arrayLayers = 1;
-            dsViewDesc.mipLevels = 1;
-            auto dsView = new MetalTextureView(common::ref_sp(_dsTex.get()), dsViewDesc);
-            desc.depthAttachment.reset(new MetalSCRT(
-                common::ref_sp(this),
-                common::sp(dsView)
-            ));
+            auto swapChain = CreateSurface(dev->GetHandle(), desc.source);
+            if(!swapChain) {
+                return nullptr;
+            }
+
+            swapChain.device = dev->GetHandle();
+            //swapChain.opaque = true;
+            //swapChain.pixelFormat = VdToMtlPixelFormat(desc.colorFormat);
+            //swapChain.pixelFormat = MTLPixelFormatRGBA8Unorm;
+            //Metal specs say that drawable count can only be 2 or 3
+            swapChain.maximumDrawableCount = desc.backBufferCnt;
+            swapChain.drawableSize = {(float)desc.initialWidth, (float)desc.initialHeight};
+
+            auto sc = new MetalSwapChain(dev, swapChain, desc);
+
+            sc->CreateFramebuffers(desc.initialWidth, desc.initialHeight);
+
+           return common::sp(sc);
         }
+    }
 
-        desc.sampleCount = SampleCount::x1; //_bb.colorTgt.tex->GetTextureObject()->GetDesc().sampleCount;
+    std::uint32_t MetalSwapChain::GetWidth() const {
+        return _layer.drawableSize.width;
+    }
+    std::uint32_t MetalSwapChain::GetHeight() const {
+        return _layer.drawableSize.height;
+    }
 
-        return desc;
+    MetalSwapChain::MetalSwapChain(
+        const common::sp<MetalDevice> &dev,
+        CAMetalLayer *layer,
+        const Description& desc
+    )
+        : _layer(layer)
+        , _dev(dev)
+        , _currentCt(nil)
+        , _currentFrameIdx(0)
+        , _desc(desc)
+    {
+        //auto mtlDev = static_cast<DeviceImpl*>(dev.get());
+        //mtlDev->ref();
+        //_dev.reset(mtlDev);
+    }
+
+    MetalSwapChain::~MetalSwapChain(){
+        @autoreleasepool {
+            [_layer release];
+        }
+    }
+
+    void MetalSwapChain::Resize(unsigned width, unsigned height) {
+        @autoreleasepool {
+            ReleaseFramebuffers();
+            _layer.drawableSize = {(float)width, (float)height};
+            CreateFramebuffers(width, height);
+        }
+    }
+
+    void MetalSwapChain::ReleaseFramebuffers() {
+        if(_currentCt != nil) {
+            [_currentCt release];
+            _currentCt = nil;
+        }
+        _currentFrameIdx = 0;
+    }
+
+    void MetalSwapChain::CreateFramebuffers(std::uint32_t width, std::uint32_t height) {
 
     }
+
+
+    common::sp<ITextureView> MetalSwapChain::GetBackBuffer() {
+        ///#TODO: Not thread safe.
+        //Switch to next drawable
+        if(_currentCt == nil) {
+            @autoreleasepool{
+
+                _currentCt = [_layer nextDrawable];
+                [_currentCt retain];
+
+                _currentFrameIdx ++;
+                if(_currentFrameIdx >= _layer.maximumDrawableCount) {
+                    _currentFrameIdx = 0;
+                }
+            }
+        }
+
+        return _WrapDrawable(this, _currentCt);
+    }
+
+
+    void MetalSwapChain::PresentBackBuffer() {
+        assert(_currentCt != nil);
+        //assert(_capturingFb->unique());
+
+        [_currentCt present];
+        [_currentCt release];
+
+        //_capturingFb->unref();
+        _currentCt = nil;
+    }
+
 }

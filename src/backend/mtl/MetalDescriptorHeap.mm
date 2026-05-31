@@ -44,8 +44,8 @@ namespace alloy::mtl {
                     auto baseGPUAddr = [mtlBuffer->GetHandle() gpuAddress];
                     auto byteCnt = d.buffer->GetShape().GetSizeInBytes();
 
-                    assert(!std::is_same_v<D, UniformBufferDescriptor>
-                           || byteCnt % 256 == 0);
+                    assert( (!std::is_same_v<D, UniformBufferDescriptor>)
+                           || (byteCnt % 256 == 0) );
 
                     IRDescriptorTableSetBuffer(
                         dst,
