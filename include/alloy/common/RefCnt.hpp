@@ -33,7 +33,7 @@ class VLD_API RefCntBase {
 public:
     /** Default construct, initializing the reference count to 1.
     */
-    RefCntBase() : fRefCnt(1) {}
+    RefCntBase() noexcept : fRefCnt(1) {}
 
     /** Destruct, asserting that the reference count is 1.
     */
@@ -48,7 +48,7 @@ public:
     /** May return true if the caller is the only owner.
      *  Ensures that all previous owner's actions are complete.
      */
-    bool unique() const {
+    bool unique() const noexcept {
         if (1 == fRefCnt.load(std::memory_order_acquire)) {
             // The acquire barrier is only really needed if we return true.  It
             // prevents code conditioned on the result of unique() from running
@@ -60,7 +60,7 @@ public:
 
     /** Increment the reference count. Must be balanced by a call to unref().
     */
-    void ref() const {
+    void ref() const noexcept {
         assert(this->getRefCnt() > 0);
         // No barrier required.
         (void)fRefCnt.fetch_add(+1, std::memory_order_relaxed);
@@ -70,7 +70,7 @@ public:
         decrement, then delete the object. Note that if this is the case, then
         the object needs to have been allocated via new, and not on the stack.
     */
-    void unref() const {
+    void unref() const noexcept {
         assert(this->getRefCnt() > 0);
         // A release here acts in place of all releases we "should" have been doing in ref().
         if (1 == fRefCnt.fetch_add(-1, std::memory_order_acq_rel)) {
@@ -84,7 +84,7 @@ private:
 
 #ifdef VLD_DEBUG
     /** Return the reference count. Use only for debugging. */
-    int32_t getRefCnt() const {
+    int32_t getRefCnt() const noexcept {
         return fRefCnt.load(std::memory_order_relaxed);
     }
 #endif
@@ -92,7 +92,7 @@ private:
     /**
      *  Called when the ref count goes to 0.
      */
-    virtual void internal_dispose() const {
+    virtual void internal_dispose() const noexcept {
     #ifdef VLD_DEBUG
         assert(0 == this->getRefCnt());
         fRefCnt.store(1, std::memory_order_relaxed);
@@ -116,7 +116,7 @@ private:
 
 /** Call obj->ref() and return obj. The obj must not be nullptr.
  */
-template <typename T> static inline T* Ref(T* obj) {
+template <typename T> static inline T* Ref(T* obj) noexcept {
     assert(obj);
     obj->ref();
     return obj;
@@ -124,7 +124,7 @@ template <typename T> static inline T* Ref(T* obj) {
 
 /** Check if the argument is non-null, and if so, call obj->ref() and return obj.
  */
-template <typename T> static inline T* SafeRef(T* obj) {
+template <typename T> static inline T* SafeRef(T* obj) noexcept {
     if (obj) {
         obj->ref();
     }
@@ -133,7 +133,7 @@ template <typename T> static inline T* SafeRef(T* obj) {
 
 /** Check if the argument is non-null, and if so, call obj->unref()
  */
-template <typename T> static inline void SafeUnref(T* obj) {
+template <typename T> static inline void SafeUnref(T* obj) noexcept {
     if (obj) {
         obj->unref();
     }
@@ -146,7 +146,7 @@ template <typename T> static inline void SafeUnref(T* obj) {
 template <typename Derived>
 class NVRefCnt {
 public:
-    NVRefCnt() : fRefCnt(1) {}
+    NVRefCnt() noexcept : fRefCnt(1) {}
     ~NVRefCnt() {
     #ifdef VLD_DEBUG
         int rc = fRefCnt.load(std::memory_order_relaxed);
@@ -160,23 +160,23 @@ public:
     //   - ref() doesn't need any barrier;
     //   - unref() needs a release barrier, and an acquire if it's going to call delete.
 
-    bool unique() const { return 1 == fRefCnt.load(std::memory_order_acquire); }
-    void ref() const { (void)fRefCnt.fetch_add(+1, std::memory_order_relaxed); }
-    void  unref() const {
+    bool unique() const noexcept { return 1 == fRefCnt.load(std::memory_order_acquire); }
+    void ref() const noexcept { (void)fRefCnt.fetch_add(+1, std::memory_order_relaxed); }
+    void  unref() const noexcept {
         if (1 == fRefCnt.fetch_add(-1, std::memory_order_acq_rel)) {
             // restore the 1 for our destructor's assert
             DEBUGCODE(fRefCnt.store(1, std::memory_order_relaxed));
             delete (const Derived*)this;
         }
     }
-    void  deref() const { this->unref(); }
+    void  deref() const noexcept { this->unref(); }
 
     // This must be used with caution. It is only valid to call this when 'threadIsolatedTestCnt'
     // refs are known to be isolated to the current thread. That is, it is known that there are at
     // least 'threadIsolatedTestCnt' refs for which no other thread may make a balancing unref()
     // call. Assuming the contract is followed, if this returns false then no other thread has
     // ownership of this. If it returns true then another thread *may* have ownership.
-    bool refCntGreaterThan(int32_t threadIsolatedTestCnt) const {
+    bool refCntGreaterThan(int32_t threadIsolatedTestCnt) const noexcept {
         int cnt = fRefCnt.load(std::memory_order_acquire);
         // If this fails then the above contract has been violated.
         assert(cnt >= threadIsolatedTestCnt);
@@ -214,17 +214,17 @@ template <typename T> class VLD_SP_TRIVIAL_ABI sp {
 public:
     using element_type = T;
 
-    constexpr sp() : fPtr(nullptr) {}
-    constexpr sp(std::nullptr_t) : fPtr(nullptr) {}
+    constexpr sp() noexcept : fPtr(nullptr) {}
+    constexpr sp(std::nullptr_t) noexcept : fPtr(nullptr) {}
 
     /**
      *  Shares the underlying object by calling ref(), so that both the argument and the newly
      *  created sp both have a reference to it.
      */
-    sp(const sp<T>& that) : fPtr(SafeRef(that.get())) {}
+    sp(const sp<T>& that) noexcept : fPtr(SafeRef(that.get())) {}
     template <typename U,
               typename = std::enable_if_t< std::is_convertible<U*, T*>::value > >
-    sp(const sp<U>& that) : fPtr(SafeRef(that.get())) {
+    sp(const sp<U>& that) noexcept : fPtr(SafeRef(that.get())) {
         //static_assert(std::is_convertible<U*, T*>::value,
         //    "Type not convertable!");
     }
@@ -234,10 +234,10 @@ public:
      *  the new sp will have a reference to the object, and the argument will point to null.
      *  No call to ref() or unref() will be made.
      */
-    sp(sp<T>&& that) : fPtr(that.release()) {}
+    sp(sp<T>&& that) noexcept : fPtr(that.release()) {}
     template <typename U,
               typename = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
-    sp(sp<U>&& that) : fPtr(that.release()) { 
+    sp(sp<U>&& that) noexcept : fPtr(that.release()) {
         //static_assert(std::is_convertible<U*, T*>::value,
         //    "Type not convertable!");
     }
@@ -246,7 +246,7 @@ public:
      *  Adopt the bare pointer into the newly created sp.
      *  No call to ref() or unref() will be made.
      */
-    explicit sp(T* obj) : fPtr(obj) {}
+    explicit sp(T* obj) noexcept : fPtr(obj) {}
 
     /**
      *  Calls unref() on the underlying object pointer.
@@ -256,14 +256,14 @@ public:
         DEBUGCODE(fPtr = nullptr);
     }
 
-    sp<T>& operator=(std::nullptr_t) { this->reset(); return *this; }
+    sp<T>& operator=(std::nullptr_t) noexcept { this->reset(); return *this; }
 
     /**
      *  Shares the underlying object referenced by the argument by calling ref() on it. If this
      *  sp previously had a reference to an object (i.e. not null) it will call unref() on that
      *  object.
      */
-    sp<T>& operator=(const sp<T>& that) {
+    sp<T>& operator=(const sp<T>& that) noexcept {
         if (this != &that) {
             this->reset(SafeRef(that.get()));
         }
@@ -271,7 +271,7 @@ public:
     }
     template <typename U>
     typename std::enable_if<std::is_convertible<U*, T*>::value,  sp<T>&>::type
-    operator=(const sp<U>& that) {
+    operator=(const sp<U>& that) noexcept {
         static_assert(std::is_convertible<U*, T*>::value,
             "Type not convertable!");
         this->reset(SafeRef(that.get()));
@@ -283,12 +283,12 @@ public:
      *  a reference to another object, unref() will be called on that object. No call to ref()
      *  will be made.
      */
-    sp<T>& operator=(sp<T>&& that) {
+    sp<T>& operator=(sp<T>&& that) noexcept {
         this->reset(that.release());
         return *this;
     }
     template <typename U>
-    sp<T>& operator=(sp<U>&& that) {
+    sp<T>& operator=(sp<U>&& that) noexcept {
         static_assert(std::is_convertible<U*, T*>::value,
             "Type not convertable!");
         this->reset(that.release());
@@ -296,23 +296,23 @@ public:
     }
 
     template <typename U>
-    bool operator==(const sp<U>& that){ return this->fPtr == that.fPtr;}
+    bool operator==(const sp<U>& that) const noexcept { return this->get() == that.get(); }
 
-    T& operator*() const {
+    T& operator*() const noexcept {
         assert(this->get() != nullptr);
         return *this->get();
     }
 
-    explicit operator bool() const { return this->get() != nullptr; }
+    explicit operator bool() const noexcept { return this->get() != nullptr; }
 
-    T* get() const { return fPtr; }
-    T* operator->() const { return fPtr; }
+    T* get() const noexcept { return fPtr; }
+    T* operator->() const noexcept { return fPtr; }
 
     /**
      *  Adopt the new bare pointer, and call unref() on any previously held object (if not null).
      *  No call to ref() will be made.
      */
-    void reset(T* ptr = nullptr) {
+    void reset(T* ptr = nullptr) noexcept {
         // Calling fPtr->unref() may call this->~() or this->reset(T*).
         // http://wg21.cmeerw.net/lwg/issue998
         // http://wg21.cmeerw.net/lwg/issue2262
@@ -326,13 +326,13 @@ public:
      *  The caller must assume ownership of the object, and manage its reference count directly.
      *  No call to unref() will be made.
      */
-    T* release() {
+    T* release() noexcept {
         T* ptr = fPtr;
         fPtr = nullptr;
         return ptr;
     }
 
-    void swap(sp<T>& that) /*noexcept*/ {
+    void swap(sp<T>& that) noexcept {
         using std::swap;
         swap(fPtr, that.fPtr);
     }
@@ -341,27 +341,27 @@ private:
     T*  fPtr;
 };
 
-template <typename T> inline void swap(sp<T>& a, sp<T>& b) /*noexcept*/ {
+template <typename T> inline void swap(sp<T>& a, sp<T>& b) noexcept {
     a.swap(b);
 }
 
-template <typename T, typename U> inline bool operator==(const sp<T>& a, const sp<U>& b) {
+template <typename T, typename U> inline bool operator==(const sp<T>& a, const sp<U>& b) noexcept {
     return a.get() == b.get();
 }
-template <typename T> inline bool operator==(const sp<T>& a, std::nullptr_t) /*noexcept*/ {
+template <typename T> inline bool operator==(const sp<T>& a, std::nullptr_t) noexcept {
     return !a;
 }
-template <typename T> inline bool operator==(std::nullptr_t, const sp<T>& b) /*noexcept*/ {
+template <typename T> inline bool operator==(std::nullptr_t, const sp<T>& b) noexcept {
     return !b;
 }
 
-template <typename T, typename U> inline bool operator!=(const sp<T>& a, const sp<U>& b) {
+template <typename T, typename U> inline bool operator!=(const sp<T>& a, const sp<U>& b) noexcept {
     return a.get() != b.get();
 }
-template <typename T> inline bool operator!=(const sp<T>& a, std::nullptr_t) /*noexcept*/ {
+template <typename T> inline bool operator!=(const sp<T>& a, std::nullptr_t) noexcept {
     return static_cast<bool>(a);
 }
-template <typename T> inline bool operator!=(std::nullptr_t, const sp<T>& b) /*noexcept*/ {
+template <typename T> inline bool operator!=(std::nullptr_t, const sp<T>& b) noexcept {
     return static_cast<bool>(b);
 }
 
