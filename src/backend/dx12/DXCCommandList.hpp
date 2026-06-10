@@ -148,6 +148,7 @@ namespace alloy::dxc
 
         DXCDevice* dev;
         DXCCommandList* cmdList;
+
         DXCPipelineBase* currentPipeline;
 
         std::unordered_set<common::sp<common::RefCntBase>> resources;
@@ -227,7 +228,8 @@ namespace alloy::dxc
             const common::sp<IMutableResourceSet>& rs) override;
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
@@ -291,7 +293,8 @@ namespace alloy::dxc
             const common::sp<IMutableResourceSet>& rs) override;
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

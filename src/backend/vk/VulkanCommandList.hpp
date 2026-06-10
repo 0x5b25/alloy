@@ -179,7 +179,8 @@ namespace alloy::vk
 
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,
@@ -235,7 +236,8 @@ namespace alloy::vk
 
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) override;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) override;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

@@ -187,7 +187,8 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
          virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout
         ) override {
             assert(false);
         }
@@ -253,7 +254,8 @@ namespace alloy::layers::AutoResourceUsageTracking {
             
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout
         ) override {
             assert(false);
         }

@@ -54,6 +54,7 @@ namespace alloy::vk{
             uint32_t bindingSpace;
             uint32_t sizeInDwords;
             uint32_t offsetInDwords;
+            VkShaderStageFlags stages;
         };
 
         struct SlotLocation {
@@ -75,6 +76,8 @@ namespace alloy::vk{
         std::vector<ResourceSetInfo> _sets;
         std::vector<SlotLocation> _slotLocations;
         //std::uint32_t _dynamicBufferCount;
+        
+        VkPipelineLayout _pipelineLayout;
 
         std::vector<PushConstantInfo> _pushConstants;
         uint32_t _pushConstantSize;
@@ -120,6 +123,8 @@ namespace alloy::vk{
         const SlotLocation& GetSlotLocation(uint32_t layoutSlot) const {return _slotLocations.at(layoutSlot);}
         const std::vector<PushConstantInfo>& GetPushConstants() const {return _pushConstants;}
         std::uint32_t GetPushConstantSize() const {return _pushConstantSize;}
+
+        VkPipelineLayout GetPipelineLayout() const { return _pipelineLayout; }
     };
 
     class VulkanResourceSetBase {

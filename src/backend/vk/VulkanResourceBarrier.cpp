@@ -82,9 +82,9 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
             vk_access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         if (access & alloy::ResourceAccess::RenderTarget)
             vk_access |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        if (access & alloy::ResourceAccess::DepthStencilRead)
+        if (access & alloy::ResourceAccess::DepthStencilReadOnly)
             vk_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-        if (access & alloy::ResourceAccess::DepthStencilWrite)
+        if (access & alloy::ResourceAccess::DepthStencil)
             vk_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         if (access & alloy::ResourceAccess::CopySource)
             vk_access |= VK_ACCESS_TRANSFER_READ_BIT;
@@ -106,7 +106,7 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
             case alloy::TextureLayout::Storage: return VK_IMAGE_LAYOUT_GENERAL;
             case alloy::TextureLayout::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             case alloy::TextureLayout::DepthStencilReadOnly: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-            case alloy::TextureLayout::DepthStencilWrite: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            case alloy::TextureLayout::DepthStencil: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             case alloy::TextureLayout::CopySource: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             case alloy::TextureLayout::CopyDest: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             case alloy::TextureLayout::ResolveSource: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;

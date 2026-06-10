@@ -295,8 +295,8 @@ public:
         return *this;
     }
 
-    template <typename U>
-    bool operator==(const sp<U>& that) const noexcept { return this->get() == that.get(); }
+    //template <typename U>
+    //bool operator==(const sp<U>& that) const noexcept { return this->get() == that.get(); }
 
     T& operator*() const noexcept {
         assert(this->get() != nullptr);

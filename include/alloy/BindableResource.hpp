@@ -53,6 +53,7 @@ namespace alloy
             uint32_t bindingSlot;
             uint32_t bindingSpace;
             uint32_t sizeInDwords;
+            alloy::common::BitFlags<IShader::Stage> stages;
         };
 
         struct ShaderResourceDescription {

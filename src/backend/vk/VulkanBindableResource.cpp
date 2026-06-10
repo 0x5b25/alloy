@@ -12,6 +12,23 @@
 
 namespace alloy::vk
 {
+    
+    class VkPipelineLayoutRAII {
+        VulkanDevice* _dev;
+        VkPipelineLayout _obj;
+    public:
+        VkPipelineLayoutRAII(VulkanDevice* dev) : _dev(dev), _obj(VK_NULL_HANDLE) {}
+        ~VkPipelineLayoutRAII() {
+            if(_obj != VK_NULL_HANDLE)
+                VK_DEV_CALL(_dev, vkDestroyPipelineLayout(_dev->LogicalDev(), _obj, nullptr));
+        }
+        VkPipelineLayout* operator&() {return &_obj;}
+        VkPipelineLayout operator*() {return _obj;}
+        VkPipelineLayout Reset() {
+            auto res = _obj;  _obj = VK_NULL_HANDLE; return res;
+        }
+    };
+
     using _ResKind = IBindableResource::ResourceKind;
     VkDescriptorType VdToVkResourceKind(IBindableResource::ResourceKind kind, bool dynamic, bool writable){
         switch (kind)
@@ -42,6 +59,8 @@ namespace alloy::vk
                     vkDestroyDescriptorSetLayout(_dev->LogicalDev(), s.layout, nullptr));
             }
         }
+
+        VK_DEV_CALL(_dev, vkDestroyPipelineLayout(_dev->LogicalDev(), _pipelineLayout, nullptr));
     }
 
     
@@ -62,20 +81,40 @@ namespace alloy::vk
                     dev->GetAdapter().GetAdapterInfo().resourceBindingModel
                         != ResourceBindingModel::FixedBindings;
 
+        // Push constants are unchanged from the fixed-size path.
         std::vector<PushConstantInfo> pushConstants;
+        std::vector<VkPushConstantRange> vkPushConstantRanges;
         uint32_t pushConstantSize = 0;
-
         for(auto& pc : desc.pushConstants){
+            
+            auto stageFlags = VdToVkShaderStages(pc.stages);
+
+            assert(stageFlags != 0
+                && "Push constant with empty stage access");
+            assert(pc.sizeInDwords != 0
+                && "Push constant with zero size");
+
             pushConstants.push_back({
                 .bindingSlot = pc.bindingSlot,
                 .bindingSpace = pc.bindingSpace,
                 .sizeInDwords = pc.sizeInDwords,
-                .offsetInDwords = pushConstantSize
+                .offsetInDwords = pushConstantSize,
+                .stages = stageFlags,
             });
+
+            vkPushConstantRanges.push_back({
+                .stageFlags = stageFlags,
+                .offset     = pushConstantSize * 4,
+                .size       = pc.sizeInDwords * 4
+            });
+
             pushConstantSize += pc.sizeInDwords;
         }
 
+
         auto& elements = desc.shaderResources;
+
+        
         
         std::vector<ResourceSetInfo> sets;
         std::vector<VulkanResourceLayout::SlotLocation> slotLocations(elements.size());
@@ -178,8 +217,27 @@ namespace alloy::vk
                 vkCreateDescriptorSetLayout(dev->LogicalDev(), &dslCI, nullptr, &s.layout)));
         }
 
+        
+        std::vector<VkDescriptorSetLayout> dsls{};
+        for(auto& s : sets) {
+            dsls.push_back(s.layout);
+        }
+        
+        VkPipelineLayoutCreateInfo pipelineLayoutCI {};
+        pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCI.setLayoutCount = dsls.size();
+        pipelineLayoutCI.pSetLayouts = dsls.data();
+        pipelineLayoutCI.pushConstantRangeCount = vkPushConstantRanges.size();
+        pipelineLayoutCI.pPushConstantRanges = vkPushConstantRanges.data();
+
+        VkPipelineLayoutRAII pipelineLayout{dev.get()};
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreatePipelineLayout(
+                dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout)));
+
         auto dsl = new VulkanResourceLayout(dev, desc);
         dsl->_sets = std::move(sets);
+        dsl->_pipelineLayout = pipelineLayout.Reset();
         dsl->_slotLocations = std::move(slotLocations);
         dsl->_pushConstants = std::move(pushConstants);
         dsl->_pushConstantSize = pushConstantSize;
@@ -201,17 +259,33 @@ namespace alloy::vk
 
         // Push constants are unchanged from the fixed-size path.
         std::vector<PushConstantInfo> pushConstants;
+        std::vector<VkPushConstantRange> vkPushConstantRanges;
         uint32_t pushConstantSize = 0;
         for(auto& pc : desc.pushConstants){
+            
+            auto stageFlags = VdToVkShaderStages(pc.stages);
+
+            assert(stageFlags != 0
+                && "Push constant with empty stage access");
+            assert(pc.sizeInDwords != 0
+                && "Push constant with zero size");
+
             pushConstants.push_back({
                 .bindingSlot = pc.bindingSlot,
                 .bindingSpace = pc.bindingSpace,
                 .sizeInDwords = pc.sizeInDwords,
-                .offsetInDwords = pushConstantSize
+                .offsetInDwords = pushConstantSize,
+                .stages = stageFlags,
             });
+
+            vkPushConstantRanges.push_back({
+                .stageFlags = stageFlags,
+                .offset     = pushConstantSize * 4,
+                .size       = pc.sizeInDwords * 4
+            });
+
             pushConstantSize += pc.sizeInDwords;
         }
-
 
         // Assign per-slot T2 metadata. Resource-kind and sampler-kind slots each get a
         // contiguous relative-offset range within their own heap, in API order. The
@@ -234,9 +308,27 @@ namespace alloy::vk
                 .layout = dev->GetT2SamplerHeapDSL(),
             },
         };
+
+        std::vector<VkDescriptorSetLayout> dsls{};
+        for(auto& s : t2SetInfos) {
+            dsls.push_back(s.layout);
+        }
+        
+        VkPipelineLayoutCreateInfo pipelineLayoutCI {};
+        pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutCI.setLayoutCount = dsls.size();
+        pipelineLayoutCI.pSetLayouts = dsls.data();
+        pipelineLayoutCI.pushConstantRangeCount = vkPushConstantRanges.size();
+        pipelineLayoutCI.pPushConstantRanges = vkPushConstantRanges.data();
+
+        VkPipelineLayoutRAII pipelineLayout{dev.get()};
+        VK_CHECK(VK_DEV_CALL(dev,
+            vkCreatePipelineLayout(
+                dev->LogicalDev(), &pipelineLayoutCI, nullptr, &pipelineLayout)));
     
         auto dsl = new VulkanResourceLayout(dev, desc);
         dsl->_sets = std::move(t2SetInfos);
+        dsl->_pipelineLayout = pipelineLayout.Reset();
         // _slotLocations is unused on the T2 path. only full bindless is supported
         dsl->_pushConstants = std::move(pushConstants);
         dsl->_pushConstantSize = pushConstantSize;

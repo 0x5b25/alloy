@@ -363,7 +363,8 @@ void MetalRenderCmdEnc::SetGraphicsMutableResourceSet(
 
 void MetalRenderCmdEnc::SetDescriptorHeaps(
     const common::sp<IResourceDescriptorHeap>& resourceHeap,
-    const common::sp<ISamplerDescriptorHeap>& samplerHeap
+    const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+    const common::sp<IResourceLayout>& layout
 ) {
     @autoreleasepool {
         id<MTLBuffer> resourceHeapBuffer = nil;
@@ -740,7 +741,8 @@ void MetalRenderCmdEnc::DrawIndexed(
 
     void MetalComputeCmdEnc::SetDescriptorHeaps(
         const common::sp<IResourceDescriptorHeap>& resourceHeap,
-        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+        const common::sp<IResourceLayout>& layout
     ) {
         @autoreleasepool {
             id<MTLBuffer> resourceHeapBuffer = nil;

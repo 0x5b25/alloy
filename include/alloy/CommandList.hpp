@@ -80,14 +80,20 @@ namespace alloy
 
         // The T2 bindless heap, reflects almost 1:1 to DX12.
         // either can be null pointer, which will be clearing the bound heaps.
+        // layout is only used by Vulkan backend.
         // Should be called **BEFORE** setting a T2 bindless pipeline. According to
         // DX12 backend limit:
         // >   SetDescriptorHeaps must be called to bind a CBV/SRV/UAV descriptor
         // >   before setting a root signature with 
         // >   D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED flag.
+        // Vulkan backend limit:
+        //    The descriptor heaps are actually descriptor sets. Vulkan requires a 
+        //    VkPipelineLayout to set those. We provide an IResourceLayout just for 
+        //    Vulkan backend to be able to set heaps before bind pipeline.
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) = 0;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) = 0;
 
         #if 0 //Subsituted by load actions of renderpass
         // Clears the color target at the given index of the active <see cref="Framebuffer"/>.
@@ -203,7 +209,8 @@ namespace alloy
 
         virtual void SetDescriptorHeaps(
             const common::sp<IResourceDescriptorHeap>& resourceHeap,
-            const common::sp<ISamplerDescriptorHeap>& samplerHeap) = 0;
+            const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+            const common::sp<IResourceLayout>& layout) = 0;
 
         virtual void SetPushConstants(
             std::uint32_t pushConstantIndex,

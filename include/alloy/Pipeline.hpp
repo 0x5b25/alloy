@@ -202,17 +202,24 @@ namespace alloy
     protected:
         IGfxPipeline() {}
         
+    public:
+        virtual common::sp<IResourceLayout> GetLayout() const = 0;
     };
 
     class IComputePipeline : public common::RefCntBase{
 
     protected:
         IComputePipeline() {}
+
+    public:
+        virtual common::sp<IResourceLayout> GetLayout() const = 0;
     };
 
 
     class IMeshShaderPipeline : public common::RefCntBase{
 
+    public:
+        virtual common::sp<IResourceLayout> GetLayout() const = 0;
 
     };
 

@@ -366,7 +366,7 @@ namespace alloy::vk{
     ){
         assert(currentPipeline != nullptr);
 
-        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout()->GetPipelineLayout();
         uint32_t resourceSetCount = currentPipeline->GetResourceSetCount();
         //if (auto* v = std::get_if<VulkanGraphicsPipeline*>(&currentPipeline)) {
         //    pipelineLayout = (*v)->GetLayout();
@@ -415,7 +415,7 @@ namespace alloy::vk{
     ){
         assert(currentPipeline != nullptr);
 
-        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout()->GetPipelineLayout();
         uint32_t resourceSetCount = currentPipeline->GetResourceSetCount();
 
         resources.insert(rs);
@@ -447,14 +447,16 @@ namespace alloy::vk{
 
     void VkRenderCmdEnc::SetDescriptorHeaps(
         const common::sp<IResourceDescriptorHeap>& resourceHeap,
-        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+        const common::sp<IResourceLayout>& layout
     ) {
-        assert(currentPipeline != nullptr);
+        resources.insert(layout);
 
+        const auto* pResLayout = PtrCast<VulkanResourceLayout>(layout.get());
         const auto* pRsrcHeap = PtrCast<VulkanResourceDescriptorHeap>(resourceHeap.get());
         const auto* pSampHeap = PtrCast<VulkanSamplerDescriptorHeap>(samplerHeap.get());
 
-        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        VkPipelineLayout pipelineLayout = pResLayout->GetPipelineLayout();
 
         std::vector<VkDescriptorSet> descriptorSets(2, VK_NULL_HANDLE);
 
@@ -497,23 +499,22 @@ namespace alloy::vk{
         //}
         assert(currentPipeline != nullptr);
 
-        std::vector<uint32_t> savedData {data.begin(), data.end()};
         auto& pcs = currentPipeline->GetPushConstants();
 
         assert(pcs.size() > pushConstantIndex);
         auto& pc = pcs[pushConstantIndex];
-        assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + data.size());
 
         auto offset = pc.offsetInDwords;
 
         VK_DEV_CALL(dev,
         vkCmdPushConstants(
             cmdList,
-            currentPipeline->GetLayout(),
-            VK_SHADER_STAGE_ALL_GRAPHICS,
+            currentPipeline->GetLayout()->GetPipelineLayout(),
+            pc.stages,
             (offset + destOffsetIn32BitValues) * 4,
-            savedData.size() * 4,
-            savedData.data()));
+            data.size() * 4,
+            data.data()));
     }
 
     void VkComputeCmdEnc::SetComputeResourceSet(
@@ -543,7 +544,7 @@ namespace alloy::vk{
                 vkCmdBindDescriptorSets(
                     cmdList,
                     VK_PIPELINE_BIND_POINT_COMPUTE,
-                    currentPipeline->GetLayout(),
+                    currentPipeline->GetLayout()->GetPipelineLayout(),
                     0,
                     descriptorSets.size(),
                     descriptorSets.data(),
@@ -582,7 +583,7 @@ namespace alloy::vk{
                 vkCmdBindDescriptorSets(
                     cmdList,
                     VK_PIPELINE_BIND_POINT_COMPUTE,
-                    currentPipeline->GetLayout(),
+                    currentPipeline->GetLayout()->GetPipelineLayout(),
                     0,
                     descriptorSets.size(),
                     descriptorSets.data(),
@@ -594,14 +595,16 @@ namespace alloy::vk{
 
     void VkComputeCmdEnc::SetDescriptorHeaps(
         const common::sp<IResourceDescriptorHeap>& resourceHeap,
-        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+        const common::sp<IResourceLayout>& layout
     ) {
-        assert(currentPipeline != nullptr);
+        resources.insert(layout);
 
+        const auto* pResLayout = PtrCast<VulkanResourceLayout>(layout.get());
         const auto* pRsrcHeap = PtrCast<VulkanResourceDescriptorHeap>(resourceHeap.get());
         const auto* pSampHeap = PtrCast<VulkanSamplerDescriptorHeap>(samplerHeap.get());
 
-        VkPipelineLayout pipelineLayout = currentPipeline->GetLayout();
+        VkPipelineLayout pipelineLayout = pResLayout->GetPipelineLayout();
 
         std::vector<VkDescriptorSet> descriptorSets(2, VK_NULL_HANDLE);
 
@@ -620,7 +623,7 @@ namespace alloy::vk{
         VK_DEV_CALL(dev,
             vkCmdBindDescriptorSets(
                 cmdList,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
                 pipelineLayout,
                 VulkanResourceLayout::T2Set_ResourceHeap,
                 descriptorSets.size(),
@@ -637,24 +640,22 @@ namespace alloy::vk{
         //assert(std::holds_alternative<VulkanComputePipeline*>(currentPipeline));
 
         //VulkanPipelineBase* pipeline = std::get<VulkanComputePipeline*>(currentPipeline);
-
-        std::vector<uint32_t> savedData {data.begin(), data.end()};
         auto& pcs = currentPipeline->GetPushConstants();
         assert(pcs.size() > pushConstantIndex);
 
         auto& pc = pcs[pushConstantIndex];
-        assert(pc.sizeInDwords >= destOffsetIn32BitValues + savedData.size());
+        assert(pc.sizeInDwords >= destOffsetIn32BitValues + data.size());
 
         auto offset = pc.offsetInDwords;
 
         VK_DEV_CALL(dev,
         vkCmdPushConstants(
             cmdList,
-            currentPipeline->GetLayout(),
-            VK_SHADER_STAGE_COMPUTE_BIT,
+            currentPipeline->GetLayout()->GetPipelineLayout(),
+            pc.stages,
             (offset + destOffsetIn32BitValues) * 4,
-            savedData.size() * 4,
-            savedData.data()));
+            data.size() * 4,
+            data.data()));
     }
 
 #if 0
@@ -1210,11 +1211,11 @@ namespace alloy::vk{
         const Size3D& copySize
     ){
 
-        auto srcVkView = PtrCast<VulkanTextureView>(src.get());
+        auto srcVkView = PtrCast<VulkanTextureViewBase>(src.get());
         auto srcVkTexture = PtrCast<VulkanTexture>(src->GetTextureObject().get());
         const auto& srcViewDesc = srcVkView->GetDesc();
         
-        auto dstVkView = PtrCast<VulkanTextureView>(dst.get());
+        auto dstVkView = PtrCast<VulkanTextureViewBase>(dst.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(dst->GetTextureObject().get());
         const auto& dstViewDesc = dstVkView->GetDesc();
 
@@ -1425,8 +1426,11 @@ namespace alloy::vk{
             const auto& actions = fb;
             auto _Vd2VkLoadOp = [](alloy::LoadAction load) {
                 switch(load) {
-                    case alloy::LoadAction::Load : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
-                    case alloy::LoadAction::Clear : return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    case alloy::LoadAction::ReadOnly :
+                    case alloy::LoadAction::Load : 
+                        return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_LOAD;
+                    case alloy::LoadAction::Clear : 
+                        return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR;
                     default: return VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 }
             };
@@ -1448,7 +1452,7 @@ namespace alloy::vk{
             for (auto& ctAct : actions.colorTargetActions)
             {
                 //auto vkRT = common::PtrCast<VulkanRenderTarget>(ctAct.target.get());
-                auto vkTexView = common::PtrCast<VulkanTextureView>(ctAct.target.get());
+                auto vkTexView = common::PtrCast<VulkanTextureViewBase>(ctAct.target.get());
                 auto vkColorTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
 
                 auto& texDesc = vkColorTex->GetDesc();
@@ -1509,7 +1513,10 @@ namespace alloy::vk{
                     height = std::max(height, texDesc.height);
 
                     depthAttachment.imageView = vkTexView->GetHandle();
-                    depthAttachment.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                    depthAttachment.imageLayout = dtAct.loadAction == LoadAction::ReadOnly 
+                            ? VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                            : VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                            ;
                     depthAttachment.loadOp = _Vd2VkLoadOp(dtAct.loadAction);
                     depthAttachment.storeOp = _Vd2VkStoreOp(dtAct.storeAction);
                     depthAttachment.clearValue = {

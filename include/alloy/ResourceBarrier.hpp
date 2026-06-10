@@ -110,8 +110,8 @@ namespace alloy
         UnorderedAccess,
 
         RenderTarget,
-        DepthStencilRead,
-        DepthStencilWrite,
+        DepthStencil,
+        DepthStencilReadOnly,
 
         CopySource,
         CopyDest,
@@ -135,8 +135,8 @@ namespace alloy
         ShaderReadOnly,
         Storage,
         ColorAttachment,
+        DepthStencil,
         DepthStencilReadOnly,
-        DepthStencilWrite,
         CopySource,
         CopyDest,
         ResolveSource,

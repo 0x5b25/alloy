@@ -580,7 +580,8 @@ namespace alloy::dxc
 
     void DXCRenderCmdEnc::SetDescriptorHeaps(
         const common::sp<IResourceDescriptorHeap>& resourceHeap,
-        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+        const common::sp<IResourceLayout>& layout
     ) {
         ID3D12DescriptorHeap* heaps[2]{};
         UINT heapCount = 0;
@@ -933,7 +934,8 @@ namespace alloy::dxc
 
     void DXCComputeCmdEnc::SetDescriptorHeaps(
         const common::sp<IResourceDescriptorHeap>& resourceHeap,
-        const common::sp<ISamplerDescriptorHeap>& samplerHeap
+        const common::sp<ISamplerDescriptorHeap>& samplerHeap,
+        const common::sp<IResourceLayout>& layout
     ) {
         ID3D12DescriptorHeap* heaps[2]{};
         UINT heapCount = 0;
@@ -1576,9 +1578,9 @@ namespace alloy::dxc
             flags |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
         if(accesses[alloy::ResourceAccess::RenderTarget])
             flags |= D3D12_BARRIER_ACCESS_RENDER_TARGET;
-        if(accesses[alloy::ResourceAccess::DepthStencilRead])
+        if(accesses[alloy::ResourceAccess::DepthStencilReadOnly])
             flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
-        if(accesses[alloy::ResourceAccess::DepthStencilWrite])
+        if(accesses[alloy::ResourceAccess::DepthStencil])
             flags |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
         if(accesses[alloy::ResourceAccess::CopySource])
             flags |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
@@ -1718,7 +1720,7 @@ namespace alloy::dxc
                 case alloy::TextureLayout::Storage: return D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
                 case alloy::TextureLayout::ColorAttachment: return D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 case alloy::TextureLayout::DepthStencilReadOnly: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
-                case alloy::TextureLayout::DepthStencilWrite: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+                case alloy::TextureLayout::DepthStencil: return D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
                 case alloy::TextureLayout::CopySource: return D3D12_BARRIER_LAYOUT_COPY_SOURCE;
                 case alloy::TextureLayout::CopyDest: return D3D12_BARRIER_LAYOUT_COPY_DEST;
                 case alloy::TextureLayout::ResolveSource: return D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;

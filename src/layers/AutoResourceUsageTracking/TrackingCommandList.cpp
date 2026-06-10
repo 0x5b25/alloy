@@ -20,7 +20,7 @@ namespace alloy::layers::AutoResourceUsageTracking {
     static const ResourceAccessMask WRITE_MASK =
         ResourceAccess::RenderTarget                 |
         ResourceAccess::UnorderedAccess              |
-        ResourceAccess::DepthStencilWrite            |
+        ResourceAccess::DepthStencil                 |
         ResourceAccess::CopyDest                     |
         ResourceAccess::AccelerationStructureWrite;
 
@@ -768,13 +768,13 @@ namespace alloy::layers::AutoResourceUsageTracking {
             TrackingCommandList::TextureState state{};
             state.stage = PipelineStage::DepthStencil;
 
-            //Always writable
-            state.access = ResourceAccess::DepthStencilRead;
-            state.layout = TextureLayout::DepthStencilReadOnly;
             if(dtAct.loadAction != alloy::LoadAction::ReadOnly) {
                 //Either clear or load means content is readable
-                state.access |= ResourceAccess::DepthStencilWrite;
-                state.layout = TextureLayout::DepthStencilWrite;
+                state.access |= ResourceAccess::DepthStencil;
+                state.layout = TextureLayout::DepthStencil;
+            } else {
+                state.access = ResourceAccess::DepthStencilReadOnly;
+                state.layout = TextureLayout::DepthStencilReadOnly;
             }
 
             RegisterTexUsage(trackedTexView, state);
@@ -785,9 +785,9 @@ namespace alloy::layers::AutoResourceUsageTracking {
                 auto tResolveTex = PtrCast<TrackedTexture>(tResolveTexView->GetTextureObject().get());
 
                 TrackingCommandList::TextureState destinationState{};
-                destinationState.access =  ResourceAccess::DepthStencilWrite;
+                destinationState.access =  ResourceAccess::DepthStencil;
                 destinationState.stage = state.stage;
-                destinationState.layout = TextureLayout::DepthStencilWrite;
+                destinationState.layout = TextureLayout::DepthStencil;
                 RegisterTexUsage(tResolveTexView, destinationState);
             }
         }
@@ -803,10 +803,10 @@ namespace alloy::layers::AutoResourceUsageTracking {
 
             if(fb.stencilTargetAction->storeAction != alloy::StoreAction::DontCare)
             {
-                state.access = ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite;
-                state.layout = TextureLayout::DepthStencilWrite;
+                state.access = ResourceAccess::DepthStencil;
+                state.layout = TextureLayout::DepthStencil;
             } else {
-                state.access = ResourceAccess::DepthStencilRead;
+                state.access = ResourceAccess::DepthStencilReadOnly;
                 state.layout = TextureLayout::DepthStencilReadOnly;
             }
             RegisterTexUsage(trackedTexView, state);

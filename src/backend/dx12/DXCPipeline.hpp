@@ -91,6 +91,10 @@ namespace alloy::dxc
 
         const GraphicsPipelineDescription& GetDesc() const {return _desc;}
 
+        virtual common::sp<IResourceLayout> GetLayout() const override  {
+            return _desc.resourceLayout;
+        }
+
 #ifdef VLD_DEBUG
         static const void* GetTypeKey() {
             return (const void*)&DXCGraphicsPipeline::Make;
@@ -124,6 +128,10 @@ namespace alloy::dxc
         );
 
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
+
+        virtual common::sp<IResourceLayout> GetLayout() const override  {
+            return _desc.resourceLayout;
+        }
 
         static const void* GetTypeKey() {
             return (const void*)&DXCComputePipeline::Make;
@@ -160,6 +168,9 @@ namespace alloy::dxc
 
         virtual void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
 
+        virtual common::sp<IResourceLayout> GetLayout() const override  {
+            return _desc.resourceLayout;
+        }
 
 #ifdef VLD_DEBUG
         static const void* GetTypeKey() {
