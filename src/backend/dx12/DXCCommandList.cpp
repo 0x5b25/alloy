@@ -1474,8 +1474,7 @@ namespace alloy::dxc
     }
 
 
-    static D3D12_RESOURCE_STATES _EnnhancedToLegacyBarrierFlags(
-        const D3D12_BARRIER_SYNC&,
+    static D3D12_RESOURCE_STATES _AccessToLegacyState(
         const D3D12_BARRIER_ACCESS& access
     ){
         D3D12_RESOURCE_STATES legacyState{};
@@ -1604,13 +1603,37 @@ namespace alloy::dxc
         barrier.AccessBefore = _GetAccessFlags(from);
     }
 
-    static void _EnnhancedToLegacyBarrier(
-        const D3D12_GLOBAL_BARRIER& data,
-        D3D12_RESOURCE_BARRIER& barrier
+    static D3D12_RESOURCE_STATES _LayoutToLegacyState(
+        const alloy::TextureLayout& layout
     ) {
-        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.StateBefore = _EnnhancedToLegacyBarrierFlags(data.SyncBefore, data.AccessBefore);
-        barrier.Transition.StateAfter= _EnnhancedToLegacyBarrierFlags(data.SyncAfter, data.AccessAfter);
+        switch(layout) {
+            case alloy::TextureLayout::Undefined:
+            case alloy::TextureLayout::General:
+                return D3D12_RESOURCE_STATE_COMMON;
+            case alloy::TextureLayout::ShaderReadOnly:
+                return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                     | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            case alloy::TextureLayout::Storage:
+                return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            case alloy::TextureLayout::ColorAttachment:
+                return D3D12_RESOURCE_STATE_RENDER_TARGET;
+            case alloy::TextureLayout::DepthStencil:
+                return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            case alloy::TextureLayout::DepthStencilReadOnly:
+                return D3D12_RESOURCE_STATE_DEPTH_READ;
+            case alloy::TextureLayout::CopySource:
+                return D3D12_RESOURCE_STATE_COPY_SOURCE;
+            case alloy::TextureLayout::CopyDest:
+                return D3D12_RESOURCE_STATE_COPY_DEST;
+            case alloy::TextureLayout::ResolveSource:
+                return D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+            case alloy::TextureLayout::ResolveDest:
+                return D3D12_RESOURCE_STATE_RESOLVE_DEST;
+            case alloy::TextureLayout::Present:
+                return D3D12_RESOURCE_STATE_PRESENT;
+            default:
+                return D3D12_RESOURCE_STATE_COMMON;
+        }
     }
 
     void DXCCommandList::Barrier(std::span<const alloy::BarrierOp> descs) {
@@ -1618,8 +1641,9 @@ namespace alloy::dxc
         std::vector<D3D12_RESOURCE_BARRIER> barriers{};
 
         for(auto& desc : descs) {
-            D3D12_RESOURCE_BARRIER barrier { };
-            bool isBarrierNecessary = true;
+            ID3D12Resource* pResource = nullptr;
+            D3D12_RESOURCE_STATES stateBefore{}, stateAfter{};
+            UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
             if (std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
 
@@ -1630,16 +1654,11 @@ namespace alloy::dxc
                 auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
                 _devRes.insert(range);
 
-                auto syncAfter = _GetSyncStages(barrierDesc.to.stages, false);
-                auto syncBefore = _GetSyncStages(barrierDesc.from.stages, true);
-
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcBuffer->GetHandle();
-                barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                // Buffers carry no layout; access masks are the only signal we
+                // can derive a legacy resource state from.
+                stateBefore = _AccessToLegacyState(_GetAccessFlags(barrierDesc.from.access));
+                stateAfter  = _AccessToLegacyState(_GetAccessFlags(barrierDesc.to.access));
+                pResource = dxcBuffer->GetHandle();
             }
             else {
                 auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
@@ -1649,39 +1668,42 @@ namespace alloy::dxc
                 auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
                 _devRes.insert(view);
 
-                auto syncAfter = _GetSyncStages(texDesc.to.stages, false);
-                auto syncBefore = _GetSyncStages(texDesc.from.stages, true);
+                // Textures transition by layout, not access: a pure layout
+                // change (e.g. Undefined->ColorAttachment, or ->Present) carries
+                // empty access masks, which an access-derived state would
+                // collapse to COMMON->COMMON and silently drop.
+                stateBefore = _LayoutToLegacyState(texDesc.from.layout);
+                stateAfter  = _LayoutToLegacyState(texDesc.to.layout);
+                pResource = dxcTex->GetHandle();
 
-                D3D12_GLOBAL_BARRIER dxcBarrierFlags{};
-                dxcBarrierFlags.SyncAfter = syncAfter;
-                dxcBarrierFlags.SyncBefore = syncBefore;
-                _PopulateBarrierAccess(texDesc.from.access, texDesc.to.access, dxcBarrierFlags);
-                _EnnhancedToLegacyBarrier(dxcBarrierFlags, barrier);
-                barrier.Transition.pResource = dxcTex->GetHandle();
-
-                
                 const auto& viewDesc = view->GetDesc();
                 if( (viewDesc.arrayLayers == 1 && viewDesc.mipLevels == 1) &&
                     (viewDesc.aspect != ITextureView::Aspect::DepthStencil)
                 ) {
-                    const auto& texDesc = texture->GetDesc();
                     auto dxcTexView = PtrCast<DXCTextureView>(view.get());
-
-                    barrier.Transition.Subresource = dxcTexView->ComputeSubresource(0,0);
+                    subresource = dxcTexView->ComputeSubresource(0,0);
                 } else {
-                    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                    subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
                 }
-                
             }
 
-            if (barrier.Transition.StateBefore == barrier.Transition.StateAfter) {
-                isBarrierNecessary = false;
+            if (stateBefore != stateAfter) {
+                auto& barrier = barriers.emplace_back();
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                barrier.Transition.pResource = pResource;
+                barrier.Transition.Subresource = subresource;
+                barrier.Transition.StateBefore = stateBefore;
+                barrier.Transition.StateAfter = stateAfter;
             }
-
-            if (isBarrierNecessary) {
-                barriers.push_back(barrier);
+            else if (stateBefore == D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+                // No state change, but the resource stays bound for unordered
+                // access on both sides: there is no transition to carry the
+                // hazard, so an explicit UAV barrier is required.
+                auto& barrier = barriers.emplace_back();
+                barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+                barrier.UAV.pResource = pResource;
             }
-
+            // Otherwise from == to and not a UAV hazard: nothing to emit.
         }
 
         if(!barriers.empty())
