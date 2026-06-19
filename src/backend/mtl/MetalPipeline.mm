@@ -543,7 +543,10 @@ common::sp<MetalGfxPipeline> MetalGfxPipeline::Make(
                 }
             }
 
-            {
+            //Optional fragment shader: a depth-only mesh pipeline runs no
+            //fragment function; leave fragmentFunction nil (rasterization stays
+            //enabled for depth writes).
+            if(desc.fragmentShader) {
                 auto shader = desc.fragmentShader;
                 auto& shaderDesc = shader->GetDesc();
                 auto fragStage = TranspileDXILShader(mtlDev,

@@ -807,9 +807,14 @@ namespace alloy::dxc
         }
         
         _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS>(desc.meshShader);
-        _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS>(desc.fragmentShader);
-        
-        //BlendState;             
+
+        //Optional fragment shader: a depth-only mesh pipeline (no render targets)
+        //runs no PS. Omitting the PS stream subobject is valid for a no-RTV PSO.
+        if(desc.fragmentShader) {
+            _FillShaderDesc.operator()<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS>(desc.fragmentShader);
+        }
+
+        //BlendState;
         {
             auto& blendState = psoStream.Append<D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND>();
             //For BlendFactor::BlendFactor: 

@@ -807,7 +807,12 @@ public:
         }
 
         _CreateShaderStageCI(desc.meshShader, IShader::Stage::Mesh);
-        _CreateShaderStageCI(desc.fragmentShader, IShader::Stage::Fragment);
+
+        //Optional fragment shader: a depth-only mesh pipeline (no color
+        //attachments) runs no fragment stage; stageCount adjusts accordingly.
+        if(desc.fragmentShader) {
+            _CreateShaderStageCI(desc.fragmentShader, IShader::Stage::Fragment);
+        }
 
         pipelineCI.pStages = stageCIs;
 
