@@ -6,6 +6,8 @@
 #include "alloy/common/Common.hpp"
 #include "alloy/common/BitFlags.hpp"
 
+#include <cassert>
+
 namespace alloy::vk
 {
 
@@ -127,27 +129,81 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
         barrier.srcAccessMask = vk_access_flags_from_alloy_barrier(from);
     }
     
+    // Cross-queue ownership transfer side, resolved from the recording queue.
+    enum class XferSide { None, Release, Acquire };
+
+    // Resolve which half of a queue-family-ownership-transfer this op is, given
+    // the family the command list records into. Fills srcQF/dstQF with the
+    // family indices for the Vk*MemoryBarrier2 (or VK_QUEUE_FAMILY_IGNORED when
+    // no transfer is needed).
+    static XferSide _ResolveXfer(const std::optional<alloy::QueueTransfer>& xfer,
+                                 std::uint32_t selfFamily,
+                                 std::uint32_t& srcQF,
+                                 std::uint32_t& dstQF) {
+        srcQF = VK_QUEUE_FAMILY_IGNORED;
+        dstQF = VK_QUEUE_FAMILY_IGNORED;
+        if(!xfer)
+            return XferSide::None;
+
+        auto* sq = static_cast<VulkanCommandQueue*>(xfer->srcQueue);
+        auto* dq = static_cast<VulkanCommandQueue*>(xfer->dstQueue);
+        const std::uint32_t sf = sq->GetQueueFamily();
+        const std::uint32_t df = dq->GetQueueFamily();
+
+        // Same family (e.g. a unified queue GPU): ownership transfer is a no-op,
+        // emit a plain barrier.
+        if(sf == df)
+            return XferSide::None;
+
+        srcQF = sf;
+        dstQF = df;
+        if(selfFamily == sf)
+            return XferSide::Release;
+        if(selfFamily == df)
+            return XferSide::Acquire;
+
+        // Recorded on a queue that is neither side of the transfer: caller
+        // error. Fall back to a plain barrier rather than emit a bogus QFOT.
+        assert(false && "QFOT barrier recorded on a queue that is neither src nor dst");
+        srcQF = VK_QUEUE_FAMILY_IGNORED;
+        dstQF = VK_QUEUE_FAMILY_IGNORED;
+        return XferSide::None;
+    }
+
     void BindBarrier(VulkanCommandList* cmdBuf, std::span<const alloy::BarrierOp> barriers) {
-        VkPipelineStageFlags stagesBefore = 0;
-        VkPipelineStageFlags stagesAfter = 0;
-        std::vector<VkBufferMemoryBarrier> bufBarriers;
-        std::vector<VkImageMemoryBarrier> texBarriers;
+        std::vector<VkBufferMemoryBarrier2> bufBarriers;
+        std::vector<VkImageMemoryBarrier2> texBarriers;
+
+        const std::uint32_t selfFamily = cmdBuf->GetQueueFamily();
 
         for(auto& desc : barriers) {
             if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
                 auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
                 auto thisBuf = common::PtrCast<VulkanBuffer>(barrierDesc.buffer->GetBufferObject().get());
                 const auto& shape = barrierDesc.buffer->GetShape();
-                auto& barrier = bufBarriers.emplace_back(VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
 
-                stagesBefore |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.from.stages, barrierDesc.from.access);
-                stagesAfter |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.to.stages, barrierDesc.to.access);
+                std::uint32_t srcQF, dstQF;
+                const XferSide side =
+                    _ResolveXfer(barrierDesc.queueTransfer, selfFamily, srcQF, dstQF);
 
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
-                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                auto& barrier = bufBarriers.emplace_back();
+                barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+
+                // A release defines only its src scope; an acquire only its dst
+                // scope. The other side is left as NONE (valid under sync2).
+                barrier.srcStageMask  = (side == XferSide::Acquire) ? VK_PIPELINE_STAGE_2_NONE
+                    : (VkPipelineStageFlags2)vk_stage_flags_from_alloy_barrier(
+                          barrierDesc.from.stages, barrierDesc.from.access);
+                barrier.srcAccessMask = (side == XferSide::Acquire) ? VK_ACCESS_2_NONE
+                    : vk_access_flags_from_alloy_barrier(barrierDesc.from.access);
+                barrier.dstStageMask  = (side == XferSide::Release) ? VK_PIPELINE_STAGE_2_NONE
+                    : (VkPipelineStageFlags2)vk_stage_flags_from_alloy_barrier(
+                          barrierDesc.to.stages, barrierDesc.to.access);
+                barrier.dstAccessMask = (side == XferSide::Release) ? VK_ACCESS_2_NONE
+                    : vk_access_flags_from_alloy_barrier(barrierDesc.to.access);
+
+                barrier.srcQueueFamilyIndex = srcQF;
+                barrier.dstQueueFamilyIndex = dstQF;
                 barrier.buffer = thisBuf->GetHandle();
                 barrier.offset = shape.GetOffsetInBytes();
                 barrier.size = shape.GetSizeInBytes();
@@ -158,18 +214,31 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
                 const auto& texViewDesc = barrierDesc.texture->GetDesc();
                 auto thisTex = common::PtrCast<VulkanTexture>(texture.get());
                 const auto& texDesc = thisTex->GetDesc();
-                auto& barrier = texBarriers.emplace_back(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
 
-                stagesBefore |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.from.stages, barrierDesc.from.access);
-                stagesAfter |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.to.stages, barrierDesc.to.access);
+                std::uint32_t srcQF, dstQF;
+                const XferSide side =
+                    _ResolveXfer(barrierDesc.queueTransfer, selfFamily, srcQF, dstQF);
 
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
+                auto& barrier = texBarriers.emplace_back();
+                barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+
+                barrier.srcStageMask  = (side == XferSide::Acquire) ? VK_PIPELINE_STAGE_2_NONE
+                    : (VkPipelineStageFlags2)vk_stage_flags_from_alloy_barrier(
+                          barrierDesc.from.stages, barrierDesc.from.access);
+                barrier.srcAccessMask = (side == XferSide::Acquire) ? VK_ACCESS_2_NONE
+                    : vk_access_flags_from_alloy_barrier(barrierDesc.from.access);
+                barrier.dstStageMask  = (side == XferSide::Release) ? VK_PIPELINE_STAGE_2_NONE
+                    : (VkPipelineStageFlags2)vk_stage_flags_from_alloy_barrier(
+                          barrierDesc.to.stages, barrierDesc.to.access);
+                barrier.dstAccessMask = (side == XferSide::Release) ? VK_ACCESS_2_NONE
+                    : vk_access_flags_from_alloy_barrier(barrierDesc.to.access);
+
+                // Both halves carry the same layout transition; it executes once,
+                // ordered by the queue-to-queue semaphore between release/acquire.
                 barrier.oldLayout = AlToVkTexLayout(barrierDesc.from.layout);
                 barrier.newLayout = AlToVkTexLayout(barrierDesc.to.layout);
-                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.srcQueueFamilyIndex = srcQF;
+                barrier.dstQueueFamilyIndex = dstQF;
                 barrier.image = thisTex->GetHandle();
 
                 auto& aspectMask = barrier.subresourceRange.aspectMask;
@@ -189,15 +258,15 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
         }
 
         if(!bufBarriers.empty() || !texBarriers.empty()) {
+            VkDependencyInfo depInfo{};
+            depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            depInfo.bufferMemoryBarrierCount = (std::uint32_t)bufBarriers.size();
+            depInfo.pBufferMemoryBarriers = bufBarriers.data();
+            depInfo.imageMemoryBarrierCount = (std::uint32_t)texBarriers.size();
+            depInfo.pImageMemoryBarriers = texBarriers.data();
+
             VK_DEV_CALL(cmdBuf->GetDevice(),
-                vkCmdPipelineBarrier(
-                    cmdBuf->GetHandle(),
-                    stagesBefore ? stagesBefore : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    stagesAfter ? stagesAfter : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    0,
-                    0, nullptr,
-                    bufBarriers.size(), bufBarriers.data(),
-                    texBarriers.size(), texBarriers.data()));
+                vkCmdPipelineBarrier2KHR(cmdBuf->GetHandle(), &depInfo));
         }
 
     }

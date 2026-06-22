@@ -48,20 +48,20 @@ namespace alloy::dxc
             ID3D12GraphicsCommandList7* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
-            return common::sp(new DXCCommandList7(dev, pAllocator, pNewCmdList));
+            return common::sp(new DXCCommandList7(dev, pAllocator, pNewCmdList, type));
         }
         else if(dev->GetDevCaps().SupportMeshShader()) {
             ID3D12GraphicsCommandList6* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
-            return common::sp(new DXCCommandList6(dev, pAllocator, pNewCmdList));
+            return common::sp(new DXCCommandList6(dev, pAllocator, pNewCmdList, type));
         } else {
             //First supported in Win10 Creators update
             //Can safely assume widespread support
             ID3D12GraphicsCommandList1* pNewCmdList;
             pCmdList->QueryInterface(IID_PPV_ARGS(&pNewCmdList));
             pCmdList->Release();
-            return common::sp(new DXCCommandList(dev, pAllocator, pNewCmdList));
+            return common::sp(new DXCCommandList(dev, pAllocator, pNewCmdList, type));
         }
     }
 
@@ -1636,6 +1636,34 @@ namespace alloy::dxc
         }
     }
 
+    // Cross-queue ownership transfer side, resolved from the recording queue.
+    // DX12 has no Vulkan-style queue family ownership transfer; instead a shared
+    // resource is parked in the COMMON state/layout on the source queue and
+    // picked up from COMMON on the destination queue (ordered by the fence).
+    enum class XferSide { None, Release, Acquire };
+
+    static XferSide _ResolveXferDXC(const std::optional<alloy::QueueTransfer>& xfer,
+                                    D3D12_COMMAND_LIST_TYPE selfType) {
+        if(!xfer)
+            return XferSide::None;
+
+        auto* sq = static_cast<DXCCommandQueue*>(xfer->srcQueue);
+        auto* dq = static_cast<DXCCommandQueue*>(xfer->dstQueue);
+        const D3D12_COMMAND_LIST_TYPE st = sq->GetQueueType();
+        const D3D12_COMMAND_LIST_TYPE dt = dq->GetQueueType();
+
+        // Same queue type: no cross-queue handoff, emit a plain barrier.
+        if(st == dt)
+            return XferSide::None;
+        if(selfType == st)
+            return XferSide::Release;
+        if(selfType == dt)
+            return XferSide::Acquire;
+
+        assert(false && "QFOT barrier recorded on a queue that is neither src nor dst");
+        return XferSide::None;
+    }
+
     void DXCCommandList::Barrier(std::span<const alloy::BarrierOp> descs) {
 
         std::vector<D3D12_RESOURCE_BARRIER> barriers{};
@@ -1648,6 +1676,13 @@ namespace alloy::dxc
             if (std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
 
                 auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
+                const XferSide side = _ResolveXferDXC(barrierDesc.queueTransfer, _cmdListType);
+
+                // Buffers need no release-side barrier on DX12: they decay to
+                // COMMON after ExecuteCommandLists and promote from COMMON on
+                // first use by the acquiring queue.
+                if (side == XferSide::Release)
+                    continue;
 
                 auto range = barrierDesc.buffer;
                 auto buffer = range->GetBufferObject();
@@ -1655,13 +1690,17 @@ namespace alloy::dxc
                 _devRes.insert(range);
 
                 // Buffers carry no layout; access masks are the only signal we
-                // can derive a legacy resource state from.
-                stateBefore = _AccessToLegacyState(_GetAccessFlags(barrierDesc.from.access));
+                // can derive a legacy resource state from. On acquire the
+                // resource arrives in COMMON from the releasing queue.
+                stateBefore = (side == XferSide::Acquire)
+                    ? D3D12_RESOURCE_STATE_COMMON
+                    : _AccessToLegacyState(_GetAccessFlags(barrierDesc.from.access));
                 stateAfter  = _AccessToLegacyState(_GetAccessFlags(barrierDesc.to.access));
                 pResource = dxcBuffer->GetHandle();
             }
             else {
                 auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
+                const XferSide side = _ResolveXferDXC(texDesc.queueTransfer, _cmdListType);
 
                 auto view = texDesc.texture;
                 auto texture = view->GetTextureObject();
@@ -1672,8 +1711,14 @@ namespace alloy::dxc
                 // change (e.g. Undefined->ColorAttachment, or ->Present) carries
                 // empty access masks, which an access-derived state would
                 // collapse to COMMON->COMMON and silently drop.
-                stateBefore = _LayoutToLegacyState(texDesc.from.layout);
-                stateAfter  = _LayoutToLegacyState(texDesc.to.layout);
+                // A release parks the texture in COMMON; an acquire picks it up
+                // from COMMON.
+                stateBefore = (side == XferSide::Acquire)
+                    ? D3D12_RESOURCE_STATE_COMMON
+                    : _LayoutToLegacyState(texDesc.from.layout);
+                stateAfter  = (side == XferSide::Release)
+                    ? D3D12_RESOURCE_STATE_COMMON
+                    : _LayoutToLegacyState(texDesc.to.layout);
                 pResource = dxcTex->GetHandle();
 
                 const auto& viewDesc = view->GetDesc();
@@ -1785,19 +1830,30 @@ namespace alloy::dxc
 
         for(auto& desc : descs) {
             if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
+                auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
+                const XferSide side = _ResolveXferDXC(barrierDesc.queueTransfer, _cmdListType);
+
+                // Buffers need no release-side barrier on DX12 (they decay to
+                // COMMON automatically); the acquiring queue re-specifies access.
+                if (side == XferSide::Release)
+                    continue;
+
                 bufBarriers.emplace_back();
                 auto& barrier = bufBarriers.back();
-                auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
 
                 auto range = barrierDesc.buffer;
                 auto buffer = range->GetBufferObject();
                 auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
                 _devRes.insert(range);
 
-                barrier.SyncAfter = _GetSyncStages(barrierDesc.to.stages, false);
-                barrier.SyncBefore = _GetSyncStages(barrierDesc.from.stages, true);
-
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
+                // On acquire the resource arrives with no prior access on this
+                // queue; only the dst (after) scope is meaningful.
+                barrier.SyncBefore = (side == XferSide::Acquire)
+                    ? D3D12_BARRIER_SYNC_NONE : _GetSyncStages(barrierDesc.from.stages, true);
+                barrier.SyncAfter  = _GetSyncStages(barrierDesc.to.stages, false);
+                barrier.AccessBefore = (side == XferSide::Acquire)
+                    ? D3D12_BARRIER_ACCESS_NO_ACCESS : _GetAccessFlags(barrierDesc.from.access);
+                barrier.AccessAfter  = _GetAccessFlags(barrierDesc.to.access);
                 barrier.pResource = dxcBuffer->GetHandle();
 
                 const auto& rangeDesc = range->GetShape();
@@ -1805,20 +1861,35 @@ namespace alloy::dxc
                 barrier.Size = rangeDesc.GetSizeInBytes();
             }
             else {
+                auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
+                const XferSide side = _ResolveXferDXC(texDesc.queueTransfer, _cmdListType);
+
                 texBarrier.emplace_back();
                 auto& barrier = texBarrier.back();
-                auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
 
                 auto view = texDesc.texture;
                 auto texture = view->GetTextureObject();
                 auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
                 _devRes.insert(view);
-                
-                barrier.SyncAfter = _GetSyncStages(texDesc.to.stages, false);
-                barrier.SyncBefore = _GetSyncStages(texDesc.from.stages, true);
 
-                _PopulateBarrierAccess(texDesc.from.access, texDesc.to.access, barrier);
+                // A release defines only the src (before) scope and parks the
+                // texture in COMMON; an acquire defines only the dst (after)
+                // scope and picks it up from COMMON.
+                barrier.SyncBefore = (side == XferSide::Acquire)
+                    ? D3D12_BARRIER_SYNC_NONE : _GetSyncStages(texDesc.from.stages, true);
+                barrier.SyncAfter  = (side == XferSide::Release)
+                    ? D3D12_BARRIER_SYNC_NONE : _GetSyncStages(texDesc.to.stages, false);
+                barrier.AccessBefore = (side == XferSide::Acquire)
+                    ? D3D12_BARRIER_ACCESS_NO_ACCESS : _GetAccessFlags(texDesc.from.access);
+                barrier.AccessAfter  = (side == XferSide::Release)
+                    ? D3D12_BARRIER_ACCESS_NO_ACCESS : _GetAccessFlags(texDesc.to.access);
+
                 _PopulateTextureBarrier(texDesc, barrier);
+                if (side == XferSide::Release)
+                    barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_COMMON;
+                else if (side == XferSide::Acquire)
+                    barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+
                 barrier.pResource = dxcTex->GetHandle();
 
                 const auto& viewDesc = view->GetDesc();

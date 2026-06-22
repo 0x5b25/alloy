@@ -99,6 +99,10 @@ namespace alloy::vk
         const VkCommandBuffer& GetHandle() const { return _cmdBuf; }
         VulkanDevice* GetDevice() const { return _dev.get(); }
 
+        // Queue family this command list records into. Used to resolve the
+        // release/acquire side of a cross-queue ownership transfer barrier.
+        std::uint32_t GetQueueFamily() const;
+
         virtual void Begin() override;
         virtual void End() override;
 

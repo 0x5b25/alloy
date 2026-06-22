@@ -8,6 +8,7 @@
 #include "Texture.hpp"
 
 #include <variant>
+#include <optional>
 
 // Pipeline stage Concepts:
 //  alloy   Vulkan    DX12    Metal
@@ -162,16 +163,65 @@ namespace alloy
         TextureLayout layout;
     };
 
+    class ICommandQueue;
+
+    // Optional cross-queue ownership transfer attached to a barrier op.
+    //
+    // Vulkan:
+    //   A transfer is two-sided: record the same barrier both on srcQueue's
+    //   command list (the release) and on dstQueue's (the acquire).
+    //
+    //   The backend decides which half to emit by comparing the recording
+    //   command list's queue against src/dst:
+    //     - recording on srcQueue  -> release half
+    //     - recording on dstQueue  -> acquire half
+    //     - srcQueue and dstQueue resolve to the same family/type -> no 
+    //        transfer is needed and a plain barrier is emitted 
+    //        (the field is ignored).
+    // DX12:
+    //   No acqiure and release is needed, but resources must be in COMMON
+    //   state before hand off. Buffers are auto-decay'd on command buffer 
+    //   end. Textures can't auto-decay unless in read only states. So we
+    //   always transition textures to COMMON on release half.
+    //
+    // Each half carry on of the from/to states; for textures both carry the
+    // same layout transition (which happens once, between the two halves).
+    // For example: shader write (gfxQ) -> copy src (xferQ)
+    //   release: from.stage = ComputeShader
+    //            from.access = UnorderedAccess
+    //            from.layout = Storage
+    //            to.stage = None
+    //            to.access = None
+    //            to.layout = CopySource
+    //
+    //   acquire: from.stage = None
+    //            from.access = None
+    //            from.layout = Storage
+    //            to.stage = Copy
+    //            to.access = CopySource
+    //            to.layout = CopySource
+    //
+    // Note: barriers alone won't sync between queues, use a queue-to-queue 
+    // IEvent signal/wait in between.
+    struct QueueTransfer {
+        ICommandQueue* srcQueue; // releasing queue
+        ICommandQueue* dstQueue; // acquiring queue
+    };
+
     struct BufferBarrierOp {
         common::sp<alloy::BufferRange> buffer; //#TODO: Use BufferRange
         ResourceState from;
         ResourceState to;
+        // nullopt == same-queue barrier (default, legacy behavior).
+        std::optional<QueueTransfer> queueTransfer;
     };
 
     struct TextureBarrierOp {
         common::sp<ITextureView> texture;
         TextureState from;
         TextureState to;
+        // nullopt == same-queue barrier (default, legacy behavior).
+        std::optional<QueueTransfer> queueTransfer;
     };
 
     using BarrierOp = std::variant<BufferBarrierOp, TextureBarrierOp>;

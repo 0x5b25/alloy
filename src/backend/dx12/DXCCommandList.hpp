@@ -43,6 +43,7 @@ namespace alloy::dxc
         common::sp<DXCDevice> _dev;
         ID3D12CommandAllocator* _cmdAlloc;
         ID3D12GraphicsCommandList1* _cmdList;
+        D3D12_COMMAND_LIST_TYPE _cmdListType;
 
         std::vector<DXCCmdEncBase*> _passes;
         DXCCmdEncBase* _currentPass;
@@ -77,11 +78,13 @@ namespace alloy::dxc
         DXCCommandList(
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
-            ID3D12GraphicsCommandList1* pList
+            ID3D12GraphicsCommandList1* pList,
+            D3D12_COMMAND_LIST_TYPE type
         )
             : _dev(dev)
             , _cmdAlloc(pAllocator)
             , _cmdList(pList)
+            , _cmdListType(type)
             , _currentPass(nullptr)
         {}
 
@@ -90,6 +93,10 @@ namespace alloy::dxc
 
         static common::sp<DXCCommandList> Make(const common::sp<DXCDevice>& dev, D3D12_COMMAND_LIST_TYPE type);
         ID3D12GraphicsCommandList1* GetHandle() const { return _cmdList; }
+
+        // Queue type this command list records into. Used to resolve the
+        // release/acquire side of a cross-queue ownership transfer barrier.
+        D3D12_COMMAND_LIST_TYPE GetQueueType() const { return _cmdListType; }
 
         virtual void Begin() override;
         virtual void End() override;
@@ -379,9 +386,10 @@ namespace alloy::dxc
         DXCCommandList6(
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
-            ID3D12GraphicsCommandList6* pList
+            ID3D12GraphicsCommandList6* pList,
+            D3D12_COMMAND_LIST_TYPE type
         )
-            : DXCCommandList(dev, pAllocator, pList)
+            : DXCCommandList(dev, pAllocator, pList, type)
         {}
         ID3D12GraphicsCommandList6* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList6*>(_cmdList); }
 
@@ -420,9 +428,10 @@ namespace alloy::dxc
         DXCCommandList7(
             const common::sp<DXCDevice>& dev,
             ID3D12CommandAllocator* pAllocator,
-            ID3D12GraphicsCommandList7* pList
+            ID3D12GraphicsCommandList7* pList,
+            D3D12_COMMAND_LIST_TYPE type
         )
-            : DXCCommandList6(dev, pAllocator, pList)
+            : DXCCommandList6(dev, pAllocator, pList, type)
         {}
 
         ID3D12GraphicsCommandList7* GetCmdList() const { return static_cast<ID3D12GraphicsCommandList7*>(_cmdList); }

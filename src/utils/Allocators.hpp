@@ -70,6 +70,7 @@ namespace alloy::utils
             while(currDepth < depth) {
                 auto layerSizeInWord = 1u << ( currDepth * 6 );
                 pLayer += layerSizeInWord;
+                ++currDepth;
             }
             auto& whichWord = pLayer[whichBit >> 6];
             auto mask = 1 << (whichBit & 0x3f);

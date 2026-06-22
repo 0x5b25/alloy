@@ -202,6 +202,10 @@ namespace alloy::vk{
         _cmdPool->FreeBuffer(_cmdBuf);
     }
 
+    std::uint32_t VulkanCommandList::GetQueueFamily() const {
+        return _cmdPool->mgr->GetQueueFamily();
+    }
+
     void VulkanCommandList::Begin(){
 
         for(auto* p : _passes) {

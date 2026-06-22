@@ -52,6 +52,10 @@ namespace alloy::dxc{
 
         ID3D12CommandQueue* GetHandle() const {return _q;}
 
+        // Queue type backing this queue. Used to resolve the release/acquire
+        // side of a cross-queue ownership transfer barrier.
+        D3D12_COMMAND_LIST_TYPE GetQueueType() const { return _qType; }
+
         virtual ~DXCCommandQueue() override;
 
         virtual void EncodeSignalEvent(IEvent* evt, uint64_t value) override;

@@ -59,6 +59,8 @@ namespace alloy::vk
         ~_CmdPoolMgr();
 
         common::sp<_CmdPoolContainer> GetOnePool() { return _AcquireCmdPoolHolder(); }
+
+        std::uint32_t GetQueueFamily() const { return _queueFamily; }
     };
 
     struct _CmdPoolContainer : public common::RefCntBase {
@@ -76,9 +78,9 @@ namespace alloy::vk
 
     class VulkanCommandQueue : public ICommandQueue {
 
-
         VulkanDevice* _dev;
         _CmdPoolMgr _cmdPoolMgr;
+        std::uint32_t _qFamily;
         VkQueue _q;
 
         VkSemaphore _presentFence;
@@ -100,6 +102,8 @@ namespace alloy::vk
         //virtual void Reset() = 0;
 
         VkQueue GetHandle() const {return _q;}
+
+        std::uint32_t GetQueueFamily() const { return _qFamily; }
 
         /*ICommandQueue implementations*/
         virtual void EncodeSignalEvent(IEvent* evt, uint64_t value) override;

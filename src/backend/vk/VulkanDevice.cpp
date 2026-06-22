@@ -1096,6 +1096,7 @@ namespace alloy::vk {
     )
         : _dev(dev)
         , _cmdPoolMgr(dev, queueFamily)
+        , _qFamily(queueFamily)
         , _q(q)
     {
 
