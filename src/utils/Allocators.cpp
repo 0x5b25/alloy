@@ -126,9 +126,10 @@ namespace alloy::utils {
         if (current->pNext != nullptr && current->pNext->isFree)
         {
             // Merge with the next block
-            current->size += current->pNext->size;
-            current->pNext = current->pNext->pNext;
-            delete current->pNext;
+            auto toBeMerged = current->pNext;
+            current->size += toBeMerged->size;
+            current->pNext = toBeMerged->pNext;
+            delete toBeMerged;
         }
         
         // Case 2: Can merge with previous block
