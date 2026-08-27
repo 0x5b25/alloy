@@ -9,6 +9,9 @@
 #include <format>
 #include <string>
 
+#include <wrl/client.h> // for ComPtr
+using namespace Microsoft::WRL;
+
 namespace alloy {
     
     common::sp<IContext> CreateDX12Context(const IContext::Options& opts) {
@@ -39,11 +42,13 @@ namespace alloy::dxc {
 
     D3D12DllLoader::D3D12DllLoader() 
         : DllLoader("d3d12.dll")
+        , pfnD3D12GetInterface(nullptr)
         , pfnD3D12CreateDevice(nullptr)
         , pfnD3D12GetDebugInterface(nullptr)
         , pfnD3D12SerializeRootSignature(nullptr)
         , pfnD3D12SerializeVersionedRootSignature(nullptr)
     {
+        pfnD3D12GetInterface = (PFN_D3D12_GET_INTERFACE)GetFunctionEntry("D3D12GetInterface");
         pfnD3D12CreateDevice = (PFN_D3D12_CREATE_DEVICE)GetFunctionEntry("D3D12CreateDevice");
         pfnD3D12GetDebugInterface = (PFN_D3D12_GET_DEBUG_INTERFACE)GetFunctionEntry("D3D12GetDebugInterface");
         pfnD3D12SerializeRootSignature
@@ -63,91 +68,53 @@ namespace alloy::dxc {
             = (PFN_DXGIGetDebugInterface1)GetFunctionEntry("DXGIGetDebugInterface1");
     }
 
-    AgilitySDKLoader::AgilitySDKLoader(bool loadDebugLayer)
-        : d3d12CoreDllHandle(nullptr)
-        , d3d12SDKLayersDllHandle(nullptr)
-        , d3d12CoreVersion(0)
-        , d3d12SDKLayersVersion(0)
+    AgilitySDKLoader::AgilitySDKLoader(D3D12DllLoader& d3d12Loader, bool loadDebugLayer)
+        : cfg1(nullptr)
+        , factory(nullptr)
+        , d3d12SDKVersion(0)
     {
-        //Get buffer length
-        DWORD reqWCharCnt = GetCurrentDirectoryW(0, nullptr);
-        std::wstring cwd(reqWCharCnt, L'\0');
-        //Get data
-        GetCurrentDirectoryW(reqWCharCnt, cwd.data());
-
-        //GetCurrentDirectoryW returns content size WITH null terminator if
-        //all args are null ???
-        while(!cwd.empty() && cwd.ends_with(L'\0')) {
-            cwd.pop_back();
+        // Test the new sdk config interface
+        ComPtr<ID3D12SDKConfiguration> cfg {};
+        HRESULT result = 
+            d3d12Loader.pfnD3D12GetInterface(CLSID_D3D12SDKConfiguration, IID_PPV_ARGS(&cfg));
+        if(FAILED(result)) {
+            throw std::runtime_error(std::format("AgilitySDKLoader: D3D12GetInterface failed with HRESULT 0x{:0x}", result));
         }
+        
+        if(cfg) {
+            ComPtr<ID3D12SDKConfiguration1> cfg1 {};
+            cfg.As(&cfg1);
 
-        //Append slashes at end
-        if(!cwd.ends_with(L'\\')) {
-            cwd += L'\\';
-        }
+            ComPtr<ID3D12DeviceFactory> factory;
+            result = cfg1->CreateDeviceFactory(D3D12_SDK_VERSION, ".\\D3D12\\",
+                            IID_PPV_ARGS(&factory));
 
-        //Search "<CWD>/D3D12/"
-        auto dllSearchPath = cwd + L"D3D12\\";
-        {
-            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
-            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
-        }
-
-        // Search <CWD>
-        if(!d3d12CoreDllHandle) {
-            dllSearchPath = cwd;
-            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
-            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
-        }
-
-        //Search default paths
-        if(!d3d12CoreDllHandle) {
-            dllSearchPath = L"";
-            auto dllLoadPath = dllSearchPath + L"D3D12Core.dll";
-            d3d12CoreDllHandle = LoadLibraryW(dllLoadPath.c_str());
-        }
-
-        if(d3d12CoreDllHandle) {
-            {
-                //Extract D3D12SDKVersion variable from dll
-                auto pSDKVer = (uint32_t*)GetProcAddress((HMODULE)d3d12CoreDllHandle, "D3D12SDKVersion");
-                //An not-matching dll may not have this field
-                if(pSDKVer) {
-                    d3d12CoreVersion = *pSDKVer;
-                }
-
-                std::cout << std::format("AgilitySDK D3D12Core.dll version {}\n", d3d12CoreVersion);
-                    
+            if(FAILED(result)) {
+                throw std::runtime_error(std::format("AgilitySDKLoader: CreateDeviceFactory failed with HRESULT 0x{:0x}", result));
             }
-
-            //Load d3d12SDKLayers.dll from same path as D3D12Core.dll's
-            if(loadDebugLayer) {
-                auto dllLoadPath = dllSearchPath + L"d3d12SDKLayers.dll";
-                d3d12SDKLayersDllHandle = LoadLibraryW(dllLoadPath.c_str());
-                if(d3d12SDKLayersDllHandle) {
-                    //Extract D3D12SDKVersion variable from dll
-                    auto pSDKVer = (uint32_t*)GetProcAddress((HMODULE)d3d12SDKLayersDllHandle, "D3D12SDKVersion");
-                    //An not-matching dll may not have this field
-                    if(pSDKVer) {
-                        d3d12SDKLayersVersion = *pSDKVer;
-                    }
-
-                    std::cout << std::format("AgilitySDK d3d12SDKLayers.dll version {}\n", d3d12SDKLayersVersion);
-
-                    if(d3d12SDKLayersVersion != d3d12CoreVersion) {
-                        std::cout << std::format("Version mismatch between AgilitySDK D3D12Core.dll (version {}) and d3d12SDKLayers.dll (version {}), CreateDevice may fail!\n", d3d12CoreVersion, d3d12SDKLayersVersion);
-                    }
-                }
-            }
+            
+            ComPtr<ID3D12DeviceConfiguration1> devCfg1;
+            factory.As(&devCfg1);
+            this->cfg1 = cfg1.Detach();
+            this->factory = factory.Detach();
+            this->devCfg1 = devCfg1.Detach();
+            d3d12SDKVersion = D3D12_SDK_VERSION;
         }
+
+        std::cout << std::format("AgilitySDK version {}\n", d3d12SDKVersion);
     }
 
     AgilitySDKLoader::~AgilitySDKLoader() {
-        if(d3d12CoreDllHandle) {
-            FreeLibrary((HMODULE)d3d12CoreDllHandle);
-        }
-        if(d3d12SDKLayersDllHandle) {
-            FreeLibrary((HMODULE)d3d12SDKLayersDllHandle);
+        CleanupUnused();
+    }
+
+    
+    void AgilitySDKLoader::CleanupUnused() {
+        if(cfg1) {
+            devCfg1->Release();
+            factory->Release();
+            cfg1->FreeUnusedSDKs();
+            cfg1->Release();
         }
     }
 
@@ -289,10 +256,11 @@ namespace alloy::dxc {
 
     
     void DXCAdapter::PopulateAdpInfo() {
+        auto& d3d12If = _ctx->GetD3D12If();
         
         ID3D12Device* dev;
 
-        ThrowIfFailed(D3D12CreateDevice(_adp, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dev)));
+        ThrowIfFailed(d3d12If.CreateDevice(_adp, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&dev)));
 
         _caps.ReadFromDevice(dev);
 
@@ -503,16 +471,17 @@ namespace alloy::dxc {
     
     common::sp<DXCContext> DXCContext::Make(const IContext::Options& opts) {
         //Init Agility SDK first
-        //AgilitySDKLoader agilitySDK {opts.debug};
 
         //Load the relevant dlls:
         //auto d3d12Dll = std::make_unique<D3D12DllLoader>();
         std::unique_ptr<D3D12DllLoader> d3d12Dll;
         std::unique_ptr<DxgiDllLoader> dxgiDll;
+        std::unique_ptr<AgilitySDKLoader> agilitySDK;
 
         try {
             d3d12Dll = std::make_unique<D3D12DllLoader>();
             dxgiDll = std::make_unique<DxgiDllLoader>();
+            agilitySDK = std::make_unique<AgilitySDKLoader> (*d3d12Dll, opts.debug);
         }
         catch(const std::runtime_error& e) {
             //Failed to load dll
@@ -527,7 +496,7 @@ namespace alloy::dxc {
 //#ifndef NDEBUG
             // Enable the debug layer.
             ID3D12Debug* debugController;
-            if (SUCCEEDED(d3d12Dll->pfnD3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+            if (SUCCEEDED(agilitySDK->QueryDebugInterface(&debugController)))
             {
                 debugController->EnableDebugLayer();
 
@@ -556,7 +525,7 @@ namespace alloy::dxc {
         }
 
         return common::sp(new DXCContext(
-            //std::move(agilitySDK),
+            std::move(*agilitySDK),
             std::move(*d3d12Dll),
             std::move(*dxgiDll),
             dxgiFactory,

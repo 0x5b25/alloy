@@ -17,7 +17,7 @@ namespace alloy::dxc
             DXCDevice* dev,
             const std::vector<D3D12_ROOT_PARAMETER1>& rootParams
         ) {
-            auto& d3d12Dll = dev->GetContext().GetD3D12Dll();
+            auto& d3d12If = dev->GetContext().GetD3D12If();
             constexpr auto flags 
                 = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
                 | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT
@@ -38,16 +38,16 @@ namespace alloy::dxc
                 dst.ShaderVisibility = src.ShaderVisibility;
             }
 
-            D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
-            rootSigDesc.NumParameters = static_cast<UINT>(rootParamsV1.size());
-            rootSigDesc.pParameters = rootParamsV1.data();
-            rootSigDesc.NumStaticSamplers = 0;
-            rootSigDesc.pStaticSamplers = nullptr;
-            rootSigDesc.Flags = flags;
+            D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc{};
+            rootSigDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1;
+            rootSigDesc.Desc_1_0.NumParameters = static_cast<UINT>(rootParamsV1.size());
+            rootSigDesc.Desc_1_0.pParameters = rootParamsV1.data();
+            rootSigDesc.Desc_1_0.NumStaticSamplers = 0;
+            rootSigDesc.Desc_1_0.pStaticSamplers = nullptr;
+            rootSigDesc.Desc_1_0.Flags = flags;
 
-            hr = d3d12Dll.pfnD3D12SerializeRootSignature(
+            hr = d3d12If.SerializeVersionedRootSignature(
                 &rootSigDesc,
-                D3D_ROOT_SIGNATURE_VERSION_1,
                 &signature,
                 nullptr);
             
@@ -130,7 +130,7 @@ namespace alloy::dxc
         const Description& desc
     ) {
         auto pDev = dev->GetDevice();
-        auto& d3d12Dll = dev->GetContext().GetD3D12Dll();
+        auto& d3d12If = dev->GetContext().GetD3D12If();
 
         IShader::Stages combinedShaderResAccess;
         IShader::Stages samplerAccess;
@@ -251,17 +251,17 @@ namespace alloy::dxc
         assert(rootConstantCnt >= rootConstantRequested &&
             "Too many root constants, root signature exceeded 256 DWORDS");
 
-        D3D12_ROOT_SIGNATURE_DESC rootSigDesc{};
-        rootSigDesc.NumParameters = rootParams.size();
-        rootSigDesc.pParameters = rootParams.data();
-        rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
+        D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc{};
+        rootSigDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1;
+        rootSigDesc.Desc_1_0.NumParameters = rootParams.size();
+        rootSigDesc.Desc_1_0.pParameters = rootParams.data();
+        rootSigDesc.Desc_1_0.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
                           | D3D12_ROOT_SIGNATURE_FLAG_ALLOW_STREAM_OUTPUT;
 
         ID3DBlob* signature;
         ID3D12RootSignature* rootSignature;
-        auto hr = d3d12Dll.pfnD3D12SerializeRootSignature(
+        auto hr = d3d12If.SerializeVersionedRootSignature(
             &rootSigDesc,
-            D3D_ROOT_SIGNATURE_VERSION_1,
             &signature,
             nullptr);
 

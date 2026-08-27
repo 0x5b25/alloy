@@ -130,22 +130,34 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
     void BindBarrier(VulkanCommandList* cmdBuf, std::span<const alloy::BarrierOp> barriers) {
         VkPipelineStageFlags stagesBefore = 0;
         VkPipelineStageFlags stagesAfter = 0;
+        std::vector<VkMemoryBarrier> globalBarriers;
         std::vector<VkBufferMemoryBarrier> bufBarriers;
         std::vector<VkImageMemoryBarrier> texBarriers;
 
+        auto _PopulateBarrierStageAccess = [&](auto& barrier, const auto& barrierDesc) {
+            stagesBefore |= vk_stage_flags_from_alloy_barrier(
+                barrierDesc.from.stages, barrierDesc.from.access);
+            stagesAfter |= vk_stage_flags_from_alloy_barrier(
+                barrierDesc.to.stages, barrierDesc.to.access);
+
+            _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
+        };
+
         for(auto& desc : barriers) {
-            if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
+            if(std::holds_alternative<alloy::GlobalBarrierOp>(desc)) {
+                globalBarriers.emplace_back(VK_STRUCTURE_TYPE_MEMORY_BARRIER);
+                auto& barrier = globalBarriers.back();
+                auto& barrierDesc = std::get<alloy::GlobalBarrierOp>(desc);
+                _PopulateBarrierStageAccess(barrier, barrierDesc);
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
                 auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
                 auto thisBuf = common::PtrCast<VulkanBuffer>(barrierDesc.buffer->GetBufferObject().get());
                 const auto& shape = barrierDesc.buffer->GetShape();
                 auto& barrier = bufBarriers.emplace_back(VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
 
-                stagesBefore |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.from.stages, barrierDesc.from.access);
-                stagesAfter |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.to.stages, barrierDesc.to.access);
+                _PopulateBarrierStageAccess(barrier, barrierDesc);
 
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.buffer = thisBuf->GetHandle();
@@ -160,12 +172,8 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
                 const auto& texDesc = thisTex->GetDesc();
                 auto& barrier = texBarriers.emplace_back(VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
 
-                stagesBefore |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.from.stages, barrierDesc.from.access);
-                stagesAfter |= vk_stage_flags_from_alloy_barrier(
-                    barrierDesc.to.stages, barrierDesc.to.access);
+                _PopulateBarrierStageAccess(barrier, barrierDesc);
 
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
                 barrier.oldLayout = AlToVkTexLayout(barrierDesc.from.layout);
                 barrier.newLayout = AlToVkTexLayout(barrierDesc.to.layout);
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -195,7 +203,7 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
                     stagesBefore ? stagesBefore : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                     stagesAfter ? stagesAfter : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                     0,
-                    0, nullptr,
+                    globalBarriers.size(), globalBarriers.data(),
                     bufBarriers.size(), bufBarriers.data(),
                     texBarriers.size(), texBarriers.data()));
         }

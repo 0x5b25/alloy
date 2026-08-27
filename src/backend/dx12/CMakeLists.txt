@@ -70,7 +70,7 @@ target_link_libraries(Veldrid
     #    d3d12.lib
     #    dxgi.lib
     #    WinPixEventRuntime
-    #    dxguid.lib
+        dxguid.lib
     #    common
     #    glm
     #    vulkan

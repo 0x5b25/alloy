@@ -162,8 +162,13 @@ namespace alloy
         TextureLayout layout;
     };
 
+    struct GlobalBarrierOp {
+        ResourceState from;
+        ResourceState to;
+    };
+
     struct BufferBarrierOp {
-        common::sp<alloy::BufferRange> buffer; //#TODO: Use BufferRange
+        common::sp<alloy::BufferRange> buffer;
         ResourceState from;
         ResourceState to;
     };
@@ -174,7 +179,7 @@ namespace alloy
         TextureState to;
     };
 
-    using BarrierOp = std::variant<BufferBarrierOp, TextureBarrierOp>;
+    using BarrierOp = std::variant<GlobalBarrierOp, BufferBarrierOp, TextureBarrierOp>;
     
 } // namespace alloy
 

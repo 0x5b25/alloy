@@ -1759,21 +1759,32 @@ namespace alloy::dxc
         std::vector<D3D12_BUFFER_BARRIER> bufBarriers;
         std::vector<D3D12_TEXTURE_BARRIER> texBarrier;
 
+        auto _PopulateBarrierStageAccess = [](auto& barrier, const auto& barrierDesc) {
+            barrier.SyncAfter = _GetSyncStages(barrierDesc.to.stages, false);
+            barrier.SyncBefore = _GetSyncStages(barrierDesc.from.stages, true);
+
+            _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
+        };
+
         for(auto& desc : descs) {
-            if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
+            if(std::holds_alternative<alloy::GlobalBarrierOp>(desc)) {
+                memBarriers.emplace_back();
+                auto& barrier = memBarriers.back();
+                auto& barrierDesc = std::get<alloy::GlobalBarrierOp>(desc);
+                _PopulateBarrierStageAccess(barrier, barrierDesc);
+            }
+            else if(std::holds_alternative<alloy::BufferBarrierOp>(desc)) {
                 bufBarriers.emplace_back();
                 auto& barrier = bufBarriers.back();
                 auto& barrierDesc = std::get<alloy::BufferBarrierOp>(desc);
+
+                _PopulateBarrierStageAccess(barrier, barrierDesc);
 
                 auto range = barrierDesc.buffer;
                 auto buffer = range->GetBufferObject();
                 auto dxcBuffer = PtrCast<DXCBuffer>(buffer.get());
                 _devRes.insert(range);
 
-                barrier.SyncAfter = _GetSyncStages(barrierDesc.to.stages, false);
-                barrier.SyncBefore = _GetSyncStages(barrierDesc.from.stages, true);
-
-                _PopulateBarrierAccess(barrierDesc.from.access, barrierDesc.to.access, barrier);
                 barrier.pResource = dxcBuffer->GetHandle();
 
                 const auto& rangeDesc = range->GetShape();
@@ -1784,16 +1795,13 @@ namespace alloy::dxc
                 texBarrier.emplace_back();
                 auto& barrier = texBarrier.back();
                 auto& texDesc = std::get<alloy::TextureBarrierOp>(desc);
+                _PopulateBarrierStageAccess(barrier, texDesc);
 
                 auto view = texDesc.texture;
                 auto texture = view->GetTextureObject();
                 auto dxcTex = common::PtrCast<DXCTexture>(texture.get());
                 _devRes.insert(view);
                 
-                barrier.SyncAfter = _GetSyncStages(texDesc.to.stages, false);
-                barrier.SyncBefore = _GetSyncStages(texDesc.from.stages, true);
-
-                _PopulateBarrierAccess(texDesc.from.access, texDesc.to.access, barrier);
                 _PopulateTextureBarrier(texDesc, barrier);
                 barrier.pResource = dxcTex->GetHandle();
 

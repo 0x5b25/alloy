@@ -58,6 +58,7 @@ namespace alloy::dxc {
     
     class D3D12DllLoader : public DllLoader {
     public:
+        PFN_D3D12_GET_INTERFACE            pfnD3D12GetInterface;
         PFN_D3D12_CREATE_DEVICE            pfnD3D12CreateDevice;
         PFN_D3D12_GET_DEBUG_INTERFACE      pfnD3D12GetDebugInterface;
         PFN_D3D12_SERIALIZE_ROOT_SIGNATURE pfnD3D12SerializeRootSignature;
@@ -84,10 +85,17 @@ namespace alloy::dxc {
     // it in <App exe binary path>/D3D12/****.dll, if that fails then from OS
     // default path
     class AgilitySDKLoader {
-        void* d3d12CoreDllHandle,* d3d12SDKLayersDllHandle;
-        uint32_t d3d12CoreVersion, d3d12SDKLayersVersion;
+        ID3D12SDKConfiguration1* cfg1;
+        ID3D12DeviceFactory* factory;
+        ID3D12DeviceConfiguration1* devCfg1;
+
+        //void* d3d12CoreDllHandle,* d3d12SDKLayersDllHandle;
+        uint32_t d3d12SDKVersion;
+
+        void CleanupUnused();
+
     public:
-        AgilitySDKLoader(bool loadDebugLayer = false);
+        AgilitySDKLoader(D3D12DllLoader& d3d12Loader, bool loadDebugLayer = false);
 
         ~AgilitySDKLoader();
 
@@ -96,35 +104,83 @@ namespace alloy::dxc {
 
         
         AgilitySDKLoader(AgilitySDKLoader&& other)
-            : d3d12CoreDllHandle(other.d3d12CoreDllHandle)
-            , d3d12SDKLayersDllHandle(other.d3d12SDKLayersDllHandle)
-            , d3d12CoreVersion(other.d3d12CoreVersion)
-            , d3d12SDKLayersVersion(other.d3d12SDKLayersVersion)
+            : cfg1(other.cfg1)
+            , factory(other.factory)
+            , devCfg1(other.devCfg1)
+            , d3d12SDKVersion(other.d3d12SDKVersion)
         {
-            other.d3d12CoreDllHandle = nullptr;
-            other.d3d12SDKLayersDllHandle = nullptr;
+            other.cfg1 = nullptr;
+            other.factory = nullptr;
+            other.devCfg1 = nullptr;
         }
         AgilitySDKLoader& operator=(AgilitySDKLoader&& other) {
-            if(d3d12CoreDllHandle) {
-                FreeLibrary((HMODULE)d3d12CoreDllHandle);
-            }
-            if(d3d12SDKLayersDllHandle) {
-                FreeLibrary((HMODULE)d3d12SDKLayersDllHandle);
-            }
+            CleanupUnused();
+            
+            cfg1            = other.cfg1;
+            factory         = other.factory;
+            devCfg1         = other.devCfg1;
+            d3d12SDKVersion = other.d3d12SDKVersion;
 
-            d3d12CoreDllHandle      = other.d3d12CoreDllHandle;
-            d3d12SDKLayersDllHandle = other.d3d12SDKLayersDllHandle;
-            d3d12CoreVersion        = other.d3d12CoreVersion;
-            d3d12SDKLayersVersion   = other.d3d12SDKLayersVersion;
+            other.cfg1 = nullptr;
+            other.factory = nullptr;
+            other.devCfg1 = nullptr;
 
-            other.d3d12CoreDllHandle = nullptr;
-            other.d3d12SDKLayersDllHandle = nullptr;
+            return *this;
         }
 
-        uint32_t GetSDKVersion() const { return d3d12CoreVersion; }
-        uint32_t GetDebugLayerVersion() const { return d3d12SDKLayersVersion; }
+        uint32_t GetSDKVersion() const { return d3d12SDKVersion; }
 
-        bool IsDebugLayerDllLoaded() const { return d3d12SDKLayersDllHandle != nullptr; }
+        // Interface queries
+        HRESULT QueryDebugInterface(ID3D12Debug** iface) {
+            return factory->GetConfigurationInterface(CLSID_D3D12Debug, IID_PPV_ARGS(iface));
+        }
+        
+        // Provided by device factory
+
+        HRESULT EnableExperimentalFeatures(
+           UINT      NumFeatures,
+           const IID *pIIDs,
+           void      *pConfigurationStructs,
+           UINT      *pConfigurationStructSizes
+        ) const {
+            return factory->EnableExperimentalFeatures(
+                NumFeatures, 
+                pIIDs, 
+                pConfigurationStructs, pConfigurationStructSizes);
+        }
+
+        HRESULT CreateDevice(
+            IUnknown *adapter,
+            D3D_FEATURE_LEVEL FeatureLevel,
+            REFIID riid,
+            void **ppvDevice
+        ) const {
+            return factory->CreateDevice(
+                adapter,
+                FeatureLevel,
+                riid, ppvDevice);
+        }
+
+        // Provided by devCfg1
+        HRESULT SerializeVersionedRootSignature(
+            const D3D12_VERSIONED_ROOT_SIGNATURE_DESC *pDesc,
+            ID3DBlob **ppResult,
+            ID3DBlob **ppError
+        ) const {
+            return devCfg1->SerializeVersionedRootSignature(
+                pDesc, ppResult, ppError);
+        }
+
+        HRESULT CreateVersionedRootSignatureDeserializer(
+            const void* pBlob,
+            SIZE_T Size,
+            REFIID riid,
+            void **ppvDeserializer
+        ) const {
+            return devCfg1->CreateVersionedRootSignatureDeserializer(
+                pBlob, Size, riid, ppvDeserializer);
+        }
+    
     };
 
       
@@ -201,7 +257,7 @@ namespace alloy::dxc {
     };
 
     class DXCContext : public IContext {
-        //gilitySDKLoader _agilitySDK;
+        AgilitySDKLoader _agilitySDK;
 
         D3D12DllLoader _d3d12Dll;
         DxgiDllLoader _dxgiDll;
@@ -211,14 +267,14 @@ namespace alloy::dxc {
         bool _debug;
     public:
         DXCContext(
-            //AgilitySDKLoader&& agilitySDK,
+            AgilitySDKLoader&& agilitySDK,
             D3D12DllLoader&& d3d12Dll,
             DxgiDllLoader&& dxgiDll,
             IDXGIFactory4* factory,
             bool debug
         ) 
-            //: _agilitySDK(std::move(agilitySDK))
-            : _d3d12Dll(std::move(d3d12Dll))
+            : _agilitySDK(std::move(agilitySDK))
+            , _d3d12Dll(std::move(d3d12Dll))
             , _dxgiDll(std::move(dxgiDll))
             , _factory(factory)
             , _debug(debug)
@@ -230,8 +286,10 @@ namespace alloy::dxc {
         virtual common::sp<IGraphicsDevice> CreateDefaultDevice(const IGraphicsDevice::Options& options) override;
         virtual std::vector<common::sp<IPhysicalAdapter>> EnumerateAdapters() override;
 
-        const D3D12DllLoader& GetD3D12Dll() const { return _d3d12Dll; }
-        const DxgiDllLoader& GetDxgiDll() const { return _dxgiDll; }
+        //const D3D12DllLoader& GetD3D12Dll() const { return _d3d12Dll; }
+        //const DxgiDllLoader& GetDxgiDll() const { return _dxgiDll; }
+        const AgilitySDKLoader& GetD3D12If() const { return _agilitySDK; }
+        bool IsDebugLayerEnabled() const { return _debug; }
 
         uint32_t InstallDebugCallBack(ID3D12Device* pDev);
         void UninstallDebugCallBack(ID3D12Device* pDev, uint32_t cookie);

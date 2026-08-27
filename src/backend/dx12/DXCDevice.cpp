@@ -44,68 +44,6 @@ extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\
 
 using Microsoft::WRL::ComPtr;
 
-HRESULT GetAdapter(IDXGIFactory4* dxgiFactory, bool enableDebug, ComPtr<IDXGIAdapter1>& outAdp) {
-    
-    ComPtr<IDXGIAdapter1> selectedAdp = nullptr;
-    SIZE_T maxDedicatedVideoMemory = 0;
-    UINT adapterIndex = 0;
-    while(true)
-    {
-        ComPtr<IDXGIAdapter1> adapter;
-        if(DXGI_ERROR_NOT_FOUND == dxgiFactory->EnumAdapters1(adapterIndex, &adapter)){
-            break;
-        }
-
-        ++adapterIndex;
-
-        DXGI_ADAPTER_DESC1 desc;
-        auto status = adapter->GetDesc1(&desc);
-        if (FAILED(status))
-            continue;
-
-        if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-        {
-            // Don't select the Basic Render Driver adapter.
-            continue;
-        }
-
-        // Check to see if the adapter supports Direct3D 12,
-        // but don't create the actual device yet.
-        if (FAILED(
-            D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0,
-                _uuidof(ID3D12Device), nullptr)))
-        {
-            continue;
-        }
-
-        if(desc.DedicatedVideoMemory > maxDedicatedVideoMemory ) {
-            maxDedicatedVideoMemory = desc.DedicatedVideoMemory;
-            //std::swap(adapter, selectedAdp);
-            selectedAdp = std::move(adapter);
-        }
-    }
-
-    if(selectedAdp == nullptr) {
-        if(enableDebug){
-            //Get a WARP device if debug mode & no dx12 capable device found.
-            auto status = dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&selectedAdp));
-            if (FAILED(status)) {
-                return status;
-            }
-        } else {
-            //WARP is a software simulated device for validation use,
-            //and mostly irrelevant to release builds
-            return DXGI_ERROR_NOT_FOUND;
-        }
-    }
-
-
-    outAdp = std::move(selectedAdp);  
-    
-    return S_OK;
-}
-
-
 namespace alloy::dxc {
 
 
@@ -289,10 +227,11 @@ namespace alloy::dxc {
         const IGraphicsDevice::Options &options
     ) {
         auto& devCaps = adp->GetCaps();
+        auto& d3d12If = adp->GetContext().GetD3D12If();
         //Enumeration done. create the selected device
         ComPtr<ID3D12Device> device;
         {
-            auto hr = D3D12CreateDevice(adp->GetHandle(), D3D_FEATURE_LEVEL_11_1, IID_PPV_ARGS(&device));
+            auto hr = d3d12If.CreateDevice(adp->GetHandle(), D3D_FEATURE_LEVEL_11_1, IID_PPV_ARGS(&device));
             if (FAILED(hr)) {
                 return nullptr;
             }
