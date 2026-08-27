@@ -125,11 +125,13 @@ namespace alloy::dxc
 
         void CmdBindPipeline(ID3D12GraphicsCommandList* pCmdList) override;
 
+#ifdef VLD_DEBUG
         static const void* GetTypeKey() {
             return (const void*)&DXCComputePipeline::Make;
         }
 
         virtual const void* GetPipelineType() const override { return GetTypeKey(); }
+#endif
 
     };
 

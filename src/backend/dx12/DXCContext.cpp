@@ -93,11 +93,11 @@ namespace alloy::dxc {
                 throw std::runtime_error(std::format("AgilitySDKLoader: CreateDeviceFactory failed with HRESULT 0x{:0x}", result));
             }
             
-            ComPtr<ID3D12DeviceConfiguration1> devCfg1;
-            factory.As(&devCfg1);
+            ComPtr<ID3D12DeviceConfiguration> devCfg;
+            result = factory.As(&devCfg);
             this->cfg1 = cfg1.Detach();
             this->factory = factory.Detach();
-            this->devCfg1 = devCfg1.Detach();
+            this->devCfg = devCfg.Detach();
             d3d12SDKVersion = D3D12_SDK_VERSION;
         }
 
@@ -111,7 +111,7 @@ namespace alloy::dxc {
     
     void AgilitySDKLoader::CleanupUnused() {
         if(cfg1) {
-            devCfg1->Release();
+            devCfg->Release();
             factory->Release();
             cfg1->FreeUnusedSDKs();
             cfg1->Release();
@@ -645,6 +645,7 @@ namespace alloy::dxc {
                 (D3D12_MESSAGE_ID)D3D12_MESSAGE_ID_FENCE_ZERO_WAIT_,
                 D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
                 D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+                D3D12_MESSAGE_ID_NON_OPTIMAL_BARRIER_ONLY_EXECUTE_COMMAND_LISTS,
             };
             D3D12_INFO_QUEUE_FILTER filter = {};
             filter.DenyList.NumIDs = sizeof(disabledMessages)/sizeof(disabledMessages[0]);

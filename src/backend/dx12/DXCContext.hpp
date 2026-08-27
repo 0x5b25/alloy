@@ -87,7 +87,7 @@ namespace alloy::dxc {
     class AgilitySDKLoader {
         ID3D12SDKConfiguration1* cfg1;
         ID3D12DeviceFactory* factory;
-        ID3D12DeviceConfiguration1* devCfg1;
+        ID3D12DeviceConfiguration* devCfg;
 
         //void* d3d12CoreDllHandle,* d3d12SDKLayersDllHandle;
         uint32_t d3d12SDKVersion;
@@ -106,24 +106,24 @@ namespace alloy::dxc {
         AgilitySDKLoader(AgilitySDKLoader&& other)
             : cfg1(other.cfg1)
             , factory(other.factory)
-            , devCfg1(other.devCfg1)
+            , devCfg(other.devCfg)
             , d3d12SDKVersion(other.d3d12SDKVersion)
         {
             other.cfg1 = nullptr;
             other.factory = nullptr;
-            other.devCfg1 = nullptr;
+            other.devCfg = nullptr;
         }
         AgilitySDKLoader& operator=(AgilitySDKLoader&& other) {
             CleanupUnused();
             
             cfg1            = other.cfg1;
             factory         = other.factory;
-            devCfg1         = other.devCfg1;
+            devCfg         = other.devCfg;
             d3d12SDKVersion = other.d3d12SDKVersion;
 
             other.cfg1 = nullptr;
             other.factory = nullptr;
-            other.devCfg1 = nullptr;
+            other.devCfg = nullptr;
 
             return *this;
         }
@@ -167,7 +167,7 @@ namespace alloy::dxc {
             ID3DBlob **ppResult,
             ID3DBlob **ppError
         ) const {
-            return devCfg1->SerializeVersionedRootSignature(
+            return devCfg->SerializeVersionedRootSignature(
                 pDesc, ppResult, ppError);
         }
 
@@ -177,7 +177,7 @@ namespace alloy::dxc {
             REFIID riid,
             void **ppvDeserializer
         ) const {
-            return devCfg1->CreateVersionedRootSignatureDeserializer(
+            return devCfg->CreateVersionedRootSignatureDeserializer(
                 pBlob, Size, riid, ppvDeserializer);
         }
     
