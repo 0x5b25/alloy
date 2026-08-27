@@ -5,6 +5,7 @@
 #include "VulkanBindableResource.hpp"
 
 #include <format>
+#include <cstring> //For memcpy
 
 namespace alloy::vk
 {
@@ -97,7 +98,7 @@ namespace alloy::vk
         // Send to global heap if useGlobalHeaps == true;
         // otherwise this should result in error
         assert(layout->GetDesc().useGlobalHeaps
-            && __FUNCTION__": Failed to find vulkan bindings");
+            && " Failed to find vulkan bindings");
         return false;
     }
     

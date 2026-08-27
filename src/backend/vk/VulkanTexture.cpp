@@ -8,6 +8,8 @@
 #include "VulkanDevice.hpp"
 #include "VkTypeCvt.hpp"
 
+#include <cstring> //For memcpy
+
 namespace alloy::vk {
     
     VulkanTexture::~VulkanTexture() {

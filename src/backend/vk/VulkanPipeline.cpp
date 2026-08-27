@@ -825,6 +825,10 @@ public:
             alloy::vk::ConverterCompilerArgs compiler_args{};
             compiler_args.shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;
             compiler_args.entryPoint = shader->GetDesc().entryPoint;
+            if(desc.resourceLayout) {
+                auto resourceLayout = PtrCast<VulkanResourceLayout>(desc.resourceLayout.get());
+                compiler_args.root_constant_words =  resourceLayout->GetPushConstantSize();
+            }
 
             remapper.SetStage(alloy::IShader::Stage::Compute);
 

@@ -6,6 +6,7 @@
 #include "alloy/CommandList.hpp"
 
 #include <vector>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>

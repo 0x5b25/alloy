@@ -1,6 +1,7 @@
 #pragma once
 
 #include <volk.h>
+#include <cstdio> // For linux VMA error snprintf not found
 #include <vk_mem_alloc.h>
 
 #include "alloy/common/RefCnt.hpp"

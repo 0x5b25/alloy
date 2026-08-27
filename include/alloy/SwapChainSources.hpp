@@ -11,6 +11,10 @@ namespace alloy
         enum class Tag : std::uint32_t{
             Opaque,
             Win32,
+            // Linux specific
+            Wayland,
+            X11,
+            // Apple platforms
             NSView,
             UIView,
             NSWindow,
@@ -99,22 +103,22 @@ namespace alloy
             Display = display;
             Window = window;
         }
-    }
-
-    internal class WaylandSwapchainSource : SwapchainSource
+    }*/
+#if defined(VLD_PLATFORM_LINUX)
+    struct WaylandSwapChainSource : SwapChainSource
     {
-        public IntPtr Display{ get; }
-        public IntPtr Surface{ get; }
+        void* display; // wl_display*
+        void* surface; // wl_surface*
 
-            public WaylandSwapchainSource(IntPtr display, IntPtr surface)
-        {
-            Display = display;
-            Surface = surface;
-        }
-    }
+        WaylandSwapChainSource(void*  display, void* surface)
+            : SwapChainSource(SwapChainSource::Tag::Wayland)
+            , display(display)
+            , surface(surface)
+        {  }
+    };
+#endif
 
-
-
+    /*
     internal class AndroidSurfaceSwapchainSource : SwapchainSource
     {
         public IntPtr Surface{ get; }

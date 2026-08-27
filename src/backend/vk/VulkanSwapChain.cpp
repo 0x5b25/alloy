@@ -1,7 +1,5 @@
 #include "VulkanSwapChain.hpp"
 
-#include <volk.h>
-
 #include "alloy/common/Macros.h"
 
 #include <cassert>
@@ -9,8 +7,8 @@
 
 #include "VulkanContext.hpp"
 #include "VkTypeCvt.hpp"
-#include "VkCommon.hpp"
-#include "VkSurfaceUtil.hpp"
+//#include "VkCommon.hpp"
+//#include "VkSurfaceUtil.hpp"
 #include "VulkanDevice.hpp"
 
 namespace alloy::vk

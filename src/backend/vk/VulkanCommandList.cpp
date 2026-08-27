@@ -1057,7 +1057,7 @@ namespace alloy::vk{
 
         auto* srcVkBuffer = PtrCast<VulkanBuffer>(src->GetBufferObject().get());
         
-        auto dstVkView = PtrCast<VulkanTextureView>(dst.get());
+        auto dstVkView = PtrCast<VulkanTextureViewBase>(dst.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(dst->GetTextureObject().get());
         const auto& dstViewDesc = dstVkView->GetDesc();
 
@@ -1107,7 +1107,7 @@ namespace alloy::vk{
         std::uint32_t dstBytesPerImage,
         const Size3D& copySize
     ) {
-        auto srcVkView = PtrCast<VulkanTextureView>(src.get());
+        auto srcVkView = PtrCast<VulkanTextureViewBase>(src.get());
         auto srcVkTexture = PtrCast<VulkanTexture>(src->GetTextureObject().get());
         const auto& srcViewDesc = srcVkView->GetDesc();
 
@@ -1210,11 +1210,11 @@ namespace alloy::vk{
         const Size3D& copySize
     ){
 
-        auto srcVkView = PtrCast<VulkanTextureView>(src.get());
+        auto srcVkView = PtrCast<VulkanTextureViewBase>(src.get());
         auto srcVkTexture = PtrCast<VulkanTexture>(src->GetTextureObject().get());
         const auto& srcViewDesc = srcVkView->GetDesc();
         
-        auto dstVkView = PtrCast<VulkanTextureView>(dst.get());
+        auto dstVkView = PtrCast<VulkanTextureViewBase>(dst.get());
         auto dstVkTexture = PtrCast<VulkanTexture>(dst->GetTextureObject().get());
         const auto& dstViewDesc = dstVkView->GetDesc();
 
@@ -1448,7 +1448,7 @@ namespace alloy::vk{
             for (auto& ctAct : actions.colorTargetActions)
             {
                 //auto vkRT = common::PtrCast<VulkanRenderTarget>(ctAct.target.get());
-                auto vkTexView = common::PtrCast<VulkanTextureView>(ctAct.target.get());
+                auto vkTexView = common::PtrCast<VulkanTextureViewBase>(ctAct.target.get());
                 auto vkColorTex = common::PtrCast<VulkanTexture>(vkTexView->GetTextureObject().get());
 
                 auto& texDesc = vkColorTex->GetDesc();
