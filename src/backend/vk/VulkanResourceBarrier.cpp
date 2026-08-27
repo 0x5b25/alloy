@@ -196,7 +196,7 @@ VkPipelineStageFlags vk_stage_flags_from_alloy_barrier(
             }
         }
 
-        if(!bufBarriers.empty() || !texBarriers.empty()) {
+        if(!globalBarriers.empty() || !bufBarriers.empty() || !texBarriers.empty()) {
             VK_DEV_CALL(cmdBuf->GetDevice(),
                 vkCmdPipelineBarrier(
                     cmdBuf->GetHandle(),

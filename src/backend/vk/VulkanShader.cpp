@@ -26,11 +26,11 @@ namespace alloy::vk
                              : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; 
             break;
     
-        case DXIL_SPV_RESOURCE_KIND_TYPED_BUFFER:
         case DXIL_SPV_RESOURCE_KIND_RAW_BUFFER:
         case DXIL_SPV_RESOURCE_KIND_STRUCTURED_BUFFER:
             vkType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; break;
-
+            
+        case DXIL_SPV_RESOURCE_KIND_TYPED_BUFFER: // Texel buffers aren't supported
         default: 
             assert(false && "Unlikely alloy shader resource type");
         }
@@ -479,7 +479,8 @@ namespace alloy::vk
                                    SPVRemapper& remapper,
                                    SPIRVBlob& spirv) {
         
-        const auto& devLimit = device.GetAdapter().GetAdapterInfo().limits;
+        //const auto& devLimit = device.GetAdapter().GetAdapterInfo().limits;
+        const auto& vkCaps = device.GetDevCaps();
         
         //dxil_spv_converter converter = nullptr;
         //dxil_spv_parsed_blob blob = nullptr;
@@ -535,9 +536,23 @@ namespace alloy::vk
                 break;
             }
 
+            dxil_spv_option_scalar_block_layout scalar_block {
+                .base = { DXIL_SPV_OPTION_SCALAR_BLOCK_LAYOUT },
+                .supported = vkCaps.SupportScalarBlockLayout()
+            };
+
+            if (dxil_spv_converter_add_option(converter.converter, &scalar_block.base) != DXIL_SPV_SUCCESS)
+            {
+                //ERR("dxil-spirv does not support SCALAR_BLOCK_LAYOUT.\n");
+                ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+                assert(false);
+                break;
+            }
+
+
             dxil_spv_option_ssbo_alignment ssbo_alignment {
                 .base = { DXIL_SPV_OPTION_SSBO_ALIGNMENT },
-                .alignment = (uint32_t)devLimit.minStructuredBufferStride
+                .alignment = 1
             };
 
             if (dxil_spv_converter_add_option(converter.converter, &ssbo_alignment.base) != DXIL_SPV_SUCCESS)
