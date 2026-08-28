@@ -7,6 +7,7 @@
 
 
 //Set platform defines at build time for volk to pick up.
+/*
 #if defined(VLD_PLATFORM_WIN32)
 	#define VK_USE_PLATFORM_WIN32_KHR
 #elif defined(VLD_PLATFORM_ANDROID)
@@ -19,7 +20,7 @@
 #else
 #   error "Platform not supported by this example."
 #endif 
-
+*/
 
 #include <volk.h>
 
@@ -41,7 +42,7 @@ SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, const alloy::SwapC
 			return {(VkSurfaceKHR)opaqueSource->handle, false};
 		}
 
-#ifdef VLD_PLATFORM_WIN32
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
 		case alloy::SwapChainSource::Tag::Win32: {
 			auto win32Source = (alloy::Win32SwapChainSource*)swapchainSource;
 			VkWin32SurfaceCreateInfoKHR surfaceCI{};
@@ -58,7 +59,7 @@ SurfaceContainer CreateSurface(alloy::vk::VulkanContext& ctx, const alloy::SwapC
 #endif
 
 
-#if defined(VLD_PLATFORM_LINUX)
+#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 		case alloy::SwapChainSource::Tag::Wayland: {
 			auto wlSource = (alloy::WaylandSwapChainSource*)swapchainSource;
 			VkWaylandSurfaceCreateInfoKHR surfaceCI {
