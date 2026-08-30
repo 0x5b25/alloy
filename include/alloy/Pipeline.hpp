@@ -92,7 +92,7 @@ namespace alloy
         /// next 3 instances will be drawn with the next value, and so on.
         std::uint32_t instanceStepRate;
 
-        void SetElements(std::initializer_list<Element> e){
+        void SetElements(std::initializer_list<Element> e, uint32_t instanceStepRate = 0){
             
             this->elements = e;
             unsigned computedStride = 0;
@@ -108,7 +108,7 @@ namespace alloy
             }
             
             stride = computedStride;
-            instanceStepRate = 0;
+            this->instanceStepRate = instanceStepRate;
         }
     };
 

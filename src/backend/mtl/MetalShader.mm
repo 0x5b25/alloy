@@ -231,10 +231,10 @@ MetalVertexShaderStage TranspileVertexShader(id<MTLDevice> dev,
     {
         auto& inputDesc = vertexLayouts[binding];
         //bindingDescs[binding].binding = binding;
-        //bindingDescs[binding].inputRate = (inputDesc.instanceStepRate != 0)
-        //    ? VkVertexInputRate::VK_VERTEX_INPUT_RATE_INSTANCE
-        //    : VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;
         //bindingDescs[binding].stride = inputDesc.stride;
+
+        // Match DXCPipeline iaDesc. Baked into synthesized vertex fetch shader.
+        const bool perInstance = inputDesc.instanceStepRate != 0;
 
         unsigned currentOffset = 0;
         for (int location = 0; location < inputDesc.elements.size(); location++)
@@ -248,9 +248,11 @@ MetalVertexShaderStage TranspileVertexShader(id<MTLDevice> dev,
             iaDesc.inputElementDescs[targetIndex]./*UINT*/ alignedByteOffset = inputElement.offset != 0
                                                             ? inputElement.offset
                                                             : currentOffset;
-            //TODO: [DXC, Vk] Support instanced draw?
-            iaDesc.inputElementDescs[targetIndex]./*D3D12_INPUT_CLASSIFICATION*/ inputSlotClass = IRInputClassificationPerVertexData;
-            iaDesc.inputElementDescs[targetIndex]./*UINT*/ instanceDataStepRate = 0;
+            iaDesc.inputElementDescs[targetIndex]./*D3D12_INPUT_CLASSIFICATION*/ inputSlotClass
+                = perInstance ? IRInputClassificationPerInstanceData
+                              : IRInputClassificationPerVertexData;
+            iaDesc.inputElementDescs[targetIndex]./*UINT*/ instanceDataStepRate
+                = perInstance ? inputDesc.instanceStepRate : 0;
 
             targetIndex += 1;
             currentOffset += FormatHelpers::GetSizeInBytes(inputElement.format);

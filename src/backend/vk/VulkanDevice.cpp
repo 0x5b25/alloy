@@ -538,6 +538,20 @@ namespace alloy::vk {
             meshShaderFeature.meshShader = VK_TRUE;
         }
 
+        if(devCaps.SupportVertexAttribDivisor()) {
+            // Core since VK1.4, otherwise add the extension
+            if(devCaps.hasVertexAttribDivisorExt) {
+                devExtensions.push_back(VK_KHR_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
+            }
+            auto& divisorFeature
+                = featureStructs.Append<VkPhysicalDeviceVertexAttributeDivisorFeatures,
+                                        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES>();
+
+            // vertexAttributeInstanceRateZeroDivisor isn't needed. Alloy clamps
+            // instanceStepRate == 0 to per-vertex to even the 3 backends.
+            divisorFeature.vertexAttributeInstanceRateDivisor = VK_TRUE;
+        }
+
         createInfo.pNext = featureStructs.Front<void*>();
 
         auto _AddExtIfPresent = [&](const char* extName) {

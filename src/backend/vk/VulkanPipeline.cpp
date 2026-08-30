@@ -469,6 +469,7 @@ public:
         }
         std::vector<VkVertexInputBindingDescription> bindingDescs(bindingCount);
         std::vector<VkVertexInputAttributeDescription> attributeDescs(attributeCount);
+        std::vector<VkVertexInputBindingDivisorDescription> bindingDivisors;
 
         std::unordered_map<VertexInputSemantic, uint32_t> iaMappings;
 
@@ -477,11 +478,20 @@ public:
         for (int binding = 0; binding < inputDescriptions.size(); binding++)
         {
             auto& inputDesc = inputDescriptions[binding];
+            const bool perInstance = inputDesc.instanceStepRate != 0;
+
             bindingDescs[binding].binding = binding;
-            bindingDescs[binding].inputRate = (inputDesc.instanceStepRate != 0)
-                ? VkVertexInputRate::VK_VERTEX_INPUT_RATE_INSTANCE
-                : VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;
+            bindingDescs[binding].inputRate
+                = perInstance ? VkVertexInputRate::VK_VERTEX_INPUT_RATE_INSTANCE
+                              : VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;
             bindingDescs[binding].stride = inputDesc.stride;
+
+            if(perInstance) {
+                bindingDivisors.push_back({
+                    .binding = (uint32_t)binding,
+                    .divisor = inputDesc.instanceStepRate
+                });
+            }
 
             unsigned currentOffset = 0;
             for (int location = 0; location < inputDesc.elements.size(); location++)
@@ -509,6 +519,19 @@ public:
         vertexInputCI.pVertexBindingDescriptions = bindingDescs.data();
         vertexInputCI.vertexAttributeDescriptionCount = attributeCount;
         vertexInputCI.pVertexAttributeDescriptions = attributeDescs.data();
+
+        VkPipelineVertexInputDivisorStateCreateInfo divisorCI {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO
+            .vertexBindingDivisorCount = bindingDivisors.size();
+            .pVertexBindingDivisors = bindingDivisors.data();
+        };
+        // Chaining the divisor state needs matching feature enabled on the device;
+        if(dev->GetDevCaps().SupportVertexAttribDivisor()) {
+            divisorCI.pNext = vertexInputCI.pNext;
+            vertexInputCI.pNext = &divisorCI;
+        } else {
+            assert(bindingDivisors.empty()); //#TODO: move to validation layer
+        }
 
         pipelineCI.pVertexInputState = &vertexInputCI;
 

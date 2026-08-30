@@ -39,6 +39,8 @@ namespace alloy::vk
         const bool hasDescriptorBufferExt = IsExtSupported(VkDevExtNames::VK_EXT_DESCRIPTOR_BUFFER);
         hasMutableDescriptorTypeExt =
             IsExtSupported(VkDevExtNames::VK_EXT_MUTABLE_DESCRIPTOR_TYPE);
+        hasVertexAttribDivisorExt =
+            IsExtSupported(VK_KHR_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
 
         VkPhysicalDeviceProperties devProps { };
         fnTable.vkGetPhysicalDeviceProperties(adp, &devProps);
@@ -131,6 +133,18 @@ namespace alloy::vk
                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT;
                 mutableDescriptorTypeFeatures.pNext = features2.pNext;
                 features2.pNext = &mutableDescriptorTypeFeatures;
+            }
+
+            if(devProps.apiVersion >= VK_API_VERSION_1_4 || hasVertexAttribDivisorExt) {
+                vertexAttribDivisorProps.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES;
+                vertexAttribDivisorProps.pNext = devProps2.pNext;
+                devProps2.pNext = &vertexAttribDivisorProps;
+
+                vertexAttribDivisorFeatures.sType =
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES;
+                vertexAttribDivisorFeatures.pNext = features2.pNext;
+                features2.pNext = &vertexAttribDivisorFeatures;
             }
 
             fnTable.vkGetPhysicalDeviceProperties2(adp, &devProps2);

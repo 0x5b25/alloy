@@ -38,6 +38,14 @@ namespace alloy::vk
         VkPhysicalDeviceMaintenance3Properties maintenance3Props;
 
         VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures;
+
+        // Per binding instance step rates. A rate of 1 is always available
+        // through VkVertexInputRate, but rates > 1 need the divisor feature,
+        // which is core since VK1.4 and an extension before that.
+        bool hasVertexAttribDivisorExt;
+        VkPhysicalDeviceVertexAttributeDivisorFeatures vertexAttribDivisorFeatures;
+        VkPhysicalDeviceVertexAttributeDivisorProperties vertexAttribDivisorProps;
+
         //bool hasDescriptorBufferExt;
         bool hasMutableDescriptorTypeExt;
         VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures;
@@ -54,6 +62,10 @@ namespace alloy::vk
         bool SupportScalarBlockLayout() const { return features12.scalarBlockLayout; }
         bool SupportMeshShader() const { return meshShaderFeatures.meshShader != 0
                                              && meshShaderFeatures.taskShader != 0; }
+        bool SupportVertexAttribDivisor() const {
+            return vertexAttribDivisorFeatures.vertexAttributeInstanceRateDivisor != 0; }
+        uint32_t MaxVertexAttribDivisor() const {
+            return vertexAttribDivisorProps.maxVertexAttribDivisor; }
         bool SupportBindless() const {return resourceBindingModel != ResourceBindingModel::T0; }
         
         

@@ -470,11 +470,12 @@ namespace alloy::dxc
         {
             auto& inputDesc = inputDescriptions[binding];
             //bindingDescs[binding].binding = binding;
-            //bindingDescs[binding].inputRate = (inputDesc.instanceStepRate != 0) 
-            //    ? VkVertexInputRate::VK_VERTEX_INPUT_RATE_INSTANCE 
-            //    : VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;
             //bindingDescs[binding].stride = inputDesc.stride;
-            
+
+            // DX12 requires step rate 0 for PER_VERTEX_DATA and >= 1 
+            // for PER_INSTANCE_DATA. Set them accordingly
+            const bool perInstance = inputDesc.instanceStepRate != 0;
+
             unsigned currentOffset = 0;
             for (int location = 0; location < inputDesc.elements.size(); location++)
             {
@@ -484,13 +485,15 @@ namespace alloy::dxc
                 iaDescs[targetIndex]./*UINT*/ SemanticIndex = inputElement.semantic.slot;
                 iaDescs[targetIndex]./*DXGI_FORMAT*/ Format = VdToD3DShaderDataType(inputElement.format);
                 iaDescs[targetIndex]./*UINT*/ InputSlot = binding;
-                iaDescs[targetIndex]./*UINT*/ AlignedByteOffset = inputElement.offset != 0 
-                                                                ? inputElement.offset 
+                iaDescs[targetIndex]./*UINT*/ AlignedByteOffset = inputElement.offset != 0
+                                                                ? inputElement.offset
                                                                 : currentOffset;
-                //TODO: [DXC, Vk] Support instanced draw?
-                iaDescs[targetIndex]./*D3D12_INPUT_CLASSIFICATION*/ InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-                iaDescs[targetIndex]./*UINT*/ InstanceDataStepRate = 0;
-                
+                iaDescs[targetIndex]./*D3D12_INPUT_CLASSIFICATION*/ InputSlotClass
+                    = perInstance ? D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA
+                                  : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+                iaDescs[targetIndex]./*UINT*/ InstanceDataStepRate
+                    = perInstance ? inputDesc.instanceStepRate : 0;
+
                 targetIndex += 1;
                 currentOffset += FormatHelpers::GetSizeInBytes(inputElement.format);
             }
