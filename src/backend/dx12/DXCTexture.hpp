@@ -91,7 +91,11 @@ namespace alloy::dxc
     };
 
     class DXCTextureView : public ITextureView {
-    
+    public:
+        static uint32_t GetAspectBasePlane(ITextureView::Aspect aspect);
+
+    private:
+
         Description _desc;
         common::sp<DXCTexture> _target;
     public:

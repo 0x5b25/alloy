@@ -23,6 +23,18 @@ namespace alloy
             std::uint32_t arrayLayers;
             PixelFormat format;
 
+            // For sampled depth stencil textures:
+            // DX12:
+            //   backend will auto-decay the pixel format to _TYPELESS ones
+            //   with the same width, e.g., R32_Float-> R32_TYPELESS for the
+            //   allocations, and promote according to view aspects. Combined
+            //   aspect is only valid on DSV
+            // Vulkan:
+            //   no special handling. Vulkan image views encode the aspect.
+            //   Combined aspect is only valid for renderpass depth stencil attachments
+            // Metal: 
+            //   no special handling on the allocation. Create new MTLTextures based
+            //   on aspects.
             struct Usage{
                     std::uint8_t sampled : 1;
                     std::uint8_t storage : 1;

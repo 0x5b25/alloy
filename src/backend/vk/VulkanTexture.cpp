@@ -315,7 +315,7 @@ namespace alloy::vk {
                 assert(targetDesc.usage.depthStencil);
                 assert(FormatHelpers::IsStencilFormat(targetDesc.format));
                 aspectFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
-            }
+            }break;
 
             case Aspect::DepthStencil: {
                 assert(targetDesc.usage.depthStencil);

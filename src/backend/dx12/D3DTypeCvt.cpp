@@ -1,4 +1,5 @@
 #include "D3DTypeCvt.hpp"
+#include "alloy/Helpers.hpp"
 
 namespace alloy::dxc {
 
@@ -556,7 +557,65 @@ namespace alloy::dxc {
         }
     }
 
-    DXGI_FORMAT VdToD3DPixelFormat(const PixelFormat& format, bool toDepthFormat)
+    
+    DXGI_FORMAT VdToD3DDepthStencilAllocFormat(const PixelFormat& format, bool isSampled) {
+        switch(format) {
+            case PixelFormat::R16_UNorm:
+                return isSampled ? DXGI_FORMAT::DXGI_FORMAT_R16_TYPELESS
+                                 : DXGI_FORMAT::DXGI_FORMAT_D16_UNORM;
+            case PixelFormat::R32_Float:
+                return isSampled ? DXGI_FORMAT::DXGI_FORMAT_R32_TYPELESS
+                                 : DXGI_FORMAT::DXGI_FORMAT_D32_FLOAT;
+            case PixelFormat::D32_Float_S8_UInt:
+                return isSampled ? DXGI_FORMAT::DXGI_FORMAT_R32G8X24_TYPELESS
+                                 : DXGI_FORMAT::DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+            case PixelFormat::D24_UNorm_S8_UInt:
+                return isSampled ? DXGI_FORMAT::DXGI_FORMAT_R24G8_TYPELESS
+                                 : DXGI_FORMAT::DXGI_FORMAT_D24_UNORM_S8_UINT;
+        default:
+            // #TODO: add to validation layer
+            assert(false);
+            return DXGI_FORMAT::DXGI_FORMAT_UNKNOWN;
+        }
+    }
+
+    
+    DXGI_FORMAT VdToD3DDepthStencilSRVFormat(
+        const PixelFormat& format, ITextureView::Aspect aspect
+    ) {
+        using ASP = ITextureView::Aspect;
+
+        if(aspect == ASP::Auto) {
+            aspect = alloy::FormatHelpers::GetAspectFromPixelFormat(format);
+        }
+
+        switch(format) {
+            case PixelFormat::R16_UNorm:
+                switch(aspect) {
+                    case ASP::Depth: return DXGI_FORMAT::DXGI_FORMAT_R16_UNORM;
+                } break;
+            case PixelFormat::R32_Float:
+                switch(aspect) {
+                    case ASP::Depth: return DXGI_FORMAT::DXGI_FORMAT_R32_FLOAT;
+                } break;
+            case PixelFormat::D32_Float_S8_UInt:
+                switch(aspect) {
+                    case ASP::Depth:   return DXGI_FORMAT::DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+                    case ASP::Stencil: return DXGI_FORMAT::DXGI_FORMAT_X32_TYPELESS_G8X24_UINT;
+                } break;
+            case PixelFormat::D24_UNorm_S8_UInt:
+                switch(aspect) {
+                    case ASP::Depth:   return DXGI_FORMAT::DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                    case ASP::Stencil: return DXGI_FORMAT::DXGI_FORMAT_X24_TYPELESS_G8_UINT;
+                } break;
+        }
+        
+        // #TODO: add to validation layer
+        assert(false);
+        return DXGI_FORMAT::DXGI_FORMAT_UNKNOWN;
+    }
+
+    DXGI_FORMAT VdToD3DPixelFormat(const PixelFormat& format)
     {
         switch (format)
         {
@@ -570,9 +629,7 @@ namespace alloy::dxc {
             return DXGI_FORMAT::DXGI_FORMAT_R8_SINT;
 
         case PixelFormat::R16_UNorm:
-            return toDepthFormat
-                ? DXGI_FORMAT::DXGI_FORMAT_D16_UNORM
-                : DXGI_FORMAT::DXGI_FORMAT_R16_UNORM;
+            return DXGI_FORMAT::DXGI_FORMAT_R16_UNORM;
         case PixelFormat::R16_SNorm:
             return DXGI_FORMAT::DXGI_FORMAT_R16_SNORM;
         case PixelFormat::R16_UInt:
@@ -587,9 +644,7 @@ namespace alloy::dxc {
         case PixelFormat::R32_SInt:
             return DXGI_FORMAT::DXGI_FORMAT_R32_SINT;
         case PixelFormat::R32_Float:
-            return toDepthFormat
-                ? DXGI_FORMAT::DXGI_FORMAT_D32_FLOAT
-                : DXGI_FORMAT::DXGI_FORMAT_R32_FLOAT;
+            return DXGI_FORMAT::DXGI_FORMAT_R32_FLOAT;
 
         case PixelFormat::R8_G8_UNorm:
             return DXGI_FORMAT::DXGI_FORMAT_R8G8_UNORM;

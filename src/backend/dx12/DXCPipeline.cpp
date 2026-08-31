@@ -599,15 +599,14 @@ namespace alloy::dxc
            for (uint32_t i = 0; i < color_count; i++) {
               psoDesc.RTVFormats[i] 
                 = VdToD3DPixelFormat(
-                    desc.attachmentState.colorAttachments[i].format,
-                    false);
+                    desc.attachmentState.colorAttachments[i].format);
            }
         }
 
         if (desc.attachmentState.depthStencilAttachment.has_value()) {
-            psoDesc.DSVFormat = VdToD3DPixelFormat(
+            psoDesc.DSVFormat = VdToD3DDepthStencilAllocFormat(
                 desc.attachmentState.depthStencilAttachment->depthStencilFormat,
-                true);
+                false);
         }
 
         //pipeline->multiview.view_mask = MAX2(view_mask, 1);
@@ -917,17 +916,16 @@ namespace alloy::dxc
             for (uint32_t i = 0; i < color_count; i++) {
                 rtvFormats.RTFormats[i] 
                   = VdToD3DPixelFormat(
-                      desc.attachmentState.colorAttachments[i].format,
-                      false);
+                      desc.attachmentState.colorAttachments[i].format);
             }
         }
 
         if (desc.attachmentState.depthStencilAttachment.has_value()) {
             auto& dsvFormat = psoStream.Append<DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT>();
             
-            dsvFormat = VdToD3DPixelFormat(
+            dsvFormat = VdToD3DDepthStencilAllocFormat(
                 desc.attachmentState.depthStencilAttachment->depthStencilFormat,
-                true);
+                false);
         }
         
         //CachedPSO;              < D3D12_CACHED_PIPELINE_STATE,      D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CACHED_PSO>

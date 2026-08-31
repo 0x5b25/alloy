@@ -216,7 +216,7 @@ namespace alloy::dxc
                 bool isMultisampled = dxcTexDesc.sampleCount != alloy::SampleCount::x1;
 
                 D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc {
-                    .Format = VdToD3DPixelFormat(dxcTexDesc.format),
+                    .Format = VdToD3DDepthStencilAllocFormat(dxcTexDesc.format, false),
                     .ViewDimension = isMultisampled?
                         D3D12_DSV_DIMENSION_TEXTURE2DMS :
                         D3D12_DSV_DIMENSION_TEXTURE2D,

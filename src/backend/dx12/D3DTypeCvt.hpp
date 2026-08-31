@@ -64,7 +64,9 @@ namespace alloy::dxc {
 
     D3D12_COMPARISON_FUNC VdToD3DCompareOp(ComparisonKind comparisonKind);
 
-    DXGI_FORMAT VdToD3DPixelFormat(const PixelFormat& format, bool toDepthFormat = false);
+    DXGI_FORMAT VdToD3DPixelFormat(const PixelFormat& format);
+    DXGI_FORMAT VdToD3DDepthStencilAllocFormat(const PixelFormat& format, bool isSampled);
+    DXGI_FORMAT VdToD3DDepthStencilSRVFormat(const PixelFormat& format, ITextureView::Aspect aspect);
     
 
     PixelFormat D3DToVdPixelFormat(DXGI_FORMAT d3dFormat);

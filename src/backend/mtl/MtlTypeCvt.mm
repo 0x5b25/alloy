@@ -177,10 +177,10 @@ namespace alloy::mtl {
         //Still have doubt for this one
         case MTLPixelFormatEAC_RGBA8: return PixelFormat::ETC2_R8_G8_B8_A8_UNorm;
 #if TARGET_OS_OSX
-        case MTLPixelFormatDepth24Unorm_Stencil8: return PixelFormat::D32_Float_S8_UInt;
+        case MTLPixelFormatDepth24Unorm_Stencil8: return PixelFormat::D24_Float_S8_UInt;
 #endif
             //return VkFormat::VK_FORMAT_D32_SFLOAT_S8_UINT;
-        case MTLPixelFormatDepth32Float_Stencil8: return PixelFormat::D24_UNorm_S8_UInt;
+        case MTLPixelFormatDepth32Float_Stencil8: return PixelFormat::D32_UNorm_S8_UInt;
             //return VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
 
         case MTLPixelFormatRGB10A2Unorm: return PixelFormat::R10_G10_B10_A2_UNorm;

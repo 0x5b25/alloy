@@ -68,7 +68,10 @@ namespace alloy::dxc {
         //which is effectively 64KB.
         resourceDesc.Alignment = 0;
         resourceDesc.MipLevels = desc.mipLevels;
-        resourceDesc.Format = VdToD3DPixelFormat(desc.format, desc.usage.depthStencil);
+        resourceDesc.Format = 
+            desc.usage.depthStencil
+                ? VdToD3DDepthStencilAllocFormat(desc.format, desc.usage.sampled)
+                : VdToD3DPixelFormat(desc.format);
         resourceDesc.SampleDesc.Count = 1;
 
         ///#TODO: enable high quality MSAA
@@ -95,11 +98,15 @@ namespace alloy::dxc {
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         //if(desc.usage.sampled)         resourceDesc.Flags |= ;
-        if (desc.usage.storage)         resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         if (desc.usage.renderTarget)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
         if (desc.usage.depthStencil)    resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         //if(desc.usage.cubemap)         resourceDesc.Flags |= ;
         //if(desc.usage.generateMipmaps) resourceDesc.Flags |= ;
+        if     (desc.usage.storage) { resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;}
+        else if(desc.usage.sampled) {  }
+        else                        { resourceDesc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE; }
+
+        assert( !(desc.usage.depthStencil != 0 && desc.usage.storage != 0));
 
         D3D12MA::ALLOCATION_DESC allocationDesc = {};
         D3D12_RESOURCE_STATES resourceState;
@@ -373,17 +380,18 @@ namespace alloy::dxc {
     }
 
     
-    uint32_t DXCTextureView::ComputeSubresource(uint32_t mipLvl, uint32_t arrayLayer) const {
-        uint32_t planeSlice;
-        switch(_desc.aspect) {
-            case Aspect::Stencil:
-                planeSlice = 1; break;
+    uint32_t DXCTextureView::GetAspectBasePlane(ITextureView::Aspect aspect) {
+        switch(aspect) {
+            case Aspect::Stencil: return 1;
             case Aspect::Color: 
             case Aspect::Depth: 
             case Aspect::DepthStencil:
-            default: 
-                planeSlice = 0; break;
+            default: return 0;
         }
+    }
+    
+    uint32_t DXCTextureView::ComputeSubresource(uint32_t mipLvl, uint32_t arrayLayer) const {
+        uint32_t planeSlice = GetAspectBasePlane(_desc.aspect);
 
         const auto& texDesc = _target->GetDesc();
         return DXCTexture::ComputeSubresource(

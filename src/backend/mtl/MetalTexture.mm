@@ -83,7 +83,7 @@ namespace alloy::mtl  {
                 mtlDesc.usage |= MTLTextureUsageShaderRead;
             if(desc.usage.storage)
                 mtlDesc.usage |= MTLTextureUsageShaderRead
-                               | MTLTextureUsageShaderRead;
+                               | MTLTextureUsageShaderWrite;
 
 
             // Create the texture from the device by using the descriptor

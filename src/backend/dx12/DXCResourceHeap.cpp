@@ -114,13 +114,19 @@ namespace alloy::dxc {
                 PtrCast<DXCTexture>(texView.GetTextureObject().get());
             const auto& texDesc = dxcTex->GetDesc();
             const auto& viewDesc = texView.GetDesc();
+            bool useAsDepthStencil = viewDesc.aspect != ITextureView::Aspect::Color;
+            auto d3dFormat
+                    = useAsDepthStencil ? VdToD3DDepthStencilSRVFormat(texDesc.format, viewDesc.aspect)
+                                        : VdToD3DPixelFormat(texDesc.format);
+            auto sampleCnt = FormatHelpers::GetSampleCountUInt32(texDesc.sampleCount);
 
             D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
             desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            desc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
+            desc.Format = d3dFormat;
 
             switch(texDesc.type) {
                 case ITexture::Description::Type::Texture1D: {
+                    assert(sampleCnt == 1); // DX12 only support MSAA for 2D textures
                     if(texDesc.arrayLayers > 1) {
                         desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                         desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -136,21 +142,33 @@ namespace alloy::dxc {
 
                 case ITexture::Description::Type::Texture2D: {
                     if(texDesc.arrayLayers > 1) {
-                        desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                        desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                        desc.Texture2DArray.PlaneSlice = 0;
-                        desc.Texture2DArray.MipLevels = viewDesc.mipLevels;
-                        desc.Texture2DArray.MostDetailedMip = viewDesc.baseMipLevel;
-                        desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+                        if(sampleCnt == 1) {
+                            desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
+                            desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                            desc.Texture2DArray.PlaneSlice = 0;
+                            desc.Texture2DArray.MipLevels = viewDesc.mipLevels;
+                            desc.Texture2DArray.MostDetailedMip = viewDesc.baseMipLevel;
+                            desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+                        } else {
+                            desc.Texture2DMSArray.ArraySize = viewDesc.arrayLayers;
+                            desc.Texture2DMSArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                            desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMSARRAY;
+                        }
                     } else {
-                        desc.Texture2D.PlaneSlice = 0;
-                        desc.Texture2D.MipLevels = viewDesc.mipLevels;
-                        desc.Texture2D.MostDetailedMip = viewDesc.baseMipLevel;
-                        desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                        if(sampleCnt == 1) {
+                            desc.Texture2D.PlaneSlice = 0;
+                            desc.Texture2D.MipLevels = viewDesc.mipLevels;
+                            desc.Texture2D.MostDetailedMip = viewDesc.baseMipLevel;
+                            desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                        } else {
+                            desc.Texture2DMS = {};
+                            desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMS;
+                        }  
                     }
                 } break;
 
                 case ITexture::Description::Type::Texture3D: {
+                    assert(sampleCnt == 1); // DX12 only support MSAA for 2D textures
                     assert(texDesc.arrayLayers <= 1);
                     desc.Texture3D.MostDetailedMip = viewDesc.baseMipLevel;
                     desc.Texture3D.MipLevels = viewDesc.mipLevels;
@@ -166,12 +184,18 @@ namespace alloy::dxc {
                 PtrCast<DXCTexture>(texView.GetTextureObject().get());
             const auto& texDesc = dxcTex->GetDesc();
             const auto& viewDesc = texView.GetDesc();
+            bool useAsDepthStencil = viewDesc.aspect != ITextureView::Aspect::Color;
+            auto d3dFormat
+                    = useAsDepthStencil ? VdToD3DDepthStencilSRVFormat(texDesc.format, viewDesc.aspect)
+                                        : VdToD3DPixelFormat(texDesc.format);
+            auto sampleCnt = FormatHelpers::GetSampleCountUInt32(texDesc.sampleCount);
 
             D3D12_UNORDERED_ACCESS_VIEW_DESC desc{};
-            desc.Format = VdToD3DPixelFormat(texDesc.format, texDesc.usage.depthStencil);
+            desc.Format = d3dFormat;
 
             switch(texDesc.type) {
                 case ITexture::Description::Type::Texture1D: {
+                    assert(sampleCnt == 1); // DX12 only support MSAA for 2D textures
                     if(texDesc.arrayLayers > 1) {
                         desc.Texture1DArray.ArraySize = viewDesc.arrayLayers;
                         desc.Texture1DArray.FirstArraySlice = viewDesc.baseArrayLayer;
@@ -185,19 +209,31 @@ namespace alloy::dxc {
 
                 case ITexture::Description::Type::Texture2D: {
                     if(texDesc.arrayLayers > 1) {
-                        desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
-                        desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
-                        desc.Texture2DArray.PlaneSlice = 0;
-                        desc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
-                        desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+                        if(sampleCnt == 1) {
+                            desc.Texture2DArray.ArraySize = viewDesc.arrayLayers;
+                            desc.Texture2DArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                            desc.Texture2DArray.PlaneSlice = 0;
+                            desc.Texture2DArray.MipSlice = viewDesc.baseMipLevel;
+                            desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+                        } else {
+                            desc.Texture2DMSArray.ArraySize = viewDesc.arrayLayers;
+                            desc.Texture2DMSArray.FirstArraySlice = viewDesc.baseArrayLayer;
+                            desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DMSARRAY;
+                        }
                     } else {
-                        desc.Texture2D.PlaneSlice = 0;
-                        desc.Texture2D.MipSlice = viewDesc.baseMipLevel;
-                        desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+                        if(sampleCnt == 1) {
+                            desc.Texture2D.PlaneSlice = 0;
+                            desc.Texture2D.MipSlice = viewDesc.baseMipLevel;
+                            desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+                        } else {
+                            desc.Texture2DMS = {};
+                            desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DMS;
+                        } 
                     }
                 } break;
 
                 case ITexture::Description::Type::Texture3D: {
+                    assert(sampleCnt == 1); // DX12 only support MSAA for 2D textures
                     assert(texDesc.arrayLayers <= 1);
                     desc.Texture3D.FirstWSlice = 0;
                     desc.Texture3D.WSize = -1;
