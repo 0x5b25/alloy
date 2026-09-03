@@ -521,9 +521,9 @@ public:
         vertexInputCI.pVertexAttributeDescriptions = attributeDescs.data();
 
         VkPipelineVertexInputDivisorStateCreateInfo divisorCI {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO
-            .vertexBindingDivisorCount = bindingDivisors.size();
-            .pVertexBindingDivisors = bindingDivisors.data();
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO,
+            .vertexBindingDivisorCount = (uint32_t)bindingDivisors.size(),
+            .pVertexBindingDivisors = bindingDivisors.data(),
         };
         // Chaining the divisor state needs matching feature enabled on the device;
         if(dev->GetDevCaps().SupportVertexAttribDivisor()) {
